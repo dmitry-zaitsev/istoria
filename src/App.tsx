@@ -6,7 +6,14 @@ import { Inspector } from "./components/Inspector";
 import { LogStream } from "./components/LogStream";
 import { StatusBar } from "./components/StatusBar";
 import { StreamHeader } from "./components/StreamHeader";
-import { queryRecent, subscribeEvents, type LogEvent } from "./lib/ipc";
+import { Tabs } from "./components/Tabs";
+import {
+  getMeta,
+  listViews,
+  queryRecent,
+  subscribeEvents,
+  type LogEvent,
+} from "./lib/ipc";
 import { evalAst, isError, parse } from "./lib/query";
 import { useStore } from "./store";
 
@@ -21,6 +28,8 @@ export default function App() {
   const setEvents = useStore((s) => s.setEvents);
   const setFilter = useStore((s) => s.setFilter);
   const setSelected = useStore((s) => s.setSelected);
+  const setViews = useStore((s) => s.setViews);
+  const setActiveViewId = useStore((s) => s.setActiveViewId);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [lastTickAt, setLastTickAt] = useState(0);
@@ -28,6 +37,31 @@ export default function App() {
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
+
+  // Bootstrap views + active id from DuckDB.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = await listViews();
+        if (cancelled) return;
+        setViews(all);
+        if (all.length > 0) {
+          const stored = await getMeta("active_view");
+          const storedId = stored ? Number(stored) : NaN;
+          const active =
+            all.find((v) => v.id === storedId) ?? all[0]!;
+          setActiveViewId(active.id);
+          setFilter(active.query);
+        }
+      } catch (e) {
+        console.warn("views bootstrap failed", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setViews, setActiveViewId, setFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +111,7 @@ export default function App() {
   return (
     <div className="win">
       <Chrome live={live} count={unfilteredCount} session={SESSION_ID} />
+      <Tabs />
       <FilterBar value={filter} onChange={setFilter} />
       <div className="main">
         <div className="stream-col">

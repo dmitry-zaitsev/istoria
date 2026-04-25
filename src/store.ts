@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { LogEvent } from "./lib/ipc";
+import type { LogEvent, View } from "./lib/ipc";
 
 export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
@@ -10,10 +10,14 @@ interface Store {
   filter: string;
   selectedId: number | null;
   inspectorHeight: number;
+  views: View[];
+  activeViewId: number | null;
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
   setInspectorHeight: (h: number) => void;
+  setViews: (views: View[]) => void;
+  setActiveViewId: (id: number | null) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -21,6 +25,8 @@ export const useStore = create<Store>((set) => ({
   filter: "",
   selectedId: null,
   inspectorHeight: INSPECTOR_DEFAULT,
+  views: [],
+  activeViewId: null,
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) => set({ selectedId }),
@@ -28,4 +34,6 @@ export const useStore = create<Store>((set) => ({
     set({
       inspectorHeight: Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, h)),
     }),
+  setViews: (views) => set({ views }),
+  setActiveViewId: (activeViewId) => set({ activeViewId }),
 }));

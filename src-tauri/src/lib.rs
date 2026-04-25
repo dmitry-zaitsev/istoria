@@ -9,6 +9,7 @@ pub mod ring;
 pub mod socket;
 pub mod source;
 pub mod state;
+pub mod views;
 
 use std::io::IsTerminal;
 use std::process;
@@ -55,7 +56,13 @@ pub fn run(cli: cli::Cli) {
     let source_name = source::resolve(cli.name.as_deref(), &[]);
 
     let store = match Store::open_default(cli.clear) {
-        Ok(s) => Some(Arc::new(s)),
+        Ok(s) => {
+            let arc = Arc::new(s);
+            if let Err(e) = views::seed_default(&arc) {
+                tracing::warn!(error = %e, "could not seed default view");
+            }
+            Some(arc)
+        }
         Err(e) => {
             tracing::warn!(error = %e, "DuckDB store unavailable; running in-memory only");
             None
@@ -88,7 +95,17 @@ pub fn run(cli: cli::Cli) {
 
     tauri::Builder::default()
         .manage(AppState { ring, store })
-        .invoke_handler(tauri::generate_handler![ipc::query_recent, ipc::query_parse])
+        .invoke_handler(tauri::generate_handler![
+            ipc::query_recent,
+            ipc::query_parse,
+            ipc::views_list,
+            ipc::views_create,
+            ipc::views_update,
+            ipc::views_delete,
+            ipc::views_duplicate,
+            ipc::meta_get,
+            ipc::meta_set,
+        ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
             let ring = ring_for_emit;

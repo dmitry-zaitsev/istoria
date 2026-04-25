@@ -10,7 +10,7 @@ use crate::event::{Event, Level};
 
 pub const DB_DIR_NAME: &str = "istoria";
 pub const DB_FILE_NAME: &str = "istoria.db";
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 pub const FLUSH_INTERVAL_MS: u64 = 250;
 pub const FLUSH_BATCH: usize = 1_000;
 
@@ -117,6 +117,25 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
             );
             CREATE INDEX IF NOT EXISTS events_session_ts ON events(session_id, ts);
             CREATE INDEX IF NOT EXISTS events_level      ON events(level);
+            "#,
+        )?;
+    }
+
+    if stored < 2 {
+        conn.execute_batch(
+            r#"
+            CREATE SEQUENCE IF NOT EXISTS views_id_seq;
+            CREATE TABLE IF NOT EXISTS views (
+                id          INTEGER PRIMARY KEY DEFAULT nextval('views_id_seq'),
+                name        TEXT NOT NULL,
+                query       TEXT NOT NULL DEFAULT '',
+                sort_order  INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP NOT NULL DEFAULT now()
+            );
+            CREATE TABLE IF NOT EXISTS meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             "#,
         )?;
     }
