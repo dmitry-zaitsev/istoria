@@ -23,3 +23,8 @@ dev:
         sleep 0.1
     done
     cargo run --manifest-path src-tauri/Cargo.toml --bin istoria
+
+# Stream randomized fake logs to stdout. Pipe into `just dev` to
+# exercise the UI: `just fakeLogs | just dev`.
+fakeLogs *args:
+    @node examples/generator/fake-logs.mjs {{args}}
