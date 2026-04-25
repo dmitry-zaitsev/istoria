@@ -5,6 +5,7 @@ pub mod ingest;
 pub mod ipc;
 pub mod persistence;
 pub mod ring;
+pub mod source;
 pub mod state;
 
 use std::io::IsTerminal;
@@ -23,7 +24,7 @@ pub fn run(cli: cli::Cli) {
     init_tracing();
 
     let ring = Arc::new(Ring::from_env());
-    let source = cli.name.clone().unwrap_or_else(|| "stdin".into());
+    let source = source::resolve(cli.name.as_deref(), &[]);
 
     let store = match Store::open_default(cli.clear) {
         Ok(s) => Some(Arc::new(s)),

@@ -2139,6 +2139,7 @@ dependencies = [
  "clap",
  "directories",
  "duckdb",
+ "libc",
  "parking_lot",
  "serde",
  "serde_json",
