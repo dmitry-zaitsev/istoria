@@ -362,6 +362,56 @@ kbd {
 }
 .facet-search:focus { border-color: var(--brand); }
 
+.range-group { padding-bottom: 12px; }
+.range-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 28px;
+  margin: 4px 12px 6px;
+}
+.range-spark .bar {
+  flex: 1;
+  min-width: 1px;
+  background: var(--brand-50);
+  border-bottom: 1px solid var(--brand);
+}
+.range-track {
+  position: relative;
+  height: 6px;
+  margin: 6px 16px;
+  background: var(--surface-3);
+  border-radius: 99px;
+  cursor: pointer;
+}
+.range-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--brand);
+  border-radius: 99px;
+}
+.range-thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid var(--brand);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  margin: 4px 16px 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
 /* ── Stream column ─────────────────────────────────────────────── */
 .stream-col {
   flex: 1;

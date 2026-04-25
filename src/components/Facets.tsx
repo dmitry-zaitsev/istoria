@@ -9,6 +9,7 @@ import {
 } from "../lib/facets";
 import type { LogEvent } from "../lib/ipc";
 import { isError, parse, type Ast } from "../lib/query";
+import { RangeSlider, detectNumericFacets } from "./RangeSlider";
 
 interface FacetsProps {
   events: LogEvent[];
@@ -20,6 +21,7 @@ const SEARCH_OVERFLOW = 10;
 
 export function Facets({ events, filter, onFilterChange }: FacetsProps) {
   const groups = useMemo(() => computeFacets(events), [events]);
+  const numericKeys = useMemo(() => new Set(detectNumericFacets(events)), [events]);
   const ast: Ast | null = useMemo(() => {
     const r = parse(filter);
     return isError(r) ? null : r;
@@ -37,9 +39,20 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
 
   return (
     <aside className="facets">
-      {groups.map((g) => (
-        <Group key={g.key} group={g} pinned={pinned} onToggle={toggle} />
-      ))}
+      {groups.map((g) =>
+        numericKeys.has(g.key) ? (
+          <RangeSlider
+            key={g.key}
+            events={events}
+            fieldKey={g.key}
+            label={g.label}
+            filter={filter}
+            onFilterChange={onFilterChange}
+          />
+        ) : (
+          <Group key={g.key} group={g} pinned={pinned} onToggle={toggle} />
+        ),
+      )}
     </aside>
   );
 }
