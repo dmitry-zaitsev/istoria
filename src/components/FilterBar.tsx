@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { registerFilterFocus } from "../lib/filterFocus";
 import { isError, parse, tokenize, type Token } from "../lib/query";
+import { toast } from "../lib/toast";
+import { useStore } from "../store";
 
 interface FilterBarProps {
   value: string;
@@ -38,6 +40,18 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
         if (!el) return;
         el.focus();
         el.select();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        const target = e.target as HTMLElement | null;
+        const el = target?.closest(".filter-bar");
+        if (!el) return;
+        e.preventDefault();
+        const full = useStore.getState().filter;
+        if (!full) return;
+        navigator.clipboard
+          ?.writeText(full)
+          .then(() => toast("Copied query"))
+          .catch(() => toast("Copy failed"));
       }
     };
     window.addEventListener("keydown", onKey);
