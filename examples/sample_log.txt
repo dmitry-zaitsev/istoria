@@ -1,9 +1,9 @@
 {"level":"info","source":"web","msg":"GET /api/users","method":"GET","path":"/api/users","status_code":200,"dur_ms":24,"user":{"id":42},"request_id":"req_8sj2","trace_id":"t_a1b2c3"}
-{"level":"debug","source":"web","msg":"cache hit users:list","key":"users:list:page=1","ttl":120}
-{"level":"info","source":"api","msg":"POST /sessions","method":"POST","path":"/sessions","status_code":201,"dur_ms":88,"user":{"id":1009}}
-{"level":"warn","source":"api","msg":"slow query","query":"SELECT * FROM events WHERE created_at > $1","dur_ms":412}
-{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":11,"user":{"id":42},"request_id":"req_8sj3"}
-{"level":"error","source":"api","msg":"TypeError: cannot read property id of undefined","request_id":"req_8sj4","user":{"id":42},"stack":["at handler (src/api/handler.js:42:18)","at processRequest (src/server.js:188:7)"]}
+{"level":"debug","source":"web","msg":"cache hit users:list","key":"users:list:page=1","ttl":120,"request_id":"req_8sj2","trace_id":"t_a1b2c3"}
+{"level":"info","source":"api","msg":"POST /sessions","method":"POST","path":"/sessions","status_code":201,"dur_ms":88,"user":{"id":1009},"request_id":"req_pmt1","trace_id":"t_pmt"}
+{"level":"warn","source":"api","msg":"slow query","query":"SELECT * FROM events WHERE created_at > $1","dur_ms":412,"request_id":"req_pmt1","trace_id":"t_pmt"}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":11,"user":{"id":42},"request_id":"req_feed1","trace_id":"t_feed"}
+{"level":"error","source":"api","msg":"TypeError: cannot read property id of undefined","request_id":"req_feed1","trace_id":"t_feed","user":{"id":42},"stack":["at handler (src/api/handler.js:42:18)","at processRequest (src/server.js:188:7)","at Layer.handle (node_modules/express/lib/router/layer.js:95:5)"]}
 {"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":9,"user":{"id":207}}
 {"level":"debug","source":"job","msg":"tick scheduler.run","loop":4,"queued":3}
 {"level":"warn","source":"web","msg":"rate limit near threshold","limit":100,"used":92,"ip":"10.0.0.4","window":"1m"}

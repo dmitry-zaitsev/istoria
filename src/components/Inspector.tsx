@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { addClause, removeClause } from "../lib/facets";
 import { focusFilterInput } from "../lib/filterFocus";
@@ -11,15 +11,31 @@ import { JsonView } from "./JsonView";
 
 interface InspectorProps {
   event: LogEvent;
+  events: LogEvent[];
+  onSelect: (id: number) => void;
   onClose: () => void;
 }
 
-export function Inspector({ event, onClose }: InspectorProps) {
+type Tab = "json" | "stack" | "related" | "raw";
+
+const CORR_KEYS = [
+  "request_id",
+  "trace_id",
+  "correlation_id",
+  "span_id",
+  "session_id",
+];
+
+export function Inspector({ event, events, onSelect, onClose }: InspectorProps) {
   const height = useStore((s) => s.inspectorHeight);
   const setHeight = useStore((s) => s.setInspectorHeight);
   const filter = useStore((s) => s.filter);
   const setFilter = useStore((s) => s.setFilter);
   const drawerRef = useRef<HTMLDivElement | null>(null);
+  const [tab, setTab] = useState<Tab>("json");
+
+  const stackFrames = useMemo(() => extractStack(event), [event]);
+  const related = useMemo(() => findRelated(event, events), [event, events]);
 
   const onAddFilter = (path: string, value: unknown) => {
     if (typeof value === "object" || value == null) return;
@@ -38,12 +54,8 @@ export function Inspector({ event, onClose }: InspectorProps) {
   };
 
   const onAddKeyFilter = (path: string) => {
-    // Append `path:*` — wildcard matches any value, so the filter is
-    // valid as-is; user can edit `*` to narrow.
     const trimmed = filter.replace(/\s+$/, "");
-    const next = trimmed
-      ? `${trimmed} AND ${path}:*`
-      : `${path}:*`;
+    const next = trimmed ? `${trimmed} AND ${path}:*` : `${path}:*`;
     setFilter(next);
     focusFilterInput();
     toast(`Type a value for ${path}`);
@@ -101,18 +113,30 @@ export function Inspector({ event, onClose }: InspectorProps) {
         <i />
       </div>
       <div className="inspector-tabs">
-        <button className="inspector-tab active" type="button">
+        <TabButton active={tab === "json"} onClick={() => setTab("json")}>
           JSON<span className="ct">{fieldsCount}</span>
-        </button>
-        <button className="inspector-tab" type="button" disabled>
+        </TabButton>
+        <TabButton
+          active={tab === "stack"}
+          onClick={() => setTab("stack")}
+          disabled={stackFrames.length === 0}
+        >
           Stack
-        </button>
-        <button className="inspector-tab" type="button" disabled>
+          {stackFrames.length > 0 && <span className="ct">{stackFrames.length}</span>}
+        </TabButton>
+        <TabButton
+          active={tab === "related"}
+          onClick={() => setTab("related")}
+          disabled={related.events.length === 0}
+        >
           Related
-        </button>
-        <button className="inspector-tab" type="button" disabled>
+          {related.events.length > 0 && (
+            <span className="ct">{related.events.length}</span>
+          )}
+        </TabButton>
+        <TabButton active={tab === "raw"} onClick={() => setTab("raw")}>
           Raw
-        </button>
+        </TabButton>
         <div className="inspector-meta">
           <span style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>
             {formatTsFull(event.ts)}
@@ -138,26 +162,118 @@ export function Inspector({ event, onClose }: InspectorProps) {
         </div>
       </div>
       <div className="inspector-body">
-        <div className="json">
-          <div
-            style={{
-              marginBottom: 12,
-              fontSize: 13,
-              color: "var(--ink)",
-              fontWeight: 500,
-            }}
-          >
-            {event.msg || event.raw}
+        {tab === "json" && (
+          <div className="json">
+            <div className="msg-headline">{event.msg || event.raw}</div>
+            <JsonView
+              value={fields}
+              onFilter={onAddFilter}
+              onKeyFilter={onAddKeyFilter}
+            />
           </div>
-          <JsonView
-            value={fields}
-            onFilter={onAddFilter}
-            onKeyFilter={onAddKeyFilter}
-          />
-        </div>
+        )}
+        {tab === "stack" && (
+          <div className="stack">
+            {stackFrames.length === 0 ? (
+              <div className="empty-tab">No stack trace.</div>
+            ) : (
+              stackFrames.map((f, i) => <div key={i} className="frame">{f}</div>)
+            )}
+          </div>
+        )}
+        {tab === "related" && (
+          <div className="related">
+            {related.events.length === 0 ? (
+              <div className="empty-tab">No related events.</div>
+            ) : (
+              <>
+                <div className="related-h">
+                  Sharing <code>{related.key}={related.value}</code>
+                </div>
+                {related.events.map((e) => (
+                  <div
+                    key={e.id}
+                    className={`related-row lvl-${levelClass(e.level)}`}
+                    onClick={() => onSelect(e.id)}
+                  >
+                    <span className="ts">{formatTsFull(e.ts)}</span>
+                    <span className={`lvl ${levelClass(e.level)}`}>
+                      {levelClass(e.level)}
+                    </span>
+                    <span className="src">{e.source}</span>
+                    <span className="msg">{e.msg || e.raw}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+        {tab === "raw" && (
+          <pre className="raw">{event.raw}</pre>
+        )}
       </div>
     </aside>
   );
+}
+
+function TabButton({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      className={`inspector-tab${active ? " active" : ""}`}
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function extractStack(event: LogEvent): string[] {
+  const fields = event.fields as Record<string, unknown> | undefined;
+  if (fields) {
+    for (const key of ["stack", "stacktrace", "stack_trace", "trace"]) {
+      const v = fields[key];
+      if (Array.isArray(v))
+        return v.map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
+      if (typeof v === "string") return v.split(/\r?\n/).filter(Boolean);
+    }
+  }
+  // Fallback: detect "at <fn> (<file>:<line>:<col>)" lines in raw/msg.
+  const text = `${event.msg}\n${event.raw}`;
+  const matches = [...text.matchAll(/\bat\s+\S.*?:\d+:\d+/g)].map((m) => m[0]);
+  return matches;
+}
+
+function findRelated(
+  event: LogEvent,
+  all: LogEvent[],
+): { key: string; value: string; events: LogEvent[] } {
+  const fields = event.fields as Record<string, unknown> | undefined;
+  if (!fields) return { key: "", value: "", events: [] };
+  for (const key of CORR_KEYS) {
+    const v = fields[key];
+    if (typeof v !== "string" && typeof v !== "number") continue;
+    const value = String(v);
+    const matches = all.filter(
+      (e) =>
+        e.id !== event.id &&
+        e.fields != null &&
+        String((e.fields as Record<string, unknown>)[key]) === value,
+    );
+    if (matches.length > 0) return { key, value, events: matches };
+  }
+  return { key: "", value: "", events: [] };
 }
 
 function fieldsFromPlain(event: LogEvent): Record<string, unknown> {

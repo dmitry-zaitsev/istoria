@@ -147,7 +147,12 @@ export default function App() {
             bottomInset={bottomInset}
           />
           {selected && (
-            <Inspector event={selected} onClose={() => setSelected(null)} />
+            <Inspector
+              event={selected}
+              events={unfilteredEvents}
+              onSelect={setSelected}
+              onClose={() => setSelected(null)}
+            />
           )}
         </div>
       </div>
