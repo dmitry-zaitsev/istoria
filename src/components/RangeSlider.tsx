@@ -13,29 +13,67 @@ interface RangeSliderProps {
 }
 
 const PERCENTILES = [50, 75, 90, 95, 99] as const;
+const DURATION_KEYWORDS = ["dur", "latency", "elapsed", "ms", "_us", "time_"];
+const MIN_VALUES_FOR_PERCENTILES = 30;
+const MIN_DISTINCT_FOR_PERCENTILES = 10;
 
-/// Auto-detect numeric facets from a sample of events.
+/// Auto-detect numeric facets that look like durations / continuous
+/// distributions. Status codes, ids, and tiny enums are excluded —
+/// percentile chips on those are nonsense.
 export function detectNumericFacets(events: LogEvent[]): string[] {
   const sample = events.slice(-200);
-  if (sample.length < 5) return [];
-  const counts = new Map<string, { numeric: number; total: number }>();
+  if (sample.length < MIN_VALUES_FOR_PERCENTILES) return [];
+  const stats = new Map<
+    string,
+    { numeric: number; total: number; values: Set<number> }
+  >();
   for (const e of sample) {
     const f = e.fields as Record<string, unknown> | undefined;
     if (!f || typeof f !== "object") continue;
     walk(f, "", (path, value) => {
-      const c = counts.get(path) ?? { numeric: 0, total: 0 };
+      const c =
+        stats.get(path) ?? { numeric: 0, total: 0, values: new Set<number>() };
       c.total++;
-      if (typeof value === "number" && !Number.isNaN(value)) c.numeric++;
-      else if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value)))
+      const n =
+        typeof value === "number"
+          ? value
+          : typeof value === "string" && value.trim() !== ""
+          ? Number(value)
+          : NaN;
+      if (!Number.isNaN(n)) {
         c.numeric++;
-      counts.set(path, c);
+        c.values.add(n);
+      }
+      stats.set(path, c);
     });
   }
   const out: string[] = [];
-  for (const [k, c] of counts) {
-    if (c.total >= 5 && c.numeric / c.total >= 0.8) out.push(k);
+  for (const [k, c] of stats) {
+    if (c.total < MIN_VALUES_FOR_PERCENTILES) continue;
+    if (c.numeric / c.total < 0.8) continue;
+    if (c.values.size < MIN_DISTINCT_FOR_PERCENTILES) continue;
+    if (looksLikeStatusOrId(k, c.values)) continue;
+    if (!isDurationLike(k, c.values)) continue;
+    out.push(k);
   }
   return out;
+}
+
+function looksLikeStatusOrId(key: string, values: Set<number>): boolean {
+  if (/(^|\.|_)(status|status_code|code|id|pid|port)$/i.test(key)) return true;
+  // Mostly small integers in a tight band → enum-ish.
+  if (values.size <= 10) return true;
+  return false;
+}
+
+function isDurationLike(key: string, values: Set<number>): boolean {
+  if (DURATION_KEYWORDS.some((kw) => key.toLowerCase().includes(kw))) return true;
+  // Continuous distribution heuristic: spread > 100× across at least
+  // 20 distinct values.
+  const arr = [...values];
+  const lo = Math.min(...arr);
+  const hi = Math.max(...arr);
+  return values.size >= 20 && lo > 0 && hi / lo >= 100;
 }
 
 function walk(
@@ -93,69 +131,27 @@ export function RangeSlider({
           {fmt(min)} – {fmt(max)}
         </span>
       </div>
-      <div className="ecdf">
-        <svg viewBox="0 0 100 24" preserveAspectRatio="none">
-          <polyline
-            fill="none"
-            stroke="var(--brand)"
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-            points={ecdfPoints(sorted)}
-          />
-          {PERCENTILES.map((p, i) => (
-            <line
-              key={p}
-              x1={p}
-              x2={p}
-              y1="0"
-              y2="24"
-              stroke="var(--line-strong)"
-              strokeDasharray="2 2"
-              vectorEffect="non-scaling-stroke"
-              opacity={activeStop === i ? 0.8 : 0.3}
-            />
-          ))}
-        </svg>
-      </div>
-      <div className="pct-chips">
+      <div className="pct-list">
         {PERCENTILES.map((p, i) => (
-          <button
+          <div
             key={p}
-            type="button"
-            className={`pct-chip${activeStop === i ? " active" : ""}`}
+            className={`pct-row${activeStop === i ? " active" : ""}`}
             onClick={() => apply(stops[i]!)}
-            title={`${fmt(stops[i]!)} (${p}th percentile)`}
+            role="button"
+            title={`Filter ≥ p${p}`}
           >
-            ≥ p{p}
-          </button>
+            <span className="pct-label">≥ p{p}</span>
+            <span className="pct-value">{fmt(stops[i]!)}</span>
+          </div>
         ))}
         {pinned.lo != null && (
-          <button type="button" className="pct-chip clear" onClick={clear}>
-            clear
-          </button>
+          <div className="pct-row clear" onClick={clear} role="button">
+            <span className="pct-label">clear</span>
+          </div>
         )}
       </div>
     </div>
   );
-}
-
-function ecdfPoints(sorted: number[]): string {
-  if (sorted.length === 0) return "";
-  const n = sorted.length;
-  const min = sorted[0]!;
-  const max = sorted[n - 1]!;
-  if (max === min) return "0,12 100,12";
-  // Sample at percentile positions for smooth curve.
-  const out: string[] = [];
-  const steps = 50;
-  for (let i = 0; i <= steps; i++) {
-    const p = (i / steps) * 100;
-    const v = percentile(sorted, p);
-    const x = p;
-    const y = 24 - ((v - min) / (max - min)) * 24;
-    out.push(`${x.toFixed(2)},${y.toFixed(2)}`);
-  }
-  return out.join(" ");
 }
 
 function percentile(sorted: number[], p: number): number {
