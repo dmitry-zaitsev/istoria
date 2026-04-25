@@ -22,7 +22,6 @@ import { evalAst, isError, parse, type Ast } from "./lib/query";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
-const SESSION_ID = "1";
 
 export default function App() {
   const events = useStore((s) => s.events);
@@ -38,8 +37,6 @@ export default function App() {
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
-  const [lastTickAt, setLastTickAt] = useState(0);
-  const [, setNow] = useState(0);
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
@@ -106,7 +103,6 @@ export default function App() {
         setEvents(sorted);
         setUnfilteredEvents(ordered);
         setUnfilteredCount(ordered.length);
-        setLastTickAt(Date.now());
       } catch (e) {
         console.warn("queryRecent failed", e);
       }
@@ -125,17 +121,11 @@ export default function App() {
     };
   }, [setEvents, parsed, filterValid, sort]);
 
-  useEffect(() => {
-    const id = window.setInterval(() => setNow((n) => n + 1), 1_000);
-    return () => window.clearInterval(id);
-  }, []);
-
   const selected = useMemo(
     () => (selectedId == null ? null : events.find((e) => e.id === selectedId)),
     [events, selectedId],
   );
 
-  const live = lastTickAt > 0 && Date.now() - lastTickAt < 5_000;
   const filterActive = filter.trim().length > 0;
   const bottomInset = selected ? inspectorH : 0;
 
@@ -143,7 +133,7 @@ export default function App() {
     <div className="win">
       <Palette />
       <Toast />
-      <Chrome live={live} count={unfilteredCount} session={SESSION_ID} />
+      <Chrome count={unfilteredCount} />
       <Tabs />
       <FilterBar value={filter} onChange={setFilter} />
       <Histogram
@@ -181,7 +171,6 @@ export default function App() {
         </div>
       </div>
       <StatusBar
-        live={live}
         total={unfilteredCount}
         filtered={events.length}
         filterActive={filterActive}
