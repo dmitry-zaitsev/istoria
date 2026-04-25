@@ -130,7 +130,7 @@ export default function App() {
       />
       <div className="main">
         <Facets
-          events={unfilteredEvents}
+          events={events}
           filter={filter}
           onFilterChange={setFilter}
         />
