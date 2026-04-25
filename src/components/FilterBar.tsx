@@ -18,6 +18,7 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [trailing, setTrailing] = useState("");
+  const [allSelected, setAllSelected] = useState(false);
   const editRef = useRef<HTMLInputElement | null>(null);
   const trailingRef = useRef<HTMLInputElement | null>(null);
 
@@ -44,8 +45,6 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
         const target = e.target as HTMLElement | null;
         const el = target?.closest(".filter-bar");
         if (!el) return;
-        // If the trailing input has more than zero chars and not the
-        // whole field selected, let native Cmd+A select that input first.
         const ti = trailingRef.current;
         if (
           ti &&
@@ -56,18 +55,34 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
           return;
         }
         e.preventDefault();
-        const pillsEl = el.querySelector(".pills");
-        if (!pillsEl) return;
-        const range = document.createRange();
-        range.selectNodeContents(pillsEl);
-        const sel = window.getSelection();
-        sel?.removeAllRanges();
-        sel?.addRange(range);
+        setAllSelected(true);
+        // Take focus away from any inner input so keyboard events
+        // route to our window listener (Cmd+C/Esc).
+        ti?.blur();
+        editRef.current?.blur();
+      }
+      if (allSelected && (e.metaKey || e.ctrlKey) && e.key === "c") {
+        e.preventDefault();
+        const full = useStore.getState().filter;
+        if (full) navigator.clipboard?.writeText(full).catch(() => {});
+        setAllSelected(false);
+      }
+      if (allSelected && e.key === "Escape") {
+        setAllSelected(false);
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    const onMouseDown = (e: MouseEvent) => {
+      if (!allSelected) return;
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest(".filter-bar")) setAllSelected(false);
+    };
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [allSelected]);
 
   useEffect(() => {
     if (editing != null) editRef.current?.focus();
@@ -108,22 +123,8 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
     setTrailing("");
   };
 
-  const onCopy = (e: React.ClipboardEvent) => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    // Only override when the selection is entirely inside .pills —
-    // otherwise let native copy fall through (e.g. selecting text in
-    // a pill-edit input).
-    const range = sel.getRangeAt(0);
-    const pills = (e.currentTarget as HTMLElement).querySelector(".pills");
-    if (!pills || !pills.contains(range.commonAncestorContainer)) return;
-    e.preventDefault();
-    const full = useStore.getState().filter;
-    if (full) e.clipboardData.setData("text/plain", full);
-  };
-
   return (
-    <div className="filter-bar" onCopy={onCopy}>
+    <div className="filter-bar">
       <div className={`query-input${error ? " err" : ""}`}>
         <span className="query-icon">⌕</span>
         <span className="pills">
@@ -145,8 +146,11 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
             ) : (
               <span
                 key={i}
-                className={`pill pill-${t.kind}`}
-                onClick={() => startEdit(i)}
+                className={`pill pill-${t.kind}${allSelected ? " selected" : ""}`}
+                onClick={() => {
+                  setAllSelected(false);
+                  startEdit(i);
+                }}
                 title="Click to edit"
               >
                 <span className="pill-text">{t.text}</span>
@@ -174,11 +178,20 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
               ? "filter — e.g. level:error AND status_code:>=400"
               : "+ AND…"
           }
-          onChange={(e) => setTrailing(e.target.value)}
+          onChange={(e) => {
+            setAllSelected(false);
+            setTrailing(e.target.value);
+          }}
+          onFocus={() => setAllSelected(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter") commitTrailing();
             if (e.key === "Backspace" && trailing === "" && usefulTokens.length > 0) {
-              removeToken(usefulTokens.length - 1);
+              if (allSelected) {
+                onChange("");
+                setAllSelected(false);
+              } else {
+                removeToken(usefulTokens.length - 1);
+              }
             }
           }}
           onBlur={commitTrailing}

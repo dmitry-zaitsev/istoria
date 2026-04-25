@@ -242,6 +242,15 @@ body,
   cursor: text;
 }
 .pill:hover { background: var(--brand-50); border-color: var(--brand); }
+.pill.selected {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand-600, var(--brand));
+}
+.pill.selected .pill-x { color: rgba(255,255,255,0.7); }
+.pill.selected.pill-free { background: var(--ink); color: white; }
+.pill.selected.pill-group { background: var(--warn-fg); color: white; }
+.pill.selected.pill-op { background: var(--info-fg); color: white; }
 .pill.pill-free { background: var(--surface-3); color: var(--ink-2); border-color: var(--line); }
 .pill.pill-op { background: var(--info-bg); color: var(--info-fg); }
 .pill.pill-group { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line, var(--line)); font-weight: 500; }
