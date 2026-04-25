@@ -1,46 +1,50 @@
-[14:02:31.402] INFO  web    GET /api/users 200 in 24ms
-[14:02:31.418] DEBUG web    cache hit users:list:page=1 ttl=120
-[14:02:31.601] INFO  api    POST /sessions 201 in 88ms
-[14:02:31.770] WARN  api    slow query SELECT * FROM events WHERE created_at > $1 (412ms)
-[14:02:31.812] INFO  web    GET /api/feed 200 in 11ms
-[14:02:32.004] ERROR api    TypeError: cannot read property id of undefined (req_8sj2)
-[14:02:32.005] ERROR api      at handler (src/api/handler.js:42:18)
-[14:02:32.005] ERROR api      at processRequest (src/server.js:188:7)
-[14:02:32.108] INFO  web    GET /api/feed 200 in 9ms
-[14:02:32.244] DEBUG job    tick scheduler.run loop=4 queued=3
-[14:02:32.512] WARN  web    rate limit near threshold (92/100) ip=10.0.0.4 window=1m
-[14:02:32.701] ERROR api    500 POST /payments — gateway timeout (gw=stripe, 8003ms, user_id=1009)
-[14:02:32.911] INFO  job    job email.welcome.send done in 142ms
-[14:02:33.020] INFO  web    GET /favicon.ico 304
-[14:02:33.155] DEBUG api    auth.verify token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... ok user_id=42
-[14:02:33.290] INFO  web    GET /api/users/42 200 in 6ms
-[14:02:33.401] WARN  job    retry attempt=2 job=image.resize backoff=4s
-[14:02:33.580] INFO  api    POST /api/posts 201 in 32ms
-[14:02:33.612] DEBUG db     pool stats active=4 idle=12 waiting=0
-[14:02:33.770] INFO  web    GET /api/users/207 200 in 5ms
-[14:02:33.901] WARN  api    deprecation: /v1/sessions will be removed 2026-06-01
-[14:02:34.012] INFO  api    POST /api/comments 201 in 18ms
-[14:02:34.155] ERROR job    job image.resize failed: Sharp: corrupt JPEG data: 12 extraneous bytes before marker
-[14:02:34.156] ERROR job      at Sharp.<anonymous> (node_modules/sharp/lib/output.js:88:22)
-[14:02:34.301] INFO  web    GET /api/feed 200 in 8ms
-[14:02:34.412] DEBUG api    cache miss feed:user:42 — fetching upstream
-[14:02:34.580] INFO  api    GET upstream feed.svc 200 in 124ms
-[14:02:34.602] INFO  web    GET /api/feed 200 in 14ms
-[14:02:34.711] WARN  db     replication lag 2.4s on db.replica
-[14:02:34.812] INFO  web    GET /health 200 in 1ms
-[14:02:35.001] DEBUG job    tick scheduler.run loop=5 queued=2
-[14:02:35.124] INFO  api    POST /sessions 201 in 76ms
-[14:02:35.302] INFO  web    GET /api/users/88 200 in 7ms
-[14:02:35.401] ERROR api    400 POST /api/posts — validation failed: title required
-[14:02:35.512] INFO  api    DELETE /api/sessions/abc123 204 in 12ms
-[14:02:35.611] DEBUG api    auth.revoke session=abc123 user_id=42
-[14:02:35.722] WARN  job    queue depth high: emails=320 images=88
-[14:02:35.831] INFO  web    GET /api/posts 200 in 22ms
-[14:02:35.940] INFO  api    PATCH /api/users/42 200 in 19ms
-[14:02:36.052] DEBUG db     query plan: index scan on users_pk (rows=1)
-[14:02:36.181] INFO  web    GET /api/feed 200 in 10ms
-[14:02:36.294] WARN  api    slow request 1842ms POST /api/uploads (file=12.4MB)
-[14:02:36.401] INFO  api    POST /api/uploads 201 in 1842ms
-[14:02:36.512] INFO  job    job thumbnail.generate done in 89ms
-[14:02:36.624] DEBUG api    metrics flush 1m: req=4012 err=42 p99=312ms
-[14:02:36.741] INFO  web    GET /api/users/me 200 in 4ms
+{"level":"info","source":"web","msg":"GET /api/users","method":"GET","path":"/api/users","status_code":200,"dur_ms":24,"user":{"id":42},"request_id":"req_8sj2","trace_id":"t_a1b2c3"}
+{"level":"debug","source":"web","msg":"cache hit users:list","key":"users:list:page=1","ttl":120}
+{"level":"info","source":"api","msg":"POST /sessions","method":"POST","path":"/sessions","status_code":201,"dur_ms":88,"user":{"id":1009}}
+{"level":"warn","source":"api","msg":"slow query","query":"SELECT * FROM events WHERE created_at > $1","dur_ms":412}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":11,"user":{"id":42},"request_id":"req_8sj3"}
+{"level":"error","source":"api","msg":"TypeError: cannot read property id of undefined","request_id":"req_8sj4","user":{"id":42},"stack":["at handler (src/api/handler.js:42:18)","at processRequest (src/server.js:188:7)"]}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":9,"user":{"id":207}}
+{"level":"debug","source":"job","msg":"tick scheduler.run","loop":4,"queued":3}
+{"level":"warn","source":"web","msg":"rate limit near threshold","limit":100,"used":92,"ip":"10.0.0.4","window":"1m"}
+{"level":"error","source":"api","msg":"gateway timeout","method":"POST","path":"/payments","status_code":500,"dur_ms":8003,"gateway":"stripe","user":{"id":1009},"request_id":"req_pmt1"}
+{"level":"info","source":"job","msg":"email.welcome.send done","job":"email.welcome.send","dur_ms":142}
+{"level":"info","source":"web","msg":"GET /favicon.ico","method":"GET","path":"/favicon.ico","status_code":304,"dur_ms":2}
+{"level":"debug","source":"api","msg":"auth.verify ok","user":{"id":42},"request_id":"req_av1"}
+{"level":"info","source":"web","msg":"GET /api/users/42","method":"GET","path":"/api/users/42","status_code":200,"dur_ms":6,"user":{"id":42}}
+{"level":"warn","source":"job","msg":"retry attempt","job":"image.resize","attempt":2,"backoff_ms":4000}
+{"level":"info","source":"api","msg":"POST /api/posts","method":"POST","path":"/api/posts","status_code":201,"dur_ms":32,"user":{"id":42},"request_id":"req_p7"}
+{"level":"debug","source":"db","msg":"pool stats","customData":{"fieldA":{"rows":[{"active":4,"idle":12,"waiting":0}]}}}
+{"level":"info","source":"web","msg":"GET /api/users/207","method":"GET","path":"/api/users/207","status_code":200,"dur_ms":5,"user":{"id":207}}
+{"level":"warn","source":"api","msg":"deprecation: /v1/sessions will be removed 2026-06-01","path":"/v1/sessions"}
+{"level":"info","source":"api","msg":"POST /api/comments","method":"POST","path":"/api/comments","status_code":201,"dur_ms":18,"user":{"id":42},"request_id":"req_c12"}
+{"level":"error","source":"job","msg":"job image.resize failed: Sharp: corrupt JPEG data","job":"image.resize","stack":["at Sharp.<anonymous> (node_modules/sharp/lib/output.js:88:22)","at processImage (src/jobs/resize.js:21:9)"]}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":8,"user":{"id":88}}
+{"level":"debug","source":"api","msg":"cache miss feed:user:42 — fetching upstream","key":"feed:user:42"}
+{"level":"info","source":"api","msg":"GET upstream feed.svc","method":"GET","path":"https://feed.svc/api","status_code":200,"dur_ms":124,"upstream":"feed.svc"}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":14,"user":{"id":1009}}
+{"level":"warn","source":"db","msg":"replication lag 2.4s on db.replica","lag_ms":2400,"replica":"db.replica"}
+{"level":"info","source":"web","msg":"GET /health","method":"GET","path":"/health","status_code":200,"dur_ms":1}
+{"level":"debug","source":"job","msg":"tick scheduler.run","loop":5,"queued":2}
+{"level":"info","source":"api","msg":"POST /sessions","method":"POST","path":"/sessions","status_code":201,"dur_ms":76,"user":{"id":88}}
+{"level":"info","source":"web","msg":"GET /api/users/88","method":"GET","path":"/api/users/88","status_code":200,"dur_ms":7,"user":{"id":88}}
+{"level":"error","source":"api","msg":"validation failed: title required","method":"POST","path":"/api/posts","status_code":400,"dur_ms":4,"user":{"id":42},"request_id":"req_v22"}
+{"level":"info","source":"api","msg":"DELETE /api/sessions/abc123","method":"DELETE","path":"/api/sessions/abc123","status_code":204,"dur_ms":12,"user":{"id":42}}
+{"level":"debug","source":"api","msg":"auth.revoke","session":"abc123","user":{"id":42}}
+{"level":"warn","source":"job","msg":"queue depth high","queues":{"emails":320,"images":88}}
+{"level":"info","source":"web","msg":"GET /api/posts","method":"GET","path":"/api/posts","status_code":200,"dur_ms":22,"user":{"id":42}}
+{"level":"info","source":"api","msg":"PATCH /api/users/42","method":"PATCH","path":"/api/users/42","status_code":200,"dur_ms":19,"user":{"id":42},"request_id":"req_u42"}
+{"level":"debug","source":"db","msg":"query plan: index scan on users_pk","rows":1,"plan":"index_scan"}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":10,"user":{"id":207}}
+{"level":"warn","source":"api","msg":"slow request","method":"POST","path":"/api/uploads","status_code":201,"dur_ms":1842,"file_bytes":13002342}
+{"level":"info","source":"api","msg":"POST /api/uploads","method":"POST","path":"/api/uploads","status_code":201,"dur_ms":1842,"user":{"id":42}}
+{"level":"info","source":"job","msg":"job thumbnail.generate done","job":"thumbnail.generate","dur_ms":89}
+{"level":"debug","source":"api","msg":"metrics flush 1m","customData":{"fieldA":{"rows":[{"req":4012,"err":42,"p99_ms":312}]}}}
+{"level":"info","source":"web","msg":"GET /api/users/me","method":"GET","path":"/api/users/me","status_code":200,"dur_ms":4,"user":{"id":42}}
+{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":12,"user":{"id":42}}
+{"level":"error","source":"api","msg":"unauthorized","method":"GET","path":"/api/admin","status_code":401,"dur_ms":3,"user":{"id":207},"request_id":"req_z9"}
+{"level":"info","source":"web","msg":"GET /api/users/1009","method":"GET","path":"/api/users/1009","status_code":200,"dur_ms":8,"user":{"id":1009}}
+{"level":"warn","source":"api","msg":"forbidden — role mismatch","method":"DELETE","path":"/api/posts/77","status_code":403,"dur_ms":2,"user":{"id":88}}
+[14:02:36.804] INFO  web    GET /api/feed 200 in 11ms
+[14:02:36.910] DEBUG db     replica catching up — lag 1.1s
+[14:02:37.022] WARN  api    deprecation: /v1/users will be removed 2026-08-01
