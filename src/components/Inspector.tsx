@@ -38,12 +38,12 @@ export function Inspector({ event, onClose }: InspectorProps) {
   };
 
   const onAddKeyFilter = (path: string) => {
-    // Append `path:` so the user can type the value. If query already
-    // has trailing `path:`, do nothing.
+    // Append `path:*` — wildcard matches any value, so the filter is
+    // valid as-is; user can edit `*` to narrow.
     const trimmed = filter.replace(/\s+$/, "");
     const next = trimmed
-      ? `${trimmed} AND ${path}:`
-      : `${path}:`;
+      ? `${trimmed} AND ${path}:*`
+      : `${path}:*`;
     setFilter(next);
     focusFilterInput();
     toast(`Type a value for ${path}`);

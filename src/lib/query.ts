@@ -226,6 +226,16 @@ function matchCmpOp(c: Cursor): CmpOp | null {
   return null;
 }
 
+/// Translate a glob-style value (`*` wildcard) into an anchored
+/// case-insensitive regex. `source:*` → /^.*$/i; `path:/api*` →
+/// /^\/api.*$/i. Wildcards on values are mostly used in the inspector
+/// "click key" flow and ad-hoc typing.
+function wildcardToRegex(glob: string): RegExp {
+  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = "^" + escaped.replace(/\*/g, ".*") + "$";
+  return new RegExp(pattern, "i");
+}
+
 /// Walk a path like `user.id` against an event's `fields` JSON.
 function lookup(ev: LogEvent, key: string): unknown {
   if (key === "level") return ev.level;
@@ -248,8 +258,14 @@ export function evalAst(ast: Ast, ev: LogEvent): boolean {
       return ev.msg.toLowerCase().includes(ast.term.toLowerCase());
     case "key_exact": {
       const v = lookup(ev, ast.key);
-      // Free-form text columns are matched as case-insensitive
-      // substring; everything else is an exact value match.
+      // Wildcards: `*` anywhere in the value switches to glob match
+      // (anchored), so `source:*` matches any present value and
+      // `path:/api*` matches a prefix.
+      if (ast.value.includes("*")) {
+        const re = wildcardToRegex(ast.value);
+        return re.test(String(v ?? ""));
+      }
+      // Free-form text columns: case-insensitive substring match.
       if (ast.key === "msg" || ast.key === "raw") {
         return String(v ?? "")
           .toLowerCase()

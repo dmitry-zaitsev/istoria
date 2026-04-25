@@ -214,6 +214,13 @@ fn walk(ast: &Ast, p: &mut Vec<SqlParam>) -> String {
             "msg ILIKE ?".into()
         }
         Ast::KeyExact { key, value } => {
+            // Wildcard: `*` anywhere in the value switches to glob
+            // match via DuckDB ILIKE (`*` → `%`).
+            if value.contains('*') {
+                let pat = value.replace('*', "%");
+                p.push(SqlParam::Text(pat));
+                return format!("CAST({} AS VARCHAR) ILIKE ?", column_for(key));
+            }
             // msg/raw treated as case-insensitive substring; other
             // columns are exact equality matches.
             if key == "msg" || key == "raw" {
