@@ -865,6 +865,26 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   border-radius: 3px;
 }
 
+/* ── Toast ─────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  background: var(--ink);
+  color: white;
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
+  animation: toast-in 0.1s ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* ── Status bar ────────────────────────────────────────────────── */
 .status {
   height: 26px;

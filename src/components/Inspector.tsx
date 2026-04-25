@@ -4,6 +4,7 @@ import { addClause, removeClause } from "../lib/facets";
 import type { Level, LogEvent } from "../lib/ipc";
 import { isError, parse } from "../lib/query";
 import { pinnedFromAst } from "../lib/facets";
+import { toast } from "../lib/toast";
 import { INSPECTOR_MAX, INSPECTOR_MIN, useStore } from "../store";
 import { JsonView } from "./JsonView";
 
@@ -186,5 +187,8 @@ function copy(event: LogEvent) {
     null,
     2,
   );
-  navigator.clipboard?.writeText(txt).catch(() => {});
+  navigator.clipboard
+    ?.writeText(txt)
+    .then(() => toast("Copied"))
+    .catch(() => toast("Copy failed"));
 }
