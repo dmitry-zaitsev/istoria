@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { setMeta } from "../lib/ipc";
 import { useStore, type SortKey } from "../store";
 
 interface StreamHeaderProps {
@@ -32,6 +33,7 @@ export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProp
   const select = (key: SortKey) => {
     setSort(key);
     setOpen(false);
+    void setMeta("sort", key).catch(() => {});
   };
 
   return (

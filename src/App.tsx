@@ -34,6 +34,7 @@ export default function App() {
   const setViews = useStore((s) => s.setViews);
   const setActiveViewId = useStore((s) => s.setActiveViewId);
   const sort = useStore((s) => s.sort);
+  const setSort = useStore((s) => s.setSort);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
@@ -80,6 +81,10 @@ export default function App() {
           setActiveViewId(active.id);
           setFilter(active.query);
         }
+        const storedSort = await getMeta("sort");
+        if (storedSort === "newest-bottom" || storedSort === "newest-top" || storedSort === "level") {
+          setSort(storedSort);
+        }
       } catch (e) {
         console.warn("views bootstrap failed", e);
       }
@@ -87,7 +92,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [setViews, setActiveViewId, setFilter]);
+  }, [setViews, setActiveViewId, setFilter, setSort]);
 
   useEffect(() => {
     let cancelled = false;
