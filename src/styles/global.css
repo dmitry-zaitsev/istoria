@@ -436,32 +436,56 @@ kbd {
 
 /* ── Histogram ─────────────────────────────────────────────────── */
 .histo-shell {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  align-items: stretch;
+  display: flex;
+  flex-direction: column;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-  transition: padding 0.2s, height 0.2s;
+  transition: height 0.2s;
 }
-.histo-shell.compact { height: 18px; }
-.histo-shell.expanded { height: 132px; padding-bottom: 24px; }
+.histo-shell.compact { height: 24px; }
+.histo-shell.expanded { height: 156px; }
+.histo-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  height: 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--muted);
+}
+.histo-title {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+  font-weight: 600;
+}
 .histo-toggle {
+  margin-left: auto;
   background: transparent;
   border: 0;
   color: var(--muted);
-  font-size: 11px;
-  width: 24px;
+  font-family: var(--mono);
+  font-size: 10.5px;
   cursor: default;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
-.histo-toggle:hover { color: var(--ink); }
+.histo-toggle:hover { color: var(--ink); background: var(--hover); }
 .histo-canvas {
   position: relative;
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: flex-end;
   gap: 1px;
-  padding: 2px 8px;
+  padding: 4px 12px;
   user-select: none;
 }
+.histo-shell.compact .histo-header { display: none; }
 .histo-col {
   flex: 1;
   position: relative;
@@ -488,12 +512,13 @@ kbd {
   background: rgba(46, 143, 204, 0.12);
 }
 .histo-axis {
-  grid-column: 2;
   position: relative;
   height: 14px;
+  margin: 0 12px;
   font-family: var(--mono);
   font-size: 9.5px;
   color: var(--muted-2);
+  flex-shrink: 0;
 }
 .histo-axis .tick {
   position: absolute;
@@ -501,14 +526,13 @@ kbd {
   white-space: nowrap;
 }
 .histo-legend {
-  grid-column: 2;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 8px;
+  gap: 10px;
   font-size: 11px;
   color: var(--muted);
 }
+.histo-shell.compact .histo-canvas { cursor: pointer; }
 .histo-legend .lg {
   display: inline-block;
   width: 10px;

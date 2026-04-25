@@ -82,14 +82,24 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
 
   return (
     <div className={`histo-shell${expanded ? " expanded" : " compact"}`}>
-      <button
-        className="histo-toggle"
-        type="button"
-        onClick={() => setExpanded((x) => !x)}
-        aria-label={expanded ? "Collapse histogram" : "Expand histogram"}
-      >
-        {expanded ? "▾" : "▸"}
-      </button>
+      <div className="histo-header">
+        <span className="histo-title">events over time</span>
+        {expanded && (
+          <span className="histo-legend">
+            <span className="lg lg-err" /> error
+            <span className="lg lg-warn" /> warn
+            <span className="lg lg-info" /> info / debug
+          </span>
+        )}
+        <button
+          className="histo-toggle"
+          type="button"
+          onClick={() => setExpanded((x) => !x)}
+          aria-label={expanded ? "Collapse histogram" : "Expand histogram"}
+        >
+          {expanded ? "collapse ▴" : "expand ▾"}
+        </button>
+      </div>
       <div
         className="histo-canvas"
         ref={trackRef}
@@ -142,24 +152,17 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
         )}
       </div>
       {expanded && (
-        <>
-          <div className="histo-axis">
-            {ticks.map((t, i) => (
-              <span
-                key={i}
-                style={{ left: `${pct(t, tMin, tMax)}%` }}
-                className="tick"
-              >
-                {tickFmt(t)}
-              </span>
-            ))}
-          </div>
-          <div className="histo-legend">
-            <span className="lg lg-err" /> error
-            <span className="lg lg-warn" /> warn
-            <span className="lg lg-info" /> info / debug
-          </div>
-        </>
+        <div className="histo-axis">
+          {ticks.map((t, i) => (
+            <span
+              key={i}
+              style={{ left: `${pct(t, tMin, tMax)}%` }}
+              className="tick"
+            >
+              {tickFmt(t)}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );
