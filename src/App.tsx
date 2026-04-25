@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Chrome } from "./components/Chrome";
 import { FilterBar } from "./components/FilterBar";
@@ -7,6 +7,7 @@ import { LogStream } from "./components/LogStream";
 import { StatusBar } from "./components/StatusBar";
 import { StreamHeader } from "./components/StreamHeader";
 import { queryRecent, subscribeEvents, type LogEvent } from "./lib/ipc";
+import { evalAst, isError, parse } from "./lib/query";
 import { useStore } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -24,22 +25,22 @@ export default function App() {
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [lastTickAt, setLastTickAt] = useState(0);
   const [, setNow] = useState(0);
-  const filterRef = useRef(filter);
-  filterRef.current = filter;
+
+  const parsed = useMemo(() => parse(filter), [filter]);
+  const filterValid = !isError(parsed);
 
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
       try {
-        const [filtered, all] = await Promise.all([
-          queryRecent(QUERY_LIMIT, filterRef.current || undefined),
-          filterRef.current
-            ? queryRecent(QUERY_LIMIT)
-            : Promise.resolve(null),
-        ]);
+        const all = await queryRecent(QUERY_LIMIT);
         if (cancelled) return;
-        setEvents(filtered.slice().reverse() as LogEvent[]);
-        setUnfilteredCount(all ? all.length : filtered.length);
+        const ordered = all.slice().reverse() as LogEvent[];
+        const filtered = filterValid
+          ? ordered.filter((ev) => evalAst(parsed, ev))
+          : ordered;
+        setEvents(filtered);
+        setUnfilteredCount(ordered.length);
         setLastTickAt(Date.now());
       } catch (e) {
         console.warn("queryRecent failed", e);
@@ -57,9 +58,8 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setEvents, filter]);
+  }, [setEvents, parsed, filterValid]);
 
-  // Keep `live` derivation fresh after the last tick goes stale.
   useEffect(() => {
     const id = window.setInterval(() => setNow((n) => n + 1), 1_000);
     return () => window.clearInterval(id);

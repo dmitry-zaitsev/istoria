@@ -127,6 +127,34 @@ body,
 .query-input input::placeholder {
   color: var(--muted-2);
 }
+.query-input.err {
+  border-color: var(--err-fg);
+}
+.chips {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  border: 1px solid var(--brand-100, var(--line));
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.chip.chip-free { background: var(--surface-3); color: var(--ink-2); border-color: var(--line); }
+.chip.chip-op { background: var(--info-bg); color: var(--info-fg); }
+.filter-err {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--err-fg);
+}
 
 /* buttons */
 .btn {

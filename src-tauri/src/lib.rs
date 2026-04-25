@@ -4,6 +4,7 @@ pub mod format;
 pub mod ingest;
 pub mod ipc;
 pub mod persistence;
+pub mod query;
 pub mod ring;
 pub mod socket;
 pub mod source;
@@ -87,7 +88,7 @@ pub fn run(cli: cli::Cli) {
 
     tauri::Builder::default()
         .manage(AppState { ring, store })
-        .invoke_handler(tauri::generate_handler![ipc::query_recent])
+        .invoke_handler(tauri::generate_handler![ipc::query_recent, ipc::query_parse])
         .setup(move |app| {
             let app_handle = app.handle().clone();
             let ring = ring_for_emit;

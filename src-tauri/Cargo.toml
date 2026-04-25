@@ -34,6 +34,8 @@ directories = "5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 libc = "0.2"
 interprocess = { version = "2", features = ["tokio"] }
+chumsky = "0.9"
+regex = "1"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
