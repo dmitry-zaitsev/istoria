@@ -5,6 +5,7 @@ import {
   isError,
   parse,
   renderAst,
+  renderValue,
 } from "./query";
 import type { LogEvent } from "./ipc";
 
@@ -179,9 +180,7 @@ export function removeClause(query: string, key: string, value: string): string 
 }
 
 function formatClause(key: string, value: string): string {
-  // Quote values containing whitespace/parens.
-  const needsQuotes = /[\s()"]/.test(value);
-  return `${key}:${needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value}`;
+  return `${key}:${renderValue(value)}`;
 }
 
 /// Toggle a facet value for \`key\` while combining same-key selections

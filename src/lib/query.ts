@@ -426,8 +426,7 @@ export function formatSmartDate(unixMs: number, ref = new Date()): string {
 }
 
 function quoteIfNeeded(s: string): string {
-  if (/[\s()"]/.test(s)) return `"${s.replace(/"/g, '\\"')}"`;
-  return s;
+  return renderValue(s);
 }
 
 function astToToken(ast: Ast): Token {
@@ -498,12 +497,23 @@ function cmpStr(op: CmpOp): string {
   return op === "lt" ? "<" : op === "lte" ? "<=" : op === "gt" ? ">" : ">=";
 }
 
+/// Render a value so it round-trips through the parser. Quoted form
+/// is used for anything containing whitespace, parens, quotes, or a
+/// leading char the parser would otherwise consume as an operator
+/// (\`>\`, \`<\`, \`~\`). Exported for callers that build clauses by hand.
+export function renderValue(v: string): string {
+  if (v === "") return '""';
+  if (/[\s()"]/.test(v)) return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  if (/^[<>~]/.test(v)) return `"${v.replace(/"/g, '\\"')}"`;
+  return v;
+}
+
 function render(ast: Ast): string {
   switch (ast.kind) {
     case "key_exact":
-      return `${ast.key}:${ast.value}`;
+      return `${ast.key}:${renderValue(ast.value)}`;
     case "key_cmp":
-      return `${ast.key}:${cmpStr(ast.op)}${ast.value}`;
+      return `${ast.key}:${cmpStr(ast.op)}${renderValue(String(ast.value))}`;
     case "key_regex":
       return `${ast.key}~/${ast.pattern}/`;
     case "free":
