@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { registerFilterFocus } from "../lib/filterFocus";
 import { isError, parse, tokenize, type Token } from "../lib/query";
-import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
 interface FilterBarProps {
@@ -45,13 +44,25 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
         const target = e.target as HTMLElement | null;
         const el = target?.closest(".filter-bar");
         if (!el) return;
+        // If the trailing input has more than zero chars and not the
+        // whole field selected, let native Cmd+A select that input first.
+        const ti = trailingRef.current;
+        if (
+          ti &&
+          document.activeElement === ti &&
+          ti.value.length > 0 &&
+          (ti.selectionStart !== 0 || ti.selectionEnd !== ti.value.length)
+        ) {
+          return;
+        }
         e.preventDefault();
-        const full = useStore.getState().filter;
-        if (!full) return;
-        navigator.clipboard
-          ?.writeText(full)
-          .then(() => toast("Copied query"))
-          .catch(() => toast("Copy failed"));
+        const pillsEl = el.querySelector(".pills");
+        if (!pillsEl) return;
+        const range = document.createRange();
+        range.selectNodeContents(pillsEl);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -97,8 +108,22 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
     setTrailing("");
   };
 
+  const onCopy = (e: React.ClipboardEvent) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    // Only override when the selection is entirely inside .pills —
+    // otherwise let native copy fall through (e.g. selecting text in
+    // a pill-edit input).
+    const range = sel.getRangeAt(0);
+    const pills = (e.currentTarget as HTMLElement).querySelector(".pills");
+    if (!pills || !pills.contains(range.commonAncestorContainer)) return;
+    e.preventDefault();
+    const full = useStore.getState().filter;
+    if (full) e.clipboardData.setData("text/plain", full);
+  };
+
   return (
-    <div className="filter-bar">
+    <div className="filter-bar" onCopy={onCopy}>
       <div className={`query-input${error ? " err" : ""}`}>
         <span className="query-icon">⌕</span>
         <span className="pills">
