@@ -168,11 +168,14 @@ function levelClass(level: Level): "err" | "warn" | "info" | "dbg" {
 
 function formatTsFull(unixMs: number): string {
   const d = new Date(unixMs);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${hh}:${mm}:${ss}.${ms}`;
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(
+      d.getMilliseconds(),
+      3,
+    )}`
+  );
 }
 
 function copy(event: LogEvent) {
