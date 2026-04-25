@@ -1,0 +1,67 @@
+/*
+ * v3 design tokens — ported verbatim from logs/project/Logs Wireframes v3.html.
+ * Light theme, sky-blue brand. All colors here. No hex literals elsewhere.
+ */
+
+:root {
+  /* surfaces */
+  --paper:        #f4f6f9;
+  --surface:      #ffffff;
+  --surface-2:    #fafbfc;
+  --surface-3:    #f1f4f8;
+  --hover:        #f6f8fb;
+
+  /* ink */
+  --ink:          #0f172a;
+  --ink-2:        #1f2937;
+  --muted:        #64748b;
+  --muted-2:      #94a3b8;
+  --muted-3:      #cbd5e1;
+
+  /* hairlines */
+  --line:         #e4e8ee;
+  --line-soft:    #eef1f5;
+  --line-strong:  #d3d8e0;
+
+  /* brand sky */
+  --brand:        #4ea8e0;
+  --brand-50:     #eef7fc;
+  --brand-100:    #d8edf8;
+  --brand-200:    #b7dff2;
+  --brand-600:    #2d8fcc;
+  --brand-700:    #1f73a8;
+
+  /* levels — gentle, light-mode */
+  --err-bg:       #fdecec;
+  --err-fg:       #b42318;
+  --err-line:     #f4c4be;
+
+  --warn-bg:      #fdf3e2;
+  --warn-fg:      #a65d12;
+  --warn-line:    #f0d6a8;
+
+  --info-bg:      #e9f2fb;
+  --info-fg:      #1f5f9c;
+  --info-line:    #c8def2;
+
+  --dbg-bg:       #eef1f5;
+  --dbg-fg:       #475569;
+  --dbg-line:     #d8dee7;
+
+  --ok-bg:        #e6f4ee;
+  --ok-fg:        #0f7a4a;
+  --ok-line:      #bedfcc;
+
+  /* type */
+  --ui:           "Inter", -apple-system, system-ui, sans-serif;
+  --mono:         "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* shadows */
+  --shadow-sm:    0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md:    0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg:    0 24px 56px rgba(15, 23, 42, 0.16);
+
+  --r-sm:         4px;
+  --r-md:         6px;
+  --r-lg:         10px;
+}
