@@ -435,8 +435,8 @@ kbd {
   background: var(--surface);
   transition: padding 0.2s, height 0.2s;
 }
-.histo-shell.compact { height: 22px; }
-.histo-shell.expanded { height: 96px; padding-bottom: 24px; }
+.histo-shell.compact { height: 18px; }
+.histo-shell.expanded { height: 132px; padding-bottom: 24px; }
 .histo-toggle {
   background: transparent;
   border: 0;

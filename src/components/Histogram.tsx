@@ -32,7 +32,7 @@ interface Bucket {
 }
 
 export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [brush, setBrush] = useState<{ start: number; end: number } | null>(null);
 
@@ -93,7 +93,13 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
       <div
         className="histo-canvas"
         ref={trackRef}
-        onMouseDown={onBrushDown}
+        onMouseDown={(e) => {
+          if (!expanded) {
+            setExpanded(true);
+            return;
+          }
+          onBrushDown(e);
+        }}
       >
         {buckets.map((b, i) => {
           const total = b.total || 1;
