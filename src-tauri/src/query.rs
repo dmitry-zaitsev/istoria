@@ -214,8 +214,15 @@ fn walk(ast: &Ast, p: &mut Vec<SqlParam>) -> String {
             "msg ILIKE ?".into()
         }
         Ast::KeyExact { key, value } => {
-            p.push(SqlParam::Text(value.clone()));
-            format!("{} = ?", column_for(key))
+            // msg/raw treated as case-insensitive substring; other
+            // columns are exact equality matches.
+            if key == "msg" || key == "raw" {
+                p.push(SqlParam::Text(format!("%{}%", value)));
+                format!("{} ILIKE ?", column_for(key))
+            } else {
+                p.push(SqlParam::Text(value.clone()));
+                format!("{} = ?", column_for(key))
+            }
         }
         Ast::KeyCmp { key, op, value } => {
             p.push(SqlParam::Number(*value));

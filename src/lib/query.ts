@@ -248,6 +248,13 @@ export function evalAst(ast: Ast, ev: LogEvent): boolean {
       return ev.msg.toLowerCase().includes(ast.term.toLowerCase());
     case "key_exact": {
       const v = lookup(ev, ast.key);
+      // Free-form text columns are matched as case-insensitive
+      // substring; everything else is an exact value match.
+      if (ast.key === "msg" || ast.key === "raw") {
+        return String(v ?? "")
+          .toLowerCase()
+          .includes(ast.value.toLowerCase());
+      }
       return String(v) === ast.value;
     }
     case "key_cmp": {
