@@ -33,7 +33,9 @@ impl Detector {
     pub fn parse(&mut self, id: u64, source: &str, raw: String) -> Event {
         let try_json = !matches!(self.locked, Some(LineFormat::Plain));
         let parsed: Option<Value> = if try_json {
-            serde_json::from_str(&raw).ok().filter(|v| v.is_object())
+            serde_json::from_str::<Value>(&raw)
+                .ok()
+                .filter(|v| v.is_object())
         } else {
             None
         };

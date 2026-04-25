@@ -1,12 +1,15 @@
 # Rust
 target/
 src-tauri/target/
+src-tauri/gen/schemas/
 
 # Node
 node_modules/
 dist/
 dist-ssr/
 .vite/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Editor / OS
 .DS_Store
