@@ -18,7 +18,7 @@ import {
   subscribeEvents,
   type LogEvent,
 } from "./lib/ipc";
-import { evalAst, isError, parse } from "./lib/query";
+import { evalAst, isError, parse, type Ast } from "./lib/query";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -43,6 +43,21 @@ export default function App() {
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
+
+  // Facets only respect the ts: bounds (if any), not the full query —
+  // so changing a level filter doesn't shrink the source list to one
+  // value. If no ts bounds are set, all events are visible.
+  const tsBounds = useMemo(() => {
+    if (isError(parsed)) return { lo: -Infinity, hi: Infinity };
+    return collectTsBounds(parsed);
+  }, [parsed]);
+  const tsScopedEvents = useMemo(
+    () =>
+      unfilteredEvents.filter(
+        (e) => e.ts >= tsBounds.lo && e.ts <= tsBounds.hi,
+      ),
+    [unfilteredEvents, tsBounds.lo, tsBounds.hi],
+  );
 
   // Bootstrap views + active id from DuckDB.
   useEffect(() => {
@@ -130,7 +145,7 @@ export default function App() {
       />
       <div className="main">
         <Facets
-          events={events}
+          events={tsScopedEvents}
           filter={filter}
           onFilterChange={setFilter}
         />
@@ -173,6 +188,33 @@ const LEVEL_RANK: Record<string, number> = {
   debug: 3,
   trace: 4,
 };
+
+function collectTsBounds(ast: Ast): { lo: number; hi: number } {
+  let lo = -Infinity;
+  let hi = Infinity;
+  const walk = (a: Ast) => {
+    switch (a.kind) {
+      case "key_cmp":
+        if (a.key === "ts") {
+          if (a.op === "gte") lo = Math.max(lo, a.value);
+          if (a.op === "gt") lo = Math.max(lo, a.value + 1);
+          if (a.op === "lte") hi = Math.min(hi, a.value);
+          if (a.op === "lt") hi = Math.min(hi, a.value - 1);
+        }
+        break;
+      case "and":
+        walk(a.left);
+        walk(a.right);
+        break;
+      case "or":
+      case "not":
+      default:
+        break;
+    }
+  };
+  walk(ast);
+  return { lo, hi };
+}
 
 function applySort(events: LogEvent[], sort: SortKey): LogEvent[] {
   // events arrive oldest-first (queryRecent reversed). The live-tail
