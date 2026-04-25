@@ -96,12 +96,13 @@ body,
   display: flex;
   align-items: stretch;
   gap: 0;
-  padding: 0 8px;
+  padding: 0 8px 0 80px; /* leave room for macOS traffic-light overlay */
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
-  height: 32px;
-  -webkit-app-region: no-drag;
+  height: 36px;
+  -webkit-app-region: drag;
 }
+.tabs > * { -webkit-app-region: no-drag; }
 .tab {
   position: relative;
   display: inline-flex;
