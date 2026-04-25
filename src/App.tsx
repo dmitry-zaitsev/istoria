@@ -133,7 +133,7 @@ export default function App() {
     <div className="win">
       <Palette />
       <Toast />
-      <Chrome count={unfilteredCount} />
+      <Chrome />
       <Tabs />
       <FilterBar value={filter} onChange={setFilter} />
       <Histogram

@@ -34,7 +34,7 @@ body,
   flex-direction: column;
 }
 .win-titlebar {
-  height: 36px;
+  height: 28px;
   display: grid;
   grid-template-columns: 90px 1fr 130px;
   align-items: center;
@@ -42,6 +42,18 @@ body,
   background: linear-gradient(180deg, #fbfcfd 0%, #f1f4f8 100%);
   border-bottom: 1px solid var(--line);
   -webkit-app-region: drag;
+}
+.win-titlebar.empty {
+  display: block;
+  padding: 0;
+}
+.session-tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: var(--muted);
 }
 .win-titlebar .spacer { /* left-side spacer for OS traffic lights */ }
 .win-title {
