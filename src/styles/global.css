@@ -383,6 +383,13 @@ kbd {
   outline: none;
 }
 .facet-search:focus { border-color: var(--brand); }
+.facet-more {
+  padding: 4px 12px 4px 30px;
+  font-size: 11px;
+  color: var(--brand-700);
+  cursor: default;
+}
+.facet-more:hover { background: var(--hover); }
 
 .range-group { padding-bottom: 12px; }
 .range-spark {

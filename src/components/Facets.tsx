@@ -17,6 +17,7 @@ interface FacetsProps {
   onFilterChange: (q: string) => void;
 }
 
+const VISIBLE_CAP = 8;
 const SEARCH_OVERFLOW = 10;
 
 export function Facets({ events, filter, onFilterChange }: FacetsProps) {
@@ -67,13 +68,25 @@ function Group({
   onToggle: (key: string, value: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const pinnedSet = pinned.get(group.key) ?? new Set<string>();
   const showSearch = group.values.length > SEARCH_OVERFLOW;
-  const visible = showSearch && search
+
+  const matched = search
     ? group.values.filter((v) =>
         v.value.toLowerCase().includes(search.toLowerCase()),
       )
     : group.values;
+
+  // Always show pinned values regardless of cap so a checked value
+  // never disappears off-screen. Then fill up to VISIBLE_CAP with the
+  // top-count remaining values (or the full matched list when the
+  // user has typed a search / clicked "show all").
+  const pinnedVisible = matched.filter((v) => pinnedSet.has(v.value));
+  const restRanked = matched.filter((v) => !pinnedSet.has(v.value));
+  const capped = showAll || search ? restRanked : restRanked.slice(0, VISIBLE_CAP);
+  const overflow = restRanked.length - capped.length;
+  const visible = [...pinnedVisible, ...capped];
 
   if (group.values.length === 0) return null;
 
@@ -97,6 +110,15 @@ function Group({
           onClick={() => onToggle(group.key, v.value)}
         />
       ))}
+      {overflow > 0 && !search && (
+        <div
+          className="facet-more"
+          role="button"
+          onClick={() => setShowAll((x) => !x)}
+        >
+          {showAll ? "show less" : `show ${overflow.toLocaleString()} more`}
+        </div>
+      )}
     </div>
   );
 }
