@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { addClause, removeClause } from "../lib/facets";
+import { focusFilterInput } from "../lib/filterFocus";
 import type { Level, LogEvent } from "../lib/ipc";
 import { isError, parse } from "../lib/query";
 import { pinnedFromAst } from "../lib/facets";
@@ -28,10 +29,24 @@ export function Inspector({ event, onClose }: InspectorProps) {
       const pinned = pinnedFromAst(ast).get(path);
       if (pinned?.has(v)) {
         setFilter(removeClause(filter, path, v));
+        toast(`Removed ${path}:${v}`);
         return;
       }
     }
     setFilter(addClause(filter, path, v));
+    toast(`Added ${path}:${v}`);
+  };
+
+  const onAddKeyFilter = (path: string) => {
+    // Append `path:` so the user can type the value. If query already
+    // has trailing `path:`, do nothing.
+    const trimmed = filter.replace(/\s+$/, "");
+    const next = trimmed
+      ? `${trimmed} AND ${path}:`
+      : `${path}:`;
+    setFilter(next);
+    focusFilterInput();
+    toast(`Type a value for ${path}`);
   };
 
   useEffect(() => {
@@ -134,7 +149,11 @@ export function Inspector({ event, onClose }: InspectorProps) {
           >
             {event.msg || event.raw}
           </div>
-          <JsonView value={fields} onFilter={onAddFilter} />
+          <JsonView
+            value={fields}
+            onFilter={onAddFilter}
+            onKeyFilter={onAddKeyFilter}
+          />
         </div>
       </div>
     </aside>

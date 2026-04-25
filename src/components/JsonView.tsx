@@ -1,6 +1,7 @@
 interface JsonViewProps {
   value: unknown;
   onFilter?: (path: string, value: unknown) => void;
+  onKeyFilter?: (path: string) => void;
 }
 
 const TS_KEYS = new Set([
@@ -14,10 +15,16 @@ const TS_KEYS = new Set([
 ]);
 const TS_MS_FLOOR = 1_000_000_000_000; // 2001-09-09 — anything above this is plausibly Unix-ms.
 
-export function JsonView({ value, onFilter }: JsonViewProps) {
+export function JsonView({ value, onFilter, onKeyFilter }: JsonViewProps) {
   return (
     <>
-      <Node value={value} indent={0} path="" onFilter={onFilter} />
+      <Node
+        value={value}
+        indent={0}
+        path=""
+        onFilter={onFilter}
+        onKeyFilter={onKeyFilter}
+      />
     </>
   );
 }
@@ -28,9 +35,10 @@ interface NodeProps {
   keyName?: string;
   path: string;
   onFilter?: (path: string, value: unknown) => void;
+  onKeyFilter?: (path: string) => void;
 }
 
-function Node({ value, indent, keyName, path, onFilter }: NodeProps) {
+function Node({ value, indent, keyName, path, onFilter, onKeyFilter }: NodeProps) {
   if (value === null) return <span className="p">null</span>;
   if (typeof value === "string")
     return (
@@ -52,7 +60,15 @@ function Node({ value, indent, keyName, path, onFilter }: NodeProps) {
       </Filterable>
     );
   if (Array.isArray(value))
-    return <Arr items={value} indent={indent} path={path} onFilter={onFilter} />;
+    return (
+      <Arr
+        items={value}
+        indent={indent}
+        path={path}
+        onFilter={onFilter}
+        onKeyFilter={onKeyFilter}
+      />
+    );
   if (typeof value === "object")
     return (
       <Obj
@@ -60,6 +76,7 @@ function Node({ value, indent, keyName, path, onFilter }: NodeProps) {
         indent={indent}
         path={path}
         onFilter={onFilter}
+        onKeyFilter={onKeyFilter}
       />
     );
   return <span>{String(value)}</span>;
@@ -126,11 +143,13 @@ function Obj({
   indent,
   path,
   onFilter,
+  onKeyFilter,
 }: {
   obj: Record<string, unknown>;
   indent: number;
   path: string;
   onFilter?: (p: string, v: unknown) => void;
+  onKeyFilter?: (p: string) => void;
 }) {
   const entries = Object.entries(obj);
   if (entries.length === 0) return <span className="p">{"{}"}</span>;
@@ -139,11 +158,23 @@ function Obj({
       <span className="p">{"{"}</span>
       {entries.map(([k, v], i) => {
         const childPath = path ? `${path}.${k}` : k;
+        const keyClickable = onKeyFilter != null;
         return (
           <div key={k} className="row indent">
-            <Filterable path={childPath} value={v} onFilter={onFilter}>
+            {keyClickable ? (
+              <span
+                className="k filterable filterable-key"
+                title={`Click to filter by ${childPath}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onKeyFilter!(childPath);
+                }}
+              >
+                "{k}"
+              </span>
+            ) : (
               <span className="k">"{k}"</span>
-            </Filterable>
+            )}
             <span className="p">: </span>
             <Node
               value={v}
@@ -151,6 +182,7 @@ function Obj({
               keyName={k}
               path={childPath}
               onFilter={onFilter}
+              onKeyFilter={onKeyFilter}
             />
             {i < entries.length - 1 && <span className="p">,</span>}
           </div>
@@ -166,11 +198,13 @@ function Arr({
   indent,
   path,
   onFilter,
+  onKeyFilter,
 }: {
   items: unknown[];
   indent: number;
   path: string;
   onFilter?: (p: string, v: unknown) => void;
+  onKeyFilter?: (p: string) => void;
 }) {
   if (items.length === 0) return <span className="p">[]</span>;
   return (
@@ -183,6 +217,7 @@ function Arr({
             indent={indent + 1}
             path={`${path}.${i}`}
             onFilter={onFilter}
+            onKeyFilter={onKeyFilter}
           />
           {i < items.length - 1 && <span className="p">,</span>}
         </div>

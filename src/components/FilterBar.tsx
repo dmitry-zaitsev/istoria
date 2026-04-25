@@ -1,5 +1,6 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
+import { registerFilterFocus } from "../lib/filterFocus";
 import { isError, parse, tokenize, wrapAsAndGroup } from "../lib/query";
 
 interface FilterBarProps {
@@ -12,6 +13,16 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
   const error = isError(parsed) ? parsed : null;
   const tokens = error || isError(parsed) ? [] : tokenize(parsed);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    registerFilterFocus(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    return () => registerFilterFocus(null);
+  }, []);
 
   const onAndGroup = () => {
     onChange(wrapAsAndGroup(value));

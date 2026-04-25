@@ -795,6 +795,7 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   outline: 1px solid var(--brand-100, var(--brand));
   outline-offset: -1px;
 }
+.json .filterable-key:hover { background: var(--warn-bg); outline-color: var(--warn-fg); }
 .json .s { color: #9b3415; }
 .json .n { color: var(--info-fg); }
 .json .b { color: var(--ok-fg); }
