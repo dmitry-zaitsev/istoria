@@ -1,8 +1,11 @@
 import { useMemo } from "react";
 
+import {
+  activeBuckets,
+  toggleFacetRange,
+  type RangeBucket,
+} from "../lib/facets";
 import type { LogEvent } from "../lib/ipc";
-import type { Ast } from "../lib/query";
-import { isError, parse } from "../lib/query";
 
 interface RangeSliderProps {
   events: LogEvent[];
@@ -12,7 +15,7 @@ interface RangeSliderProps {
   onFilterChange: (q: string) => void;
 }
 
-const PERCENTILES = [50, 75, 90, 95, 99] as const;
+const PERCENTILES = [50, 90, 99] as const;
 const DURATION_KEYWORDS = ["dur", "latency", "elapsed", "ms", "_us", "time_"];
 const MIN_VALUES_FOR_PERCENTILES = 30;
 const MIN_DISTINCT_FOR_PERCENTILES = 10;
@@ -61,15 +64,12 @@ export function detectNumericFacets(events: LogEvent[]): string[] {
 
 function looksLikeStatusOrId(key: string, values: Set<number>): boolean {
   if (/(^|\.|_)(status|status_code|code|id|pid|port)$/i.test(key)) return true;
-  // Mostly small integers in a tight band → enum-ish.
   if (values.size <= 10) return true;
   return false;
 }
 
 function isDurationLike(key: string, values: Set<number>): boolean {
   if (DURATION_KEYWORDS.some((kw) => key.toLowerCase().includes(kw))) return true;
-  // Continuous distribution heuristic: spread > 100× across at least
-  // 20 distinct values.
   const arr = [...values];
   const lo = Math.min(...arr);
   const hi = Math.max(...arr);
@@ -104,58 +104,83 @@ export function RangeSlider({
     return out;
   }, [events, fieldKey]);
 
-  const ast = useMemo(() => {
-    const r = parse(filter);
-    return isError(r) ? null : r;
-  }, [filter]);
-  const pinned = useMemo(() => collectRange(ast, fieldKey), [ast, fieldKey]);
+  if (sorted.length < MIN_VALUES_FOR_PERCENTILES) return null;
 
-  if (sorted.length < 5) return null;
-
-  const min = sorted[0]!;
-  const max = sorted[sorted.length - 1]!;
-  const stops = PERCENTILES.map((p) => percentile(sorted, p));
-
-  const activeStop = pinned.lo != null ? findActiveStop(pinned.lo, stops) : null;
-
-  const apply = (threshold: number) => {
-    onFilterChange(applyRange(filter, fieldKey, threshold, null));
-  };
-  const clear = () => onFilterChange(applyRange(filter, fieldKey, null, null));
+  const buckets = useMemo(() => percentileBuckets(sorted), [sorted]);
+  const active = useMemo(
+    () => activeBuckets(filter, fieldKey, buckets),
+    [filter, fieldKey, buckets],
+  );
+  const counts = useMemo(() => bucketCounts(sorted, buckets), [sorted, buckets]);
 
   return (
-    <div className="facet-group range-group">
-      <div className="facet-h">
-        {label}
-        <span className="range-extent">
-          {fmt(min)} – {fmt(max)}
-        </span>
-      </div>
-      <div className="pct-list">
-        {PERCENTILES.map((p, i) => {
-          const checked = activeStop === i;
-          return (
-            <div
-              key={p}
-              className={`facet-row${checked ? " checked" : ""}`}
-              onClick={() => (checked ? clear() : apply(stops[i]!))}
-              role="button"
-              title={`Filter ≥ p${p}`}
+    <div className="facet-group">
+      <div className="facet-h">{label}</div>
+      {buckets.map((b) => {
+        const checked = active.has(b.label);
+        return (
+          <div
+            key={b.label}
+            className={`facet-row${checked ? " checked" : ""}`}
+            onClick={() => onFilterChange(toggleFacetRange(filter, fieldKey, b))}
+            role="button"
+            title={b.label}
+          >
+            <span
+              className={`facet-check${checked ? " on" : ""}`}
+              aria-hidden
             >
-              <span
-                className={`facet-check${checked ? " on" : ""}`}
-                aria-hidden
-              >
-                {checked ? "✓" : ""}
-              </span>
-              <span className="facet-value">≥ p{p}</span>
-              <span className="facet-count">{fmt(stops[i]!)}</span>
-            </div>
-          );
-        })}
-      </div>
+              {checked ? "✓" : ""}
+            </span>
+            <span className="facet-value">{b.label}</span>
+            <span className="facet-count">
+              {counts.get(b.label)!.toLocaleString()}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+function percentileBuckets(sorted: number[]): RangeBucket[] {
+  if (sorted.length === 0) return [];
+  const max = sorted[sorted.length - 1]!;
+  const stops = PERCENTILES.map((p) => percentile(sorted, p));
+  // Build [0,p50), [p50,p90), [p90,p99), [p99,max]
+  const out: RangeBucket[] = [];
+  let prev = 0;
+  for (let i = 0; i < PERCENTILES.length; i++) {
+    out.push({
+      lo: prev,
+      hi: stops[i]!,
+      label: `< p${PERCENTILES[i]} (≤ ${fmt(stops[i]!)})`,
+    });
+    prev = stops[i]!;
+  }
+  out.push({
+    lo: prev,
+    hi: Number.POSITIVE_INFINITY,
+    label: `≥ p${PERCENTILES[PERCENTILES.length - 1]} (> ${fmt(prev)}, max ${fmt(max)})`,
+  });
+  return out;
+}
+
+function bucketCounts(
+  sorted: number[],
+  buckets: RangeBucket[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const b of buckets) counts.set(b.label, 0);
+  for (const v of sorted) {
+    for (const b of buckets) {
+      if (v >= b.lo && v < b.hi) {
+        counts.set(b.label, (counts.get(b.label) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  return counts;
 }
 
 function percentile(sorted: number[], p: number): number {
@@ -167,14 +192,8 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx]!;
 }
 
-function findActiveStop(lo: number, stops: number[]): number | null {
-  for (let i = stops.length - 1; i >= 0; i--) {
-    if (Math.abs(stops[i]! - lo) < 0.001) return i;
-  }
-  return null;
-}
-
 function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "∞";
   if (Number.isInteger(v)) return v.toString();
   if (v >= 100) return v.toFixed(0);
   return v.toFixed(1);
@@ -201,65 +220,4 @@ function lookup(fields: unknown, path: string): unknown {
     else return undefined;
   }
   return cur;
-}
-
-function collectRange(
-  ast: Ast | null,
-  key: string,
-): { lo: number | null; hi: number | null } {
-  if (!ast) return { lo: null, hi: null };
-  let lo: number | null = null;
-  let hi: number | null = null;
-  const walk = (a: Ast) => {
-    switch (a.kind) {
-      case "key_cmp":
-        if (a.key === key) {
-          if (a.op === "gte" || a.op === "gt") lo = Math.max(lo ?? a.value, a.value);
-          if (a.op === "lte" || a.op === "lt") hi = Math.min(hi ?? a.value, a.value);
-        }
-        break;
-      case "and":
-      case "or":
-        walk(a.left);
-        walk(a.right);
-        break;
-      case "not":
-        walk(a.expr);
-        break;
-      default:
-        break;
-    }
-  };
-  walk(ast);
-  return { lo, hi };
-}
-
-function applyRange(
-  query: string,
-  key: string,
-  lo: number | null,
-  hi: number | null,
-): string {
-  const pat = new RegExp(
-    `(\\s+AND\\s+|^)${escapeRe(key)}:(>|>=|<|<=)[\\d.\\-]+`,
-    "g",
-  );
-  let q = query.replace(pat, (_, prefix) =>
-    prefix.startsWith(" AND") ? "" : "",
-  );
-  q = q.replace(
-    new RegExp(`${escapeRe(key)}:(>|>=|<|<=)[\\d.\\-]+\\s+AND\\s+`, "g"),
-    "",
-  );
-  q = q.trim();
-  const clauses: string[] = [];
-  if (lo != null) clauses.push(`${key}:>=${lo}`);
-  if (hi != null) clauses.push(`${key}:<=${hi}`);
-  if (clauses.length === 0) return q;
-  if (!q) return clauses.join(" AND ");
-  return `${q} AND ${clauses.join(" AND ")}`;
-}
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

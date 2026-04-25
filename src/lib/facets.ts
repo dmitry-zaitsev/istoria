@@ -1,4 +1,3 @@
-import type { Ast } from "./query";
 import {
   extractKeyOrValues,
   flattenAnd,
@@ -6,6 +5,7 @@ import {
   parse,
   renderAst,
   renderValue,
+  type Ast,
 } from "./query";
 import type { LogEvent } from "./ipc";
 
@@ -221,4 +221,120 @@ export function toggleFacetOr(
       : `(${sorted.map((v) => formatClause(key, v)).join(" OR ")})`;
   if (!otherText) return keyClause;
   return `${otherText} AND ${keyClause}`;
+}
+
+export interface RangeBucket {
+  lo: number;
+  hi: number;
+  label: string;
+}
+
+const EPS = 1e-9;
+const sameRange = (a: RangeBucket, b: { lo: number; hi: number }) =>
+  Math.abs(a.lo - b.lo) < EPS && Math.abs(a.hi - b.hi) < EPS;
+
+/// Format a single bucket as a parser-round-trippable clause:
+/// \`(field:>=lo AND field:<hi)\`. Open-ended bounds drop the
+/// corresponding side.
+function formatRangeClause(key: string, lo: number, hi: number): string {
+  const parts: string[] = [];
+  if (Number.isFinite(lo)) parts.push(`${key}:>=${lo}`);
+  if (Number.isFinite(hi)) parts.push(`${key}:<${hi}`);
+  if (parts.length === 0) return ""; // unbounded: nothing to filter
+  if (parts.length === 1) return parts[0]!;
+  return `(${parts.join(" AND ")})`;
+}
+
+/// Pull all numeric range pairs (>= lo, < hi) for \`key\` out of an
+/// AST node — handles bare \`key:>=N AND key:<M\` as well as a
+/// top-level OR-chain of such pairs.
+function extractRanges(ast: Ast, key: string): { lo: number; hi: number }[] {
+  if (ast.kind === "or") {
+    const left = extractRanges(ast.left, key);
+    const right = extractRanges(ast.right, key);
+    if (left.length > 0 && right.length > 0) return [...left, ...right];
+    return [];
+  }
+  let lo: number = -Infinity;
+  let hi: number = Infinity;
+  let touched = false;
+  let foreign = false;
+  const walk = (a: Ast) => {
+    if (a.kind === "and") {
+      walk(a.left);
+      walk(a.right);
+      return;
+    }
+    if (a.kind === "key_cmp" && a.key === key) {
+      touched = true;
+      if (a.op === "gte") lo = Math.max(lo, a.value);
+      if (a.op === "gt") lo = Math.max(lo, a.value);
+      if (a.op === "lt") hi = Math.min(hi, a.value);
+      if (a.op === "lte") hi = Math.min(hi, a.value);
+      return;
+    }
+    foreign = true;
+  };
+  walk(ast);
+  if (!touched || foreign) return [];
+  return [{ lo, hi }];
+}
+
+/// Toggle a percentile bucket selection for a numeric facet. Multiple
+/// active buckets are OR-joined; clearing the last bucket drops the
+/// clause entirely. Cross-key clauses stay AND-joined.
+export function toggleFacetRange(
+  query: string,
+  key: string,
+  bucket: RangeBucket,
+): string {
+  const ast = parse(query);
+  const isEmpty = !isError(ast) && ast.kind === "free" && ast.term === "";
+  if (isError(ast) || isEmpty) {
+    return formatRangeClause(key, bucket.lo, bucket.hi);
+  }
+  const conjuncts = flattenAnd(ast);
+  const otherConjuncts: Ast[] = [];
+  const collected: { lo: number; hi: number }[] = [];
+  for (const c of conjuncts) {
+    const ranges = extractRanges(c, key);
+    if (ranges.length > 0) {
+      collected.push(...ranges);
+    } else {
+      otherConjuncts.push(c);
+    }
+  }
+  const idx = collected.findIndex((r) => sameRange(bucket, r));
+  if (idx >= 0) collected.splice(idx, 1);
+  else collected.push({ lo: bucket.lo, hi: bucket.hi });
+
+  const otherText = otherConjuncts.map(renderAst).join(" AND ");
+  if (collected.length === 0) return otherText;
+  const rangeText =
+    collected.length === 1
+      ? formatRangeClause(key, collected[0]!.lo, collected[0]!.hi)
+      : `(${collected
+          .map((r) => formatRangeClause(key, r.lo, r.hi))
+          .join(" OR ")})`;
+  if (!otherText) return rangeText;
+  return `${otherText} AND ${rangeText}`;
+}
+
+/// Which buckets out of \`buckets\` are currently active for \`key\` in
+/// \`query\`? Used to render checked state in the UI.
+export function activeBuckets(
+  query: string,
+  key: string,
+  buckets: RangeBucket[],
+): Set<string> {
+  const out = new Set<string>();
+  const ast = parse(query);
+  if (isError(ast)) return out;
+  const conjuncts = flattenAnd(ast);
+  const ranges: { lo: number; hi: number }[] = [];
+  for (const c of conjuncts) ranges.push(...extractRanges(c, key));
+  for (const b of buckets) {
+    if (ranges.some((r) => sameRange(b, r))) out.add(b.label);
+  }
+  return out;
 }
