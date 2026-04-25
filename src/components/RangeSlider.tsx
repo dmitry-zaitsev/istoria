@@ -132,23 +132,27 @@ export function RangeSlider({
         </span>
       </div>
       <div className="pct-list">
-        {PERCENTILES.map((p, i) => (
-          <div
-            key={p}
-            className={`pct-row${activeStop === i ? " active" : ""}`}
-            onClick={() => apply(stops[i]!)}
-            role="button"
-            title={`Filter ≥ p${p}`}
-          >
-            <span className="pct-label">≥ p{p}</span>
-            <span className="pct-value">{fmt(stops[i]!)}</span>
-          </div>
-        ))}
-        {pinned.lo != null && (
-          <div className="pct-row clear" onClick={clear} role="button">
-            <span className="pct-label">clear</span>
-          </div>
-        )}
+        {PERCENTILES.map((p, i) => {
+          const checked = activeStop === i;
+          return (
+            <div
+              key={p}
+              className={`facet-row${checked ? " checked" : ""}`}
+              onClick={() => (checked ? clear() : apply(stops[i]!))}
+              role="button"
+              title={`Filter ≥ p${p}`}
+            >
+              <span
+                className={`facet-check${checked ? " on" : ""}`}
+                aria-hidden
+              >
+                {checked ? "✓" : ""}
+              </span>
+              <span className="facet-value">≥ p{p}</span>
+              <span className="facet-count">{fmt(stops[i]!)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
