@@ -9,6 +9,7 @@ import { StreamHeader } from "./components/StreamHeader";
 import { Tabs } from "./components/Tabs";
 import { Facets } from "./components/Facets";
 import { Histogram } from "./components/Histogram";
+import { Palette } from "./components/Palette";
 import {
   getMeta,
   listViews,
@@ -114,6 +115,7 @@ export default function App() {
 
   return (
     <div className="win">
+      <Palette />
       <Chrome live={live} count={unfilteredCount} session={SESSION_ID} />
       <Tabs />
       <FilterBar value={filter} onChange={setFilter} />
