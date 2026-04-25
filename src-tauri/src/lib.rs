@@ -5,10 +5,12 @@ pub mod ingest;
 pub mod ipc;
 pub mod persistence;
 pub mod ring;
+pub mod socket;
 pub mod source;
 pub mod state;
 
 use std::io::IsTerminal;
+use std::process;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,12 +21,37 @@ use persistence::Store;
 use ring::Ring;
 use state::AppState;
 
+/// Dispatch entry point. Three paths:
+///  1. Stdin is a tty → owner mode, no ingest.
+///  2. Stdin is piped, socket already owned → forwarder mode (no window).
+///  3. Stdin is piped, no owner → owner mode + ingest stdin + listen.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(cli: cli::Cli) {
     init_tracing();
 
+    let socket_path = socket::socket_path();
+    let stdin_piped = !std::io::stdin().is_terminal();
+
+    if stdin_piped {
+        // Forwarder dispatch: try to attach to existing owner.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio rt");
+        let connect = rt.block_on(socket::try_connect(&socket_path));
+        if let Some(stream) = connect {
+            let name = source::resolve(cli.name.as_deref(), &[]);
+            tracing::info!(name = %name, "forwarder attached to existing istoria");
+            let res = rt.block_on(socket::run_forwarder(stream, name));
+            if let Err(e) = res {
+                tracing::warn!(error = %e, "forwarder ended with error");
+            }
+            process::exit(0);
+        }
+    }
+
     let ring = Arc::new(Ring::from_env());
-    let source = source::resolve(cli.name.as_deref(), &[]);
+    let source_name = source::resolve(cli.name.as_deref(), &[]);
 
     let store = match Store::open_default(cli.clear) {
         Ok(s) => Some(Arc::new(s)),
@@ -34,16 +61,27 @@ pub fn run(cli: cli::Cli) {
         }
     };
 
-    if !std::io::stdin().is_terminal() {
+    if stdin_piped {
         let ring_for_ingest = Arc::clone(&ring);
         let tee = !cli.silent;
-        let source_for_ingest = source.clone();
+        let source_for_ingest = source_name.clone();
         let store_for_ingest = store.clone();
         tauri::async_runtime::spawn(async move {
             ingest::run_stdin_reader(ring_for_ingest, store_for_ingest, source_for_ingest, tee)
                 .await;
         });
     }
+
+    let ring_for_socket = Arc::clone(&ring);
+    let store_for_socket = store.clone();
+    let socket_path_for_owner = socket_path.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(listener) = socket::try_bind(&socket_path_for_owner) {
+            socket::run_owner_listener(listener, ring_for_socket, store_for_socket).await;
+        } else {
+            tracing::warn!("could not bind socket — multi-pipe forwarders disabled");
+        }
+    });
 
     let ring_for_emit = Arc::clone(&ring);
 
