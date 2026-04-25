@@ -7,6 +7,7 @@ import { LogStream } from "./components/LogStream";
 import { StatusBar } from "./components/StatusBar";
 import { StreamHeader } from "./components/StreamHeader";
 import { Tabs } from "./components/Tabs";
+import { Facets } from "./components/Facets";
 import {
   getMeta,
   listViews,
@@ -32,6 +33,7 @@ export default function App() {
   const setActiveViewId = useStore((s) => s.setActiveViewId);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
+  const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
   const [lastTickAt, setLastTickAt] = useState(0);
   const [, setNow] = useState(0);
 
@@ -74,6 +76,7 @@ export default function App() {
           ? ordered.filter((ev) => evalAst(parsed, ev))
           : ordered;
         setEvents(filtered);
+        setUnfilteredEvents(ordered);
         setUnfilteredCount(ordered.length);
         setLastTickAt(Date.now());
       } catch (e) {
@@ -114,6 +117,11 @@ export default function App() {
       <Tabs />
       <FilterBar value={filter} onChange={setFilter} />
       <div className="main">
+        <Facets
+          events={unfilteredEvents}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
         <div className="stream-col">
           <StreamHeader
             total={unfilteredCount}
