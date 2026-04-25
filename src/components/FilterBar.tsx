@@ -24,6 +24,20 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
     return () => registerFilterFocus(null);
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault();
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const onAndGroup = () => {
     onChange(wrapAsAndGroup(value));
     queueMicrotask(() => inputRef.current?.focus());

@@ -28,7 +28,7 @@ export function StatusBar({
           <kbd>⌘F</kbd> filter
         </span>
         <span>
-          <kbd>Esc</kbd> close
+          <kbd>⌘K</kbd> palette
         </span>
       </span>
     </div>
