@@ -2,12 +2,17 @@ pub mod cli;
 pub mod event;
 pub mod format;
 pub mod ingest;
+pub mod ipc;
 pub mod ring;
 pub mod state;
 
 use std::io::IsTerminal;
 use std::sync::Arc;
+use std::time::Duration;
 
+use tauri::Emitter;
+
+use ipc::EventNewPayload;
 use ring::Ring;
 use state::AppState;
 
@@ -31,9 +36,30 @@ pub fn run(cli: cli::Cli) {
         });
     }
 
+    let ring_for_emit = Arc::clone(&ring);
+
     tauri::Builder::default()
         .manage(AppState { ring })
-        .setup(|_app| Ok(()))
+        .invoke_handler(tauri::generate_handler![ipc::query_recent])
+        .setup(move |app| {
+            let app_handle = app.handle().clone();
+            let ring = ring_for_emit;
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    ring.notified().await;
+                    // Debounce: coalesce bursts within ~16 ms (one frame).
+                    tokio::time::sleep(Duration::from_millis(16)).await;
+                    let payload = EventNewPayload {
+                        len: ring.len(),
+                        dropped: ring.dropped_count(),
+                    };
+                    if app_handle.emit("event-new", payload).is_err() {
+                        break;
+                    }
+                }
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running istoria");
 }

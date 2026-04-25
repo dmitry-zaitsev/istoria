@@ -1,6 +1,7 @@
 use parking_lot::RwLock;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::Notify;
 
 use crate::event::Event;
 
@@ -12,6 +13,7 @@ pub struct Ring {
     capacity: usize,
     dropped: AtomicU64,
     next_id: AtomicU64,
+    notify: Notify,
 }
 
 impl Ring {
@@ -22,6 +24,7 @@ impl Ring {
             capacity,
             dropped: AtomicU64::new(0),
             next_id: AtomicU64::new(1),
+            notify: Notify::new(),
         }
     }
 
@@ -42,12 +45,19 @@ impl Ring {
     }
 
     pub fn push(&self, ev: Event) {
-        let mut q = self.inner.write();
-        if q.len() == self.capacity {
-            q.pop_front();
-            self.dropped.fetch_add(1, Ordering::Relaxed);
+        {
+            let mut q = self.inner.write();
+            if q.len() == self.capacity {
+                q.pop_front();
+                self.dropped.fetch_add(1, Ordering::Relaxed);
+            }
+            q.push_back(ev);
         }
-        q.push_back(ev);
+        self.notify.notify_waiters();
+    }
+
+    pub async fn notified(&self) {
+        self.notify.notified().await;
     }
 
     pub fn len(&self) -> usize {
