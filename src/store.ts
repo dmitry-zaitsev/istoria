@@ -5,7 +5,7 @@ export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
 export const INSPECTOR_DEFAULT = 320;
 
-export type SortKey = "time-desc" | "time-asc" | "level";
+export type SortKey = "newest-bottom" | "newest-top" | "level";
 
 interface Store {
   events: LogEvent[];
@@ -36,7 +36,7 @@ export const useStore = create<Store>((set) => ({
   activeViewId: null,
   paused: false,
   pausedBaseline: 0,
-  sort: "time-desc",
+  sort: "newest-bottom",
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) => set({ selectedId }),

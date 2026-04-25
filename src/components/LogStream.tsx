@@ -25,6 +25,8 @@ export function LogStream({
   const paused = useStore((s) => s.paused);
   const setPaused = useStore((s) => s.setPaused);
   const pausedBaseline = useStore((s) => s.pausedBaseline);
+  const sort = useStore((s) => s.sort);
+  const liveTail = sort === "newest-bottom";
 
   const virtualizer = useVirtualizer({
     count: events.length,
@@ -50,10 +52,10 @@ export function LogStream({
   }, [events.length, setPaused]);
 
   useLayoutEffect(() => {
-    if (paused) return;
+    if (paused || !liveTail) return;
     if (!stickToBottom.current || events.length === 0) return;
     virtualizer.scrollToIndex(events.length - 1, { align: "end" });
-  }, [events.length, virtualizer, paused]);
+  }, [events.length, virtualizer, paused, liveTail]);
 
   const onSelectInternal = (id: number | null) => {
     if (id != null && !paused) setPaused(true, events.length);
@@ -137,7 +139,7 @@ export function LogStream({
           );
         })}
       </div>
-      {!paused && (
+      {!paused && liveTail && (
         <div className="stream-foot">
           ▼ tailing — newest at bottom · scroll up to pause
         </div>

@@ -170,10 +170,13 @@ const LEVEL_RANK: Record<string, number> = {
 };
 
 function applySort(events: LogEvent[], sort: SortKey): LogEvent[] {
-  if (sort === "time-desc") return events;
+  // events arrive oldest-first (queryRecent reversed). The live-tail
+  // default keeps that order so LogStream's scroll-to-bottom places
+  // newest at the bottom.
+  if (sort === "newest-bottom") return events;
   const out = events.slice();
-  if (sort === "time-asc") {
-    out.sort((a, b) => a.ts - b.ts || a.id - b.id);
+  if (sort === "newest-top") {
+    out.sort((a, b) => b.ts - a.ts || b.id - a.id);
   } else if (sort === "level") {
     out.sort((a, b) => {
       const ra = LEVEL_RANK[a.level] ?? 9;

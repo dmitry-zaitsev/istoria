@@ -9,8 +9,8 @@ interface StreamHeaderProps {
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
-  "time-desc": "time ▾",
-  "time-asc": "time ▴",
+  "newest-bottom": "newest at bottom",
+  "newest-top": "newest at top",
   level: "level (err first)",
 };
 
