@@ -297,7 +297,8 @@ pub enum SqlParam {
 
 fn column_for(key: &str) -> String {
     match key {
-        "level" | "source" | "msg" | "raw" => key.to_string(),
+        "level" | "source" | "msg" | "raw" | "ts" | "id" => key.to_string(),
+        "timestamp" => "ts".to_string(),
         _ => format!("json_extract(fields, '$.{}')", escape_path(key)),
     }
 }

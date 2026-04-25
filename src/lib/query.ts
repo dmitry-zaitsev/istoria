@@ -289,6 +289,8 @@ function lookup(ev: LogEvent, key: string): unknown {
   if (key === "source") return ev.source;
   if (key === "msg") return ev.msg;
   if (key === "raw") return ev.raw;
+  if (key === "ts" || key === "timestamp") return ev.ts;
+  if (key === "id") return ev.id;
   let cur: unknown = ev.fields;
   for (const part of key.split(".")) {
     if (cur && typeof cur === "object") {

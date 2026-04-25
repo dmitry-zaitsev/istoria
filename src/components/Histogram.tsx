@@ -138,15 +138,28 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
             </div>
           );
         })}
-        {brush && (
-          <div
-            className="histo-brush"
-            style={{
-              left: Math.min(brush.start, brush.end),
-              width: Math.abs(brush.end - brush.start),
-            }}
-          />
-        )}
+        {brush && trackRef.current && (() => {
+          const rectW = trackRef.current.clientWidth || 1;
+          const lo = Math.min(brush.start, brush.end);
+          const hi = Math.max(brush.start, brush.end);
+          const tLo = Math.round(tMin + (lo / rectW) * (tMax - tMin));
+          const tHi = Math.round(tMin + (hi / rectW) * (tMax - tMin));
+          const dur = tHi - tLo;
+          return (
+            <>
+              <div
+                className="histo-brush"
+                style={{ left: lo, width: Math.max(2, hi - lo) }}
+              />
+              <div
+                className="histo-brush-tip"
+                style={{ left: (lo + hi) / 2 }}
+              >
+                {formatSmartDate(tLo)} → {formatSmartDate(tHi)} · {formatDuration(dur)}
+              </div>
+            </>
+          );
+        })()}
         {pinned.lo != null && pinned.hi != null && (
           <div
             className="histo-brush pinned"
@@ -281,6 +294,14 @@ function collectTs(ast: ReturnType<typeof parse>): { lo: number | null; hi: numb
   };
   walk(ast);
   return { lo, hi };
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)} min`;
+  if (ms < 86_400_000) return `${(ms / 3_600_000).toFixed(1)} h`;
+  return `${(ms / 86_400_000).toFixed(1)} d`;
 }
 
 function applyTsRange(

@@ -548,13 +548,29 @@ kbd {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--brand-50);
+  background: rgba(46, 143, 204, 0.12);
   border-left: 1px solid var(--brand);
   border-right: 1px solid var(--brand);
   pointer-events: none;
 }
 .histo-brush.pinned {
-  background: rgba(46, 143, 204, 0.12);
+  background: rgba(46, 143, 204, 0.08);
+  border-left-style: dashed;
+  border-right-style: dashed;
+}
+.histo-brush-tip {
+  position: absolute;
+  top: -22px;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: white;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
 }
 .histo-axis {
   position: relative;
