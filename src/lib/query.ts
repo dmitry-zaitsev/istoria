@@ -228,14 +228,48 @@ function matchCmpOp(c: Cursor): CmpOp | null {
 
 /// Parse a comparison RHS as either a JS number or a date-like
 /// string. Date-like values resolve to Unix ms via Date.parse so the
-/// AST stays uniformly numeric. Returns null for anything unparseable.
+/// AST stays uniformly numeric. Accepts shorthand human forms:
+///   `14:02`, `14:02:31`, `14:02:31.500` → today at that time
+///   `May 6`, `May 6 14:02` → most-recent past May 6
 function parseNumberOrDate(s: string): number | null {
-  if (s.trim() === "") return null;
-  const n = Number(s);
+  const trimmed = s.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
   if (!Number.isNaN(n)) return n;
-  // Date.parse handles ISO 8601 + RFC 2822 + a few common shapes.
-  const ms = Date.parse(s);
+  const smart = parseSmartDate(trimmed);
+  if (smart != null) return smart;
+  const ms = Date.parse(trimmed);
   if (!Number.isNaN(ms)) return ms;
+  return null;
+}
+
+export function parseSmartDate(s: string, ref = new Date()): number | null {
+  // HH:MM[:SS[.mmm]] → today at that time
+  const t = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+  if (t) {
+    const d = new Date(ref);
+    d.setHours(+t[1]!, +t[2]!, t[3] ? +t[3] : 0, t[4] ? +t[4]!.padEnd(3, "0") : 0);
+    return d.getTime();
+  }
+  // `Mon D[ HH:MM[:SS]]` → most recent occurrence on or before ref.
+  const m = s.match(
+    /^([A-Za-z]{3})\s+(\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+  );
+  if (m) {
+    const idx = MONTHS_SHORT.findIndex(
+      (mn) => mn.toLowerCase() === m[1]!.toLowerCase(),
+    );
+    if (idx < 0) return null;
+    const day = +m[2]!;
+    const hh = m[3] ? +m[3] : 0;
+    const mm = m[4] ? +m[4] : 0;
+    const ss = m[5] ? +m[5] : 0;
+    let cand = new Date(ref.getFullYear(), idx, day, hh, mm, ss);
+    if (cand.getTime() > ref.getTime()) {
+      cand = new Date(ref.getFullYear() - 1, idx, day, hh, mm, ss);
+    }
+    return cand.getTime();
+  }
   return null;
 }
 
@@ -341,6 +375,20 @@ function walkAnd(ast: Ast, out: Token[]): void {
 
 const TS_KEYS = new Set(["ts", "timestamp", "time", "created_at", "updated_at"]);
 const TS_MS_FLOOR = 1_000_000_000_000;
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function chipValue(key: string, value: number | string): string {
   if (
@@ -348,17 +396,31 @@ function chipValue(key: string, value: number | string): string {
     typeof value === "number" &&
     value >= TS_MS_FLOOR
   ) {
-    const d = new Date(value);
-    const pad = (n: number, w = 2) => String(n).padStart(w, "0");
-    return (
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(
-        d.getMilliseconds(),
-        3,
-      )}`
-    );
+    return formatSmartDate(value);
   }
   return String(value);
+}
+
+/// Pretty timestamp: shortest unambiguous form. Same day → `HH:MM`
+/// (or `HH:MM:SS[.mmm]` if sub-minute precision is meaningful);
+/// same year → `Mon D HH:MM`; otherwise full `YYYY-MM-DD HH:MM`.
+export function formatSmartDate(unixMs: number, ref = new Date()): string {
+  const d = new Date(unixMs);
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  const ss = d.getSeconds();
+  const ms = d.getMilliseconds();
+  const time =
+    ss === 0 && ms === 0
+      ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
+      : `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(ss)}${
+          ms ? "." + pad(ms, 3) : ""
+        }`;
+  const sameDay = d.toDateString() === ref.toDateString();
+  if (sameDay) return time;
+  const sameYear = d.getFullYear() === ref.getFullYear();
+  const monthDay = `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+  if (sameYear) return `${monthDay} ${time}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 }
 
 function astToToken(ast: Ast): Token {

@@ -194,7 +194,9 @@ fn parse_num_or_date(s: &str) -> Option<f64> {
     if let Ok(n) = s.parse::<f64>() {
         return Some(n);
     }
-    use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
+    use chrono::{
+        DateTime, Datelike, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone,
+    };
     if let Ok(dt) = DateTime::<FixedOffset>::parse_from_rfc3339(s) {
         return Some(dt.timestamp_millis() as f64);
     }
@@ -213,6 +215,66 @@ fn parse_num_or_date(s: &str) -> Option<f64> {
         return d
             .and_hms_opt(0, 0, 0)
             .map(|dt| dt.and_utc().timestamp_millis() as f64);
+    }
+    // Time-only: today at HH:MM[:SS[.mmm]]
+    let time_formats = ["%H:%M:%S%.3f", "%H:%M:%S", "%H:%M"];
+    for f in time_formats {
+        if let Ok(t) = NaiveTime::parse_from_str(s, f) {
+            let today = Local::now().date_naive();
+            let dt = today.and_time(t);
+            if let Some(local) = Local.from_local_datetime(&dt).single() {
+                return Some(local.timestamp_millis() as f64);
+            }
+        }
+    }
+    // "Mon D[ HH:MM[:SS]]" — most recent past occurrence.
+    let mon_formats = [
+        ("%b %e %H:%M:%S", true),
+        ("%b %e %H:%M", true),
+        ("%b %e", false),
+    ];
+    let now = Local::now();
+    for (fmt, has_time) in mon_formats {
+        let with_year = format!("{} {}", now.year(), s);
+        let pat = format!("%Y {}", fmt);
+        if let Ok(dt) = NaiveDateTime::parse_from_str(&with_year, &pat) {
+            let mut local = Local.from_local_datetime(&dt).single()?;
+            if local > now {
+                let prev = with_year.replacen(
+                    &now.year().to_string(),
+                    &(now.year() - 1).to_string(),
+                    1,
+                );
+                if let Ok(dt2) = NaiveDateTime::parse_from_str(&prev, &pat) {
+                    local = Local.from_local_datetime(&dt2).single()?;
+                }
+            }
+            let _ = has_time;
+            return Some(local.timestamp_millis() as f64);
+        }
+        if !has_time {
+            // Date-only via NaiveDate
+            let with_year_d = format!("{} {}", now.year(), s);
+            let pat_d = format!("%Y {}", fmt);
+            if let Ok(d) = NaiveDate::parse_from_str(&with_year_d, &pat_d) {
+                if let Some(dt) = d.and_hms_opt(0, 0, 0) {
+                    let mut local = Local.from_local_datetime(&dt).single()?;
+                    if local > now {
+                        let prev = with_year_d.replacen(
+                            &now.year().to_string(),
+                            &(now.year() - 1).to_string(),
+                            1,
+                        );
+                        if let Ok(d2) = NaiveDate::parse_from_str(&prev, &pat_d) {
+                            if let Some(dt2) = d2.and_hms_opt(0, 0, 0) {
+                                local = Local.from_local_datetime(&dt2).single()?;
+                            }
+                        }
+                    }
+                    return Some(local.timestamp_millis() as f64);
+                }
+            }
+        }
     }
     None
 }

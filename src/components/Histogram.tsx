@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 
 import type { LogEvent } from "../lib/ipc";
-import { isError, parse } from "../lib/query";
+import { formatSmartDate, isError, parse } from "../lib/query";
 
 interface HistogramProps {
   events: LogEvent[];
@@ -287,18 +287,9 @@ function applyTsRange(
   let q = query.replace(pat, (_, prefix) => (prefix.startsWith(" AND") ? "" : ""));
   q = q.replace(/ts:(>|>=|<|<=)("(?:\\.|[^"])*"|[^\s)]+)\s+AND\s+/g, "");
   q = q.trim();
-  const clauses = [`ts:>="${formatIso(lo)}"`, `ts:<="${formatIso(hi)}"`];
+  const clauses = [
+    `ts:>="${formatSmartDate(lo)}"`,
+    `ts:<="${formatSmartDate(hi)}"`,
+  ];
   onFilterChange(q ? `${q} AND ${clauses.join(" AND ")}` : clauses.join(" AND "));
-}
-
-function formatIso(unixMs: number): string {
-  const d = new Date(unixMs);
-  const pad2 = (n: number) => String(n).padStart(2, "0");
-  const pad3 = (n: number) => String(n).padStart(3, "0");
-  return (
-    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ` +
-    `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad3(
-      d.getMilliseconds(),
-    )}`
-  );
 }
