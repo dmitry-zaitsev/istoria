@@ -89,10 +89,11 @@ export function LogStream({
       style={{ paddingBottom: bottomInset }}
       tabIndex={0}
     >
-      {paused && (
+      {paused && newCount > 0 && (
         <div className="pause-pill" role="button" onClick={resume}>
-          paused
-          <span style={{ color: "var(--ink)" }}> · {newCount.toLocaleString()} new</span>
+          <span style={{ color: "var(--ink)" }}>
+            {newCount.toLocaleString()} new
+          </span>
           <span className="resume">resume ▶</span>
         </div>
       )}
