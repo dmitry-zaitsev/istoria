@@ -68,30 +68,18 @@ function Group({
 }) {
   const [search, setSearch] = useState("");
   const pinnedSet = pinned.get(group.key) ?? new Set<string>();
-  const pinnedValues = group.values.filter((v) => pinnedSet.has(v.value));
-  const others = group.values.filter((v) => !pinnedSet.has(v.value));
-  const showSearch = others.length > SEARCH_OVERFLOW;
-  const filteredOthers = showSearch && search
-    ? others.filter((v) => v.value.toLowerCase().includes(search.toLowerCase()))
-    : others;
+  const showSearch = group.values.length > SEARCH_OVERFLOW;
+  const visible = showSearch && search
+    ? group.values.filter((v) =>
+        v.value.toLowerCase().includes(search.toLowerCase()),
+      )
+    : group.values;
 
   if (group.values.length === 0) return null;
 
   return (
     <div className="facet-group">
       <div className="facet-h">{group.label}</div>
-      {pinnedValues.map((v) => (
-        <FacetRow
-          key={v.value}
-          value={v.value}
-          count={v.count}
-          pinned
-          onClick={() => onToggle(group.key, v.value)}
-        />
-      ))}
-      {pinnedValues.length > 0 && others.length > 0 && (
-        <div className="facet-others">OTHERS · {others.length}</div>
-      )}
       {showSearch && (
         <input
           className="facet-search"
@@ -100,12 +88,12 @@ function Group({
           onChange={(e) => setSearch(e.target.value)}
         />
       )}
-      {filteredOthers.map((v) => (
+      {visible.map((v) => (
         <FacetRow
           key={v.value}
           value={v.value}
           count={v.count}
-          pinned={false}
+          checked={pinnedSet.has(v.value)}
           onClick={() => onToggle(group.key, v.value)}
         />
       ))}
@@ -116,22 +104,22 @@ function Group({
 function FacetRow({
   value,
   count,
-  pinned,
+  checked,
   onClick,
 }: {
   value: string;
   count: number;
-  pinned: boolean;
+  checked: boolean;
   onClick: () => void;
 }) {
   return (
     <div
-      className={`facet-row${pinned ? " pinned" : ""}`}
+      className={`facet-row${checked ? " checked" : ""}`}
       onClick={onClick}
       role="button"
     >
-      <span className="facet-star" aria-hidden>
-        {pinned ? "★" : "☆"}
+      <span className={`facet-check${checked ? " on" : ""}`} aria-hidden>
+        {checked ? "✓" : ""}
       </span>
       <span className="facet-value">{value || "∅"}</span>
       <span className="facet-count">{count.toLocaleString()}</span>
