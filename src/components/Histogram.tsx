@@ -282,11 +282,23 @@ function applyTsRange(
   hi: number,
   onFilterChange: (q: string) => void,
 ): void {
-  // strip existing ts:>=N / ts:<=N
-  const pat = /(\s+AND\s+|^)ts:(>|>=|<|<=)[\d.\-]+/g;
+  // Strip any existing ts comparison clauses (numeric or quoted-ISO).
+  const pat = /(\s+AND\s+|^)ts:(>|>=|<|<=)("(?:\\.|[^"])*"|[^\s)]+)/g;
   let q = query.replace(pat, (_, prefix) => (prefix.startsWith(" AND") ? "" : ""));
-  q = q.replace(/ts:(>|>=|<|<=)[\d.\-]+\s+AND\s+/g, "");
+  q = q.replace(/ts:(>|>=|<|<=)("(?:\\.|[^"])*"|[^\s)]+)\s+AND\s+/g, "");
   q = q.trim();
-  const clauses = [`ts:>=${lo}`, `ts:<=${hi}`];
+  const clauses = [`ts:>="${formatIso(lo)}"`, `ts:<="${formatIso(hi)}"`];
   onFilterChange(q ? `${q} AND ${clauses.join(" AND ")}` : clauses.join(" AND "));
+}
+
+function formatIso(unixMs: number): string {
+  const d = new Date(unixMs);
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const pad3 = (n: number) => String(n).padStart(3, "0");
+  return (
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ` +
+    `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad3(
+      d.getMilliseconds(),
+    )}`
+  );
 }

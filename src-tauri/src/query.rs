@@ -80,22 +80,30 @@ fn parser() -> impl Parser<char, Ast, Error = Simple<char>> {
         just("<").to(CmpOp::Lt),
     ));
 
-    let number = filter::<_, _, Simple<char>>(|c: &char| {
-        c.is_ascii_digit() || *c == '.' || *c == '-'
+    // RHS of a numeric cmp accepts:
+    //   - a plain number (`123`, `-1.5`)
+    //   - a quoted or bare ISO datetime that resolves to Unix-ms
+    // The AST always stores the value as f64 (Unix-ms for dates).
+    let cmp_bare = filter::<_, _, Simple<char>>(|c: &char| {
+        !c.is_whitespace() && *c != ')' && *c != '('
     })
     .repeated()
     .at_least(1)
-    .collect::<String>()
-    .try_map(|s, span| {
-        s.parse::<f64>()
-            .map_err(|e| Simple::custom(span, format!("bad number: {e}")))
-    });
+    .collect::<String>();
+    let cmp_value = quoted_value
+        .clone()
+        .or(cmp_bare)
+        .try_map(|s, span| {
+            parse_num_or_date(&s).ok_or_else(|| {
+                Simple::custom(span, format!("expected number or datetime, got '{s}'"))
+            })
+        });
 
     let key_cmp = ident
         .clone()
         .then_ignore(just(':'))
         .then(cmp_op)
-        .then(number)
+        .then(cmp_value)
         .map(|((key, op), value)| Ast::KeyCmp { key, op, value });
 
     // key~/regex/  — slash-delimited; backslash escapes any next char
@@ -177,6 +185,36 @@ fn parser() -> impl Parser<char, Ast, Error = Simple<char>> {
             .foldl(|lhs, rhs| Ast::Or { left: Box::new(lhs), right: Box::new(rhs) })
     })
     .then_ignore(end())
+}
+
+/// Parse a comparison RHS as a JS-style number or a date-like
+/// string. Date-like values resolve to Unix ms so the AST stays
+/// uniformly numeric. Mirrors the TS `parseNumberOrDate`.
+fn parse_num_or_date(s: &str) -> Option<f64> {
+    if let Ok(n) = s.parse::<f64>() {
+        return Some(n);
+    }
+    use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
+    if let Ok(dt) = DateTime::<FixedOffset>::parse_from_rfc3339(s) {
+        return Some(dt.timestamp_millis() as f64);
+    }
+    let dt_formats = [
+        "%Y-%m-%dT%H:%M:%S%.3f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S%.3f",
+        "%Y-%m-%d %H:%M:%S",
+    ];
+    for f in dt_formats {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(s, f) {
+            return Some(dt.and_utc().timestamp_millis() as f64);
+        }
+    }
+    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return d
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| dt.and_utc().timestamp_millis() as f64);
+    }
+    None
 }
 
 /// Lower an AST to a SQL `WHERE` clause fragment plus a list of
@@ -344,5 +382,28 @@ mod tests {
     fn invalid_parse_errors() {
         // Unclosed paren must error.
         assert!(parse("(level:error").is_err());
+    }
+
+    #[test]
+    fn cmp_accepts_iso_datetime() {
+        let ast = parse("ts:>=2026-04-25T14:02:31").unwrap();
+        match ast {
+            Ast::KeyCmp { key, op, value } => {
+                assert_eq!(key, "ts");
+                assert_eq!(op, CmpOp::Gte);
+                // 2026-04-25T14:02:31 UTC → 1777125751000
+                assert_eq!(value as i64, 1_777_125_751_000);
+            }
+            other => panic!("expected KeyCmp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cmp_accepts_quoted_date_with_space() {
+        let ast = parse("ts:>=\"2026-04-25 14:02:31\"").unwrap();
+        match ast {
+            Ast::KeyCmp { value, .. } => assert_eq!(value as i64, 1_777_125_751_000),
+            other => panic!("expected KeyCmp, got {other:?}"),
+        }
     }
 }

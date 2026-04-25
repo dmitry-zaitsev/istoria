@@ -171,10 +171,10 @@ function parseAtom(c: Cursor): Ast {
     const cmp = matchCmpOp(c);
     if (cmp) {
       const numStart = c.pos;
-      const numStr = consumeBareValue(c);
-      const value = Number(numStr);
-      if (Number.isNaN(value))
-        throw new Error(`expected number, got '${numStr}' at ${numStart}`);
+      const numStr = peek(c) === '"' ? consumeQuoted(c) : consumeBareValue(c);
+      const value = parseNumberOrDate(numStr);
+      if (value == null)
+        throw new Error(`expected number or datetime, got '${numStr}' at ${numStart}`);
       return { kind: "key_cmp", key, op: cmp, value };
     }
     const value = peek(c) === '"' ? consumeQuoted(c) : consumeBareValue(c);
@@ -223,6 +223,19 @@ function matchCmpOp(c: Cursor): CmpOp | null {
     c.pos++;
     return "lt";
   }
+  return null;
+}
+
+/// Parse a comparison RHS as either a JS number or a date-like
+/// string. Date-like values resolve to Unix ms via Date.parse so the
+/// AST stays uniformly numeric. Returns null for anything unparseable.
+function parseNumberOrDate(s: string): number | null {
+  if (s.trim() === "") return null;
+  const n = Number(s);
+  if (!Number.isNaN(n)) return n;
+  // Date.parse handles ISO 8601 + RFC 2822 + a few common shapes.
+  const ms = Date.parse(s);
+  if (!Number.isNaN(ms)) return ms;
   return null;
 }
 
