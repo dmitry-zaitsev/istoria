@@ -412,6 +412,93 @@ kbd {
   color: var(--muted);
 }
 
+/* ── Histogram ─────────────────────────────────────────────────── */
+.histo-shell {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  transition: padding 0.2s, height 0.2s;
+}
+.histo-shell.compact { height: 22px; }
+.histo-shell.expanded { height: 96px; padding-bottom: 24px; }
+.histo-toggle {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 11px;
+  width: 24px;
+  cursor: default;
+}
+.histo-toggle:hover { color: var(--ink); }
+.histo-canvas {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  padding: 2px 8px;
+  user-select: none;
+}
+.histo-col {
+  flex: 1;
+  position: relative;
+  min-width: 1px;
+  height: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+}
+.seg { display: block; width: 100%; }
+.seg-info { background: var(--brand); }
+.seg-warn { background: var(--warn-fg); }
+.seg-err { background: var(--err-fg); }
+.seg-empty { height: 1px; background: var(--line-soft); }
+.histo-brush {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--brand-50);
+  border-left: 1px solid var(--brand);
+  border-right: 1px solid var(--brand);
+  pointer-events: none;
+}
+.histo-brush.pinned {
+  background: rgba(46, 143, 204, 0.12);
+}
+.histo-axis {
+  grid-column: 2;
+  position: relative;
+  height: 14px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted-2);
+}
+.histo-axis .tick {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.histo-legend {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.histo-legend .lg {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.histo-legend .lg-err { background: var(--err-fg); }
+.histo-legend .lg-warn { background: var(--warn-fg); }
+.histo-legend .lg-info { background: var(--brand); }
+
 /* ── Stream column ─────────────────────────────────────────────── */
 .stream-col {
   flex: 1;
