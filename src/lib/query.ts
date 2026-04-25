@@ -310,12 +310,40 @@ function walkAnd(ast: Ast, out: Token[]): void {
   out.push(astToToken(ast));
 }
 
+const TS_KEYS = new Set(["ts", "timestamp", "time", "created_at", "updated_at"]);
+const TS_MS_FLOOR = 1_000_000_000_000;
+
+function chipValue(key: string, value: number | string): string {
+  if (
+    TS_KEYS.has(key) &&
+    typeof value === "number" &&
+    value >= TS_MS_FLOOR
+  ) {
+    const d = new Date(value);
+    const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+      `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(
+        d.getMilliseconds(),
+        3,
+      )}`
+    );
+  }
+  return String(value);
+}
+
 function astToToken(ast: Ast): Token {
   switch (ast.kind) {
     case "key_exact":
-      return { kind: "key_exact", text: `${ast.key}:${ast.value}` };
+      return {
+        kind: "key_exact",
+        text: `${ast.key}:${chipValue(ast.key, ast.value)}`,
+      };
     case "key_cmp":
-      return { kind: "key_cmp", text: `${ast.key}:${cmpStr(ast.op)}${ast.value}` };
+      return {
+        kind: "key_cmp",
+        text: `${ast.key}:${cmpStr(ast.op)}${chipValue(ast.key, ast.value)}`,
+      };
     case "key_regex":
       return { kind: "key_regex", text: `${ast.key}~/${ast.pattern}/` };
     case "free":
