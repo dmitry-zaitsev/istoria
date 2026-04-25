@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
 import type { LogEvent } from "../lib/ipc";
 import type { Ast } from "../lib/query";
@@ -12,7 +12,7 @@ interface RangeSliderProps {
   onFilterChange: (q: string) => void;
 }
 
-const BUCKETS = 24;
+const PERCENTILES = [50, 75, 90, 95, 99] as const;
 
 /// Auto-detect numeric facets from a sample of events.
 export function detectNumericFacets(events: LogEvent[]): string[] {
@@ -26,7 +26,8 @@ export function detectNumericFacets(events: LogEvent[]): string[] {
       const c = counts.get(path) ?? { numeric: 0, total: 0 };
       c.total++;
       if (typeof value === "number" && !Number.isNaN(value)) c.numeric++;
-      else if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) c.numeric++;
+      else if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value)))
+        c.numeric++;
       counts.set(path, c);
     });
   }
@@ -59,122 +60,124 @@ export function RangeSlider({
   filter,
   onFilterChange,
 }: RangeSliderProps) {
-  const values = useMemo(() => extractValues(events, fieldKey), [events, fieldKey]);
-  const min = values.length > 0 ? Math.min(...values) : 0;
-  const max = values.length > 0 ? Math.max(...values) : 1;
+  const sorted = useMemo(() => {
+    const out = extractValues(events, fieldKey);
+    out.sort((a, b) => a - b);
+    return out;
+  }, [events, fieldKey]);
 
-  const isStatus = fieldKey === "status_code";
-
-  // Existing range pinned in query (parsed AST → numeric bounds).
   const ast = useMemo(() => {
     const r = parse(filter);
     return isError(r) ? null : r;
   }, [filter]);
   const pinned = useMemo(() => collectRange(ast, fieldKey), [ast, fieldKey]);
 
-  const [lo, setLo] = useState<number>(pinned.lo ?? min);
-  const [hi, setHi] = useState<number>(pinned.hi ?? max);
+  if (sorted.length < 5) return null;
 
-  useEffect(() => {
-    setLo(pinned.lo ?? min);
-    setHi(pinned.hi ?? max);
-  }, [pinned.lo, pinned.hi, min, max]);
+  const min = sorted[0]!;
+  const max = sorted[sorted.length - 1]!;
+  const stops = PERCENTILES.map((p) => percentile(sorted, p));
 
-  const trackRef = useRef<HTMLDivElement | null>(null);
+  const activeStop = pinned.lo != null ? findActiveStop(pinned.lo, stops) : null;
 
-  if (values.length < 5 || max === min) return null;
-
-  const buckets = bucketize(values, min, max, BUCKETS);
-  const peak = Math.max(1, ...buckets);
-
-  const apply = (newLo: number, newHi: number) => {
-    const lo2 = isStatus ? snapStatus(newLo, "lo") : newLo;
-    const hi2 = isStatus ? snapStatus(newHi, "hi") : newHi;
-    onFilterChange(applyRange(filter, fieldKey, lo2, hi2, min, max));
+  const apply = (threshold: number) => {
+    onFilterChange(applyRange(filter, fieldKey, threshold, null));
   };
+  const clear = () => onFilterChange(applyRange(filter, fieldKey, null, null));
 
   return (
     <div className="facet-group range-group">
-      <div className="facet-h">{label}</div>
-      <div className="range-spark">
-        {buckets.map((b, i) => (
-          <span
-            key={i}
-            className="bar"
-            style={{ height: `${(b / peak) * 100}%` }}
+      <div className="facet-h">
+        {label}
+        <span className="range-extent">
+          {fmt(min)} – {fmt(max)}
+        </span>
+      </div>
+      <div className="ecdf">
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none">
+          <polyline
+            fill="none"
+            stroke="var(--brand)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+            points={ecdfPoints(sorted)}
           />
+          {PERCENTILES.map((p, i) => (
+            <line
+              key={p}
+              x1={p}
+              x2={p}
+              y1="0"
+              y2="24"
+              stroke="var(--line-strong)"
+              strokeDasharray="2 2"
+              vectorEffect="non-scaling-stroke"
+              opacity={activeStop === i ? 0.8 : 0.3}
+            />
+          ))}
+        </svg>
+      </div>
+      <div className="pct-chips">
+        {PERCENTILES.map((p, i) => (
+          <button
+            key={p}
+            type="button"
+            className={`pct-chip${activeStop === i ? " active" : ""}`}
+            onClick={() => apply(stops[i]!)}
+            title={`${fmt(stops[i]!)} (${p}th percentile)`}
+          >
+            ≥ p{p}
+          </button>
         ))}
-      </div>
-      <div
-        className="range-track"
-        ref={trackRef}
-        onMouseDown={(e) => {
-          if (!trackRef.current) return;
-          const rect = trackRef.current.getBoundingClientRect();
-          const onMove = (ev: MouseEvent) => {
-            const ratio = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
-            const v = min + ratio * (max - min);
-            const center = (lo + hi) / 2;
-            if (v < center) setLo(Math.min(v, hi));
-            else setHi(Math.max(v, lo));
-          };
-          const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
-            apply(lo, hi);
-          };
-          window.addEventListener("mousemove", onMove);
-          window.addEventListener("mouseup", onUp);
-          // immediate
-          onMove(e.nativeEvent);
-        }}
-      >
-        <div
-          className="range-fill"
-          style={{
-            left: `${pct(lo, min, max)}%`,
-            right: `${100 - pct(hi, min, max)}%`,
-          }}
-        />
-        <Thumb pos={pct(lo, min, max)} />
-        <Thumb pos={pct(hi, min, max)} />
-      </div>
-      <div className="range-labels">
-        <span>{fmt(lo, isStatus)}</span>
-        <span>{fmt(hi, isStatus)}</span>
+        {pinned.lo != null && (
+          <button type="button" className="pct-chip clear" onClick={clear}>
+            clear
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function Thumb({ pos }: { pos: number }) {
-  return <span className="range-thumb" style={{ left: `${pos}%` }} />;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-function pct(v: number, min: number, max: number): number {
-  if (max === min) return 0;
-  return ((v - min) / (max - min)) * 100;
-}
-
-function fmt(v: number, isStatus: boolean): string {
-  if (isStatus) return Math.round(v).toString();
-  return Number.isInteger(v) ? v.toString() : v.toFixed(1);
-}
-
-function snapStatus(v: number, edge: "lo" | "hi"): number {
-  const groups = [100, 200, 300, 400, 500, 600];
-  if (edge === "lo") {
-    let best = groups[0]!;
-    for (const g of groups) if (g <= v) best = g;
-    return best;
+function ecdfPoints(sorted: number[]): string {
+  if (sorted.length === 0) return "";
+  const n = sorted.length;
+  const min = sorted[0]!;
+  const max = sorted[n - 1]!;
+  if (max === min) return "0,12 100,12";
+  // Sample at percentile positions for smooth curve.
+  const out: string[] = [];
+  const steps = 50;
+  for (let i = 0; i <= steps; i++) {
+    const p = (i / steps) * 100;
+    const v = percentile(sorted, p);
+    const x = p;
+    const y = 24 - ((v - min) / (max - min)) * 24;
+    out.push(`${x.toFixed(2)},${y.toFixed(2)}`);
   }
-  // hi: snap to next group up
-  for (const g of groups) if (g >= v) return g;
-  return groups[groups.length - 1]!;
+  return out.join(" ");
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.floor((p / 100) * sorted.length)),
+  );
+  return sorted[idx]!;
+}
+
+function findActiveStop(lo: number, stops: number[]): number | null {
+  for (let i = stops.length - 1; i >= 0; i--) {
+    if (Math.abs(stops[i]! - lo) < 0.001) return i;
+  }
+  return null;
+}
+
+function fmt(v: number): string {
+  if (Number.isInteger(v)) return v.toString();
+  if (v >= 100) return v.toFixed(0);
+  return v.toFixed(1);
 }
 
 function extractValues(events: LogEvent[], key: string): number[] {
@@ -200,18 +203,10 @@ function lookup(fields: unknown, path: string): unknown {
   return cur;
 }
 
-function bucketize(values: number[], min: number, max: number, n: number): number[] {
-  const out = new Array(n).fill(0);
-  if (max === min) return out;
-  for (const v of values) {
-    let i = Math.floor(((v - min) / (max - min)) * n);
-    if (i >= n) i = n - 1;
-    out[i]++;
-  }
-  return out;
-}
-
-function collectRange(ast: Ast | null, key: string): { lo: number | null; hi: number | null } {
+function collectRange(
+  ast: Ast | null,
+  key: string,
+): { lo: number | null; hi: number | null } {
   if (!ast) return { lo: null, hi: null };
   let lo: number | null = null;
   let hi: number | null = null;
@@ -242,19 +237,24 @@ function collectRange(ast: Ast | null, key: string): { lo: number | null; hi: nu
 function applyRange(
   query: string,
   key: string,
-  lo: number,
-  hi: number,
-  min: number,
-  max: number,
+  lo: number | null,
+  hi: number | null,
 ): string {
-  // Strip any existing key:>=N / key:<N / key:>N / key:<=N clauses.
-  const pat = new RegExp(`(\\s+AND\\s+|^)${escapeRe(key)}:(>|>=|<|<=)[\\d.\\-]+`, "g");
-  let q = query.replace(pat, (_, prefix) => (prefix.startsWith(" AND") ? "" : ""));
-  q = q.replace(new RegExp(`${escapeRe(key)}:(>|>=|<|<=)[\\d.\\-]+\\s+AND\\s+`, "g"), "");
+  const pat = new RegExp(
+    `(\\s+AND\\s+|^)${escapeRe(key)}:(>|>=|<|<=)[\\d.\\-]+`,
+    "g",
+  );
+  let q = query.replace(pat, (_, prefix) =>
+    prefix.startsWith(" AND") ? "" : "",
+  );
+  q = q.replace(
+    new RegExp(`${escapeRe(key)}:(>|>=|<|<=)[\\d.\\-]+\\s+AND\\s+`, "g"),
+    "",
+  );
   q = q.trim();
   const clauses: string[] = [];
-  if (lo > min) clauses.push(`${key}:>=${lo}`);
-  if (hi < max) clauses.push(`${key}:<=${hi}`);
+  if (lo != null) clauses.push(`${key}:>=${lo}`);
+  if (hi != null) clauses.push(`${key}:<=${hi}`);
   if (clauses.length === 0) return q;
   if (!q) return clauses.join(" AND ");
   return `${q} AND ${clauses.join(" AND ")}`;

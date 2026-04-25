@@ -443,53 +443,49 @@ kbd {
 .facet-more:hover { background: var(--hover); }
 
 .range-group { padding-bottom: 12px; }
-.range-spark {
-  display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  height: 28px;
+.range-extent {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted-2);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.ecdf {
   margin: 4px 12px 6px;
+  height: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  overflow: hidden;
 }
-.range-spark .bar {
-  flex: 1;
-  min-width: 1px;
-  background: var(--brand-50);
-  border-bottom: 1px solid var(--brand);
-}
-.range-track {
-  position: relative;
-  height: 6px;
-  margin: 6px 16px;
-  background: var(--surface-3);
-  border-radius: 99px;
-  cursor: pointer;
-}
-.range-fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: var(--brand);
-  border-radius: 99px;
-}
-.range-thumb {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
-  border-radius: 50%;
-  background: white;
-  border: 2px solid var(--brand);
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.range-labels {
+.ecdf svg { width: 100%; height: 100%; display: block; }
+.pct-chips {
   display: flex;
-  justify-content: space-between;
-  margin: 4px 16px 0;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 0 12px;
+}
+.pct-chip {
   font-family: var(--mono);
   font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
   color: var(--muted);
+  cursor: default;
+}
+.pct-chip:hover { color: var(--ink); border-color: var(--brand); }
+.pct-chip.active {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand-600, var(--brand));
+}
+.pct-chip.clear {
+  margin-left: auto;
+  border-style: dashed;
 }
 
 /* ── Histogram ─────────────────────────────────────────────────── */
