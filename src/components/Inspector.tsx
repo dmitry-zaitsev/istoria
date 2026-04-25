@@ -177,7 +177,9 @@ export function Inspector({ event, events, onSelect, onClose }: InspectorProps) 
             {stackFrames.length === 0 ? (
               <div className="empty-tab">No stack trace.</div>
             ) : (
-              stackFrames.map((f, i) => <div key={i} className="frame">{f}</div>)
+              stackFrames.map((f, i) => (
+                <StackFrame key={i} frame={f} index={i} />
+              ))
             )}
           </div>
         )}
@@ -213,6 +215,67 @@ export function Inspector({ event, events, onSelect, onClose }: InspectorProps) 
         )}
       </div>
     </aside>
+  );
+}
+
+interface ParsedFrame {
+  raw: string;
+  fn?: string;
+  file?: string;
+  line?: number;
+  col?: number;
+}
+
+function parseFrame(raw: string): ParsedFrame {
+  const trimmed = raw.replace(/^\s*at\s+/, "").trim();
+  // `<fn> (<file>:<line>:<col>)`
+  const m1 = trimmed.match(/^(.+?)\s+\((.+?):(\d+)(?::(\d+))?\)$/);
+  if (m1) {
+    return {
+      raw,
+      fn: m1[1],
+      file: m1[2],
+      line: Number(m1[3]),
+      col: m1[4] ? Number(m1[4]) : undefined,
+    };
+  }
+  // `<file>:<line>:<col>`
+  const m2 = trimmed.match(/^(.+?):(\d+)(?::(\d+))?$/);
+  if (m2) {
+    return {
+      raw,
+      file: m2[1],
+      line: Number(m2[2]),
+      col: m2[3] ? Number(m2[3]) : undefined,
+    };
+  }
+  return { raw, fn: trimmed };
+}
+
+function StackFrame({ frame, index }: { frame: string; index: number }) {
+  const p = parseFrame(frame);
+  return (
+    <div className="frame">
+      <span className="frame-idx">#{index}</span>
+      {p.fn && <span className="frame-fn">{p.fn}</span>}
+      {p.file && (
+        <span className="frame-loc">
+          <span className="frame-file">{p.file}</span>
+          {p.line != null && (
+            <>
+              <span className="frame-sep">:</span>
+              <span className="frame-line">{p.line}</span>
+              {p.col != null && (
+                <>
+                  <span className="frame-sep">:</span>
+                  <span className="frame-col">{p.col}</span>
+                </>
+              )}
+            </>
+          )}
+        </span>
+      )}
+    </div>
   );
 }
 

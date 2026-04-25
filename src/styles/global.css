@@ -868,17 +868,46 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   color: var(--muted-2);
 }
 .stack {
-  padding: 12px 16px;
+  padding: 8px 0;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 .stack .frame {
-  padding: 2px 0;
-  color: var(--ink-2);
-  white-space: pre;
-  overflow-x: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 16px;
+  border-left: 2px solid transparent;
+  cursor: default;
 }
+.stack .frame:hover {
+  background: var(--hover);
+  border-left-color: var(--brand);
+}
+.frame-idx {
+  color: var(--muted-2);
+  font-size: 10px;
+  width: 24px;
+  flex-shrink: 0;
+}
+.frame-fn {
+  color: var(--brand-700);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.frame-loc {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.frame-file { color: var(--ink-2); }
+.frame-sep { color: var(--muted-2); }
+.frame-line { color: #9b3415; }
+.frame-col { color: var(--info-fg); }
 .related {
   padding: 8px 0;
 }
