@@ -1,0 +1,19 @@
+# Rust
+target/
+src-tauri/target/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.vite/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Env
+.env
+.env.local
