@@ -228,6 +228,20 @@ body,
 }
 .chip.chip-free { background: var(--surface-3); color: var(--ink-2); border-color: var(--line); }
 .chip.chip-op { background: var(--info-bg); color: var(--info-fg); }
+.chip.chip-group { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-line, var(--line)); font-weight: 500; }
+.filter-group-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: default;
+}
+.filter-group-btn:hover { color: var(--ink); border-color: var(--brand); background: var(--brand-50); }
 .filter-err {
   margin-left: 8px;
   font-family: var(--mono);

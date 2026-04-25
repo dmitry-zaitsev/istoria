@@ -20,7 +20,7 @@ export interface ParseError {
 }
 
 export interface Token {
-  kind: "key_exact" | "key_cmp" | "key_regex" | "free" | "op";
+  kind: "key_exact" | "key_cmp" | "key_regex" | "free" | "op" | "group";
   text: string;
 }
 
@@ -314,10 +314,21 @@ function astToToken(ast: Ast): Token {
     case "free":
       return { kind: "free", text: ast.term };
     case "or":
+      return { kind: "group", text: `(${render(ast)})` };
     case "not":
+      return { kind: "op", text: `NOT ${render(ast.expr)}` };
     case "and":
       return { kind: "op", text: render(ast) };
   }
+}
+
+/// Wrap an existing query in parens and append " AND " so the user can
+/// type a new clause that ANDs with the whole previous expression.
+/// Used by the "+ AND group" button in the filter bar.
+export function wrapAsAndGroup(query: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) return "";
+  return `(${trimmed}) AND `;
 }
 
 function cmpStr(op: CmpOp): string {
