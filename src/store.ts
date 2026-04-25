@@ -12,12 +12,15 @@ interface Store {
   inspectorHeight: number;
   views: View[];
   activeViewId: number | null;
+  paused: boolean;
+  pausedBaseline: number; // event count when paused
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
   setInspectorHeight: (h: number) => void;
   setViews: (views: View[]) => void;
   setActiveViewId: (id: number | null) => void;
+  setPaused: (paused: boolean, baseline?: number) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -27,6 +30,8 @@ export const useStore = create<Store>((set) => ({
   inspectorHeight: INSPECTOR_DEFAULT,
   views: [],
   activeViewId: null,
+  paused: false,
+  pausedBaseline: 0,
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) => set({ selectedId }),
@@ -36,4 +41,9 @@ export const useStore = create<Store>((set) => ({
     }),
   setViews: (views) => set({ views }),
   setActiveViewId: (activeViewId) => set({ activeViewId }),
+  setPaused: (paused, baseline) =>
+    set((s) => ({
+      paused,
+      pausedBaseline: paused ? baseline ?? s.events.length : 0,
+    })),
 }));

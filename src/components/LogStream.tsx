@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { Level, LogEvent } from "../lib/ipc";
+import { useStore } from "../store";
 
 interface LogStreamProps {
   events: LogEvent[];
@@ -11,6 +12,7 @@ interface LogStreamProps {
 }
 
 const ROW_PX = 26;
+const STICK_THRESHOLD = 50;
 
 export function LogStream({
   events,
@@ -20,6 +22,9 @@ export function LogStream({
 }: LogStreamProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
+  const paused = useStore((s) => s.paused);
+  const setPaused = useStore((s) => s.setPaused);
+  const pausedBaseline = useStore((s) => s.pausedBaseline);
 
   const virtualizer = useVirtualizer({
     count: events.length,
@@ -34,23 +39,63 @@ export function LogStream({
     const onScroll = () => {
       const distanceFromBottom =
         el.scrollHeight - el.scrollTop - el.clientHeight;
-      stickToBottom.current = distanceFromBottom < 4;
+      const atBottom = distanceFromBottom < STICK_THRESHOLD;
+      stickToBottom.current = atBottom;
+      if (!atBottom && !useStore.getState().paused) {
+        setPaused(true, events.length);
+      }
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [events.length, setPaused]);
 
   useLayoutEffect(() => {
+    if (paused) return;
     if (!stickToBottom.current || events.length === 0) return;
     virtualizer.scrollToIndex(events.length - 1, { align: "end" });
-  }, [events.length, virtualizer]);
+  }, [events.length, virtualizer, paused]);
+
+  const onSelectInternal = (id: number | null) => {
+    if (id != null && !paused) setPaused(true, events.length);
+    onSelect(id);
+  };
+
+  const resume = () => {
+    setPaused(false);
+    stickToBottom.current = true;
+    if (events.length > 0)
+      virtualizer.scrollToIndex(events.length - 1, { align: "end" });
+  };
+
+  const newCount = paused ? Math.max(0, events.length - pausedBaseline) : 0;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " && paused) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+        e.preventDefault();
+        resume();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
     <div
       className="stream"
       ref={parentRef}
       style={{ paddingBottom: bottomInset }}
+      tabIndex={0}
     >
+      {paused && (
+        <div className="pause-pill" role="button" onClick={resume}>
+          paused
+          <span style={{ color: "var(--ink)" }}> · {newCount.toLocaleString()} new</span>
+          <span className="resume">resume ▶</span>
+        </div>
+      )}
       <div
         style={{
           height: virtualizer.getTotalSize(),
@@ -60,6 +105,7 @@ export function LogStream({
       >
         {virtualizer.getVirtualItems().map((vi) => {
           const ev = events[vi.index];
+          if (!ev) return null;
           const cls = levelClass(ev.level);
           const isSel = ev.id === selectedId;
           return (
@@ -74,7 +120,7 @@ export function LogStream({
                 transform: `translateY(${vi.start}px)`,
                 height: vi.size,
               }}
-              onClick={() => onSelect(isSel ? null : ev.id)}
+              onClick={() => onSelectInternal(isSel ? null : ev.id)}
             >
               <span className="ts">{formatTs(ev.ts)}</span>
               <span>
@@ -90,9 +136,11 @@ export function LogStream({
           );
         })}
       </div>
-      <div className="stream-foot">
-        ▼ tailing — newest at bottom · scroll up to pause
-      </div>
+      {!paused && (
+        <div className="stream-foot">
+          ▼ tailing — newest at bottom · scroll up to pause
+        </div>
+      )}
     </div>
   );
 }
