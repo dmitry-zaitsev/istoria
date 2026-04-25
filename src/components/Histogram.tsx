@@ -35,6 +35,8 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
   const [expanded, setExpanded] = useState(true);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [brush, setBrush] = useState<{ start: number; end: number } | null>(null);
+  const brushRef = useRef<{ start: number; end: number } | null>(null);
+  brushRef.current = brush;
 
   const { buckets, bucketMs, tMin, tMax } = useMemo(
     () => bucketize(events),
@@ -52,26 +54,31 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
 
   const onBrushDown = (e: React.MouseEvent) => {
     if (!expanded || !trackRef.current) return;
+    e.preventDefault();
     const rect = trackRef.current.getBoundingClientRect();
-    const startX = e.clientX - rect.left;
-    setBrush({ start: startX, end: startX });
+    const startX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const init = { start: startX, end: startX };
+    brushRef.current = init;
+    setBrush(init);
     const onMove = (ev: MouseEvent) => {
       const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
-      setBrush((b) => (b ? { start: b.start, end: x } : null));
+      const next = { start: brushRef.current!.start, end: x };
+      brushRef.current = next;
+      setBrush(next);
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      setBrush((b) => {
-        if (!b) return null;
-        const lo = Math.min(b.start, b.end) / rect.width;
-        const hi = Math.max(b.start, b.end) / rect.width;
-        if (hi - lo < 0.005) return null;
-        const tLo = Math.round(tMin + lo * (tMax - tMin));
-        const tHi = Math.round(tMin + hi * (tMax - tMin));
-        applyTsRange(filter, tLo, tHi, onFilterChange);
-        return null;
-      });
+      const b = brushRef.current;
+      brushRef.current = null;
+      setBrush(null);
+      if (!b) return;
+      const lo = Math.min(b.start, b.end) / rect.width;
+      const hi = Math.max(b.start, b.end) / rect.width;
+      if (hi - lo < 0.005) return;
+      const tLo = Math.round(tMin + lo * (tMax - tMin));
+      const tHi = Math.round(tMin + hi * (tMax - tMin));
+      applyTsRange(filter, tLo, tHi, onFilterChange);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
