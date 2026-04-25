@@ -29,7 +29,10 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
   const groups: FacetGroup[] = [];
 
   groups.push(group("level", "Level", events, (e) => [e.level]));
-  groups.push(group("source", "Source", events, (e) => [e.source]));
+  const sourceGroup = group("source", "Source", events, (e) => [e.source]);
+  // Single-source case: don't bother with the facet — there's nothing
+  // to filter and it's redundant with the (also-hidden) row column.
+  if (sourceGroup.values.length > 1) groups.push(sourceGroup);
 
   // Top-N JSON keys by cardinality
   const keyStats = new Map<string, Set<string>>();

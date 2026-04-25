@@ -58,6 +58,14 @@ export default function App() {
       ),
     [unfilteredEvents, tsBounds.lo, tsBounds.hi],
   );
+  const showSource = useMemo(() => {
+    const seen = new Set<string>();
+    for (const e of unfilteredEvents) {
+      seen.add(e.source);
+      if (seen.size > 1) return true;
+    }
+    return false;
+  }, [unfilteredEvents]);
 
   // Bootstrap views + active id from DuckDB.
   useEffect(() => {
@@ -160,6 +168,7 @@ export default function App() {
             selectedId={selectedId}
             onSelect={setSelected}
             bottomInset={bottomInset}
+            showSource={showSource}
           />
           {selected && (
             <Inspector

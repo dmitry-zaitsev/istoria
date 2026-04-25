@@ -9,6 +9,7 @@ interface LogStreamProps {
   selectedId: number | null;
   onSelect: (id: number | null) => void;
   bottomInset: number;
+  showSource: boolean;
 }
 
 const ROW_PX = 26;
@@ -19,6 +20,7 @@ export function LogStream({
   selectedId,
   onSelect,
   bottomInset,
+  showSource,
 }: LogStreamProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
@@ -114,7 +116,9 @@ export function LogStream({
           return (
             <div
               key={ev.id}
-              className={`logrow lvl-${cls}${isSel ? " sel" : ""}`}
+              className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
+                showSource ? "" : " no-src"
+              }`}
               style={{
                 position: "absolute",
                 top: 0,
@@ -131,9 +135,11 @@ export function LogStream({
                   {cls}
                 </span>
               </span>
-              <span className="src" title={ev.source}>
-                {ev.source}
-              </span>
+              {showSource && (
+                <span className="src" title={ev.source}>
+                  {ev.source}
+                </span>
+              )}
               <span className="msg">{ev.msg || ev.raw}</span>
             </div>
           );
