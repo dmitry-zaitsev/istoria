@@ -1,0 +1,46 @@
+[14:02:31.402] INFO  web    GET /api/users 200 in 24ms
+[14:02:31.418] DEBUG web    cache hit users:list:page=1 ttl=120
+[14:02:31.601] INFO  api    POST /sessions 201 in 88ms
+[14:02:31.770] WARN  api    slow query SELECT * FROM events WHERE created_at > $1 (412ms)
+[14:02:31.812] INFO  web    GET /api/feed 200 in 11ms
+[14:02:32.004] ERROR api    TypeError: cannot read property id of undefined (req_8sj2)
+[14:02:32.005] ERROR api      at handler (src/api/handler.js:42:18)
+[14:02:32.005] ERROR api      at processRequest (src/server.js:188:7)
+[14:02:32.108] INFO  web    GET /api/feed 200 in 9ms
+[14:02:32.244] DEBUG job    tick scheduler.run loop=4 queued=3
+[14:02:32.512] WARN  web    rate limit near threshold (92/100) ip=10.0.0.4 window=1m
+[14:02:32.701] ERROR api    500 POST /payments — gateway timeout (gw=stripe, 8003ms, user_id=1009)
+[14:02:32.911] INFO  job    job email.welcome.send done in 142ms
+[14:02:33.020] INFO  web    GET /favicon.ico 304
+[14:02:33.155] DEBUG api    auth.verify token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... ok user_id=42
+[14:02:33.290] INFO  web    GET /api/users/42 200 in 6ms
+[14:02:33.401] WARN  job    retry attempt=2 job=image.resize backoff=4s
+[14:02:33.580] INFO  api    POST /api/posts 201 in 32ms
+[14:02:33.612] DEBUG db     pool stats active=4 idle=12 waiting=0
+[14:02:33.770] INFO  web    GET /api/users/207 200 in 5ms
+[14:02:33.901] WARN  api    deprecation: /v1/sessions will be removed 2026-06-01
+[14:02:34.012] INFO  api    POST /api/comments 201 in 18ms
+[14:02:34.155] ERROR job    job image.resize failed: Sharp: corrupt JPEG data: 12 extraneous bytes before marker
+[14:02:34.156] ERROR job      at Sharp.<anonymous> (node_modules/sharp/lib/output.js:88:22)
+[14:02:34.301] INFO  web    GET /api/feed 200 in 8ms
+[14:02:34.412] DEBUG api    cache miss feed:user:42 — fetching upstream
+[14:02:34.580] INFO  api    GET upstream feed.svc 200 in 124ms
+[14:02:34.602] INFO  web    GET /api/feed 200 in 14ms
+[14:02:34.711] WARN  db     replication lag 2.4s on db.replica
+[14:02:34.812] INFO  web    GET /health 200 in 1ms
+[14:02:35.001] DEBUG job    tick scheduler.run loop=5 queued=2
+[14:02:35.124] INFO  api    POST /sessions 201 in 76ms
+[14:02:35.302] INFO  web    GET /api/users/88 200 in 7ms
+[14:02:35.401] ERROR api    400 POST /api/posts — validation failed: title required
+[14:02:35.512] INFO  api    DELETE /api/sessions/abc123 204 in 12ms
+[14:02:35.611] DEBUG api    auth.revoke session=abc123 user_id=42
+[14:02:35.722] WARN  job    queue depth high: emails=320 images=88
+[14:02:35.831] INFO  web    GET /api/posts 200 in 22ms
+[14:02:35.940] INFO  api    PATCH /api/users/42 200 in 19ms
+[14:02:36.052] DEBUG db     query plan: index scan on users_pk (rows=1)
+[14:02:36.181] INFO  web    GET /api/feed 200 in 10ms
+[14:02:36.294] WARN  api    slow request 1842ms POST /api/uploads (file=12.4MB)
+[14:02:36.401] INFO  api    POST /api/uploads 201 in 1842ms
+[14:02:36.512] INFO  job    job thumbnail.generate done in 89ms
+[14:02:36.624] DEBUG api    metrics flush 1m: req=4012 err=42 p99=312ms
+[14:02:36.741] INFO  web    GET /api/users/me 200 in 4ms
