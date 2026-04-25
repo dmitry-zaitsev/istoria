@@ -1,6 +1,25 @@
 default:
     @just --list
 
-# Run the app in dev mode (Tauri spawns Vite + the Rust binary, auto-reload).
+# Run the app in dev mode.
+# - tty stdin: normal `tauri dev` with hot-reload of both rust + vite.
+# - piped stdin (e.g. `cat log | just dev`): run vite + `cargo run`
+#   directly so stdin reaches the binary instead of being captured
+#   by the tauri-cli dev console.
 dev:
-    npm run tauri dev
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -t 0 ]; then
+        exec npm run tauri dev
+    fi
+    echo "[just dev] piped stdin → vite + cargo run" >&2
+    npm run dev >/tmp/istoria-vite.log 2>&1 &
+    VITE_PID=$!
+    trap 'kill $VITE_PID 2>/dev/null || true' EXIT
+    for _ in $(seq 1 100); do
+        if curl -sf http://localhost:1420/ >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.1
+    done
+    cargo run --manifest-path src-tauri/Cargo.toml --bin istoria
