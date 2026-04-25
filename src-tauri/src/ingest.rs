@@ -3,13 +3,19 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::format::Detector;
+use crate::persistence::Store;
 use crate::ring::Ring;
 
 /// Read stdin line-by-line, push each into the ring buffer.
 /// If `tee` is true, also forward each line to stdout so the user
 /// continues to see logs in their terminal. A per-source `Detector`
 /// sniffs the first ~20 lines to pick JSON vs plain.
-pub async fn run_stdin_reader(ring: Arc<Ring>, source: String, tee: bool) {
+pub async fn run_stdin_reader(
+    ring: Arc<Ring>,
+    store: Option<Arc<Store>>,
+    source: String,
+    tee: bool,
+) {
     let stdin = BufReader::with_capacity(64 * 1024, tokio::io::stdin());
     let mut lines = stdin.lines();
     let mut stdout = tokio::io::stdout();
@@ -24,6 +30,9 @@ pub async fn run_stdin_reader(ring: Arc<Ring>, source: String, tee: bool) {
                 }
                 let id = ring.next_id();
                 let ev = detector.parse(id, &source, line);
+                if let Some(s) = store.as_ref() {
+                    s.submit(ev.clone());
+                }
                 ring.push(ev);
             }
             Ok(None) => break,

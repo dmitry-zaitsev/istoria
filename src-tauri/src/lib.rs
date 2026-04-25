@@ -3,6 +3,7 @@ pub mod event;
 pub mod format;
 pub mod ingest;
 pub mod ipc;
+pub mod persistence;
 pub mod ring;
 pub mod state;
 
@@ -13,6 +14,7 @@ use std::time::Duration;
 use tauri::Emitter;
 
 use ipc::EventNewPayload;
+use persistence::Store;
 use ring::Ring;
 use state::AppState;
 
@@ -20,26 +22,32 @@ use state::AppState;
 pub fn run(cli: cli::Cli) {
     init_tracing();
 
-    if cli.clear {
-        // M2: purge the DuckDB store. No-op for now.
-    }
-
     let ring = Arc::new(Ring::from_env());
     let source = cli.name.clone().unwrap_or_else(|| "stdin".into());
+
+    let store = match Store::open_default(cli.clear) {
+        Ok(s) => Some(Arc::new(s)),
+        Err(e) => {
+            tracing::warn!(error = %e, "DuckDB store unavailable; running in-memory only");
+            None
+        }
+    };
 
     if !std::io::stdin().is_terminal() {
         let ring_for_ingest = Arc::clone(&ring);
         let tee = !cli.silent;
         let source_for_ingest = source.clone();
+        let store_for_ingest = store.clone();
         tauri::async_runtime::spawn(async move {
-            ingest::run_stdin_reader(ring_for_ingest, source_for_ingest, tee).await;
+            ingest::run_stdin_reader(ring_for_ingest, store_for_ingest, source_for_ingest, tee)
+                .await;
         });
     }
 
     let ring_for_emit = Arc::clone(&ring);
 
     tauri::Builder::default()
-        .manage(AppState { ring })
+        .manage(AppState { ring, store })
         .invoke_handler(tauri::generate_handler![ipc::query_recent])
         .setup(move |app| {
             let app_handle = app.handle().clone();
