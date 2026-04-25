@@ -423,17 +423,24 @@ export function formatSmartDate(unixMs: number, ref = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 }
 
+function quoteIfNeeded(s: string): string {
+  if (/[\s()"]/.test(s)) return `"${s.replace(/"/g, '\\"')}"`;
+  return s;
+}
+
 function astToToken(ast: Ast): Token {
   switch (ast.kind) {
     case "key_exact":
       return {
         kind: "key_exact",
-        text: `${ast.key}:${chipValue(ast.key, ast.value)}`,
+        text: `${ast.key}:${quoteIfNeeded(chipValue(ast.key, ast.value))}`,
       };
     case "key_cmp":
       return {
         kind: "key_cmp",
-        text: `${ast.key}:${cmpStr(ast.op)}${chipValue(ast.key, ast.value)}`,
+        text: `${ast.key}:${cmpStr(ast.op)}${quoteIfNeeded(
+          chipValue(ast.key, ast.value),
+        )}`,
       };
     case "key_regex":
       return { kind: "key_regex", text: `${ast.key}~/${ast.pattern}/` };
