@@ -10,7 +10,11 @@ interface HistogramProps {
 }
 
 const BUCKET_TARGET = 60;
+const BUCKET_MIN_COUNT = 24;
 const BUCKET_SIZES_MS = [
+  1,
+  10,
+  100,
   1_000,
   10_000,
   60_000,
@@ -106,8 +110,6 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
                   <span className="seg seg-info" style={{ height: `${restH}%` }} />
                 </>
               )}
-              {/* preserve column even when no events */}
-              {!visible && <span className="seg seg-empty" />}
               {/* unused total to avoid lint */}
               <span style={{ display: "none" }}>{total}</span>
             </div>
@@ -176,9 +178,20 @@ function bucketize(events: LogEvent[]): {
   if (tMax === tMin) tMax = tMin + 1;
   const range = tMax - tMin;
   const bucketMs = pickBucket(range);
-  const start = Math.floor(tMin / bucketMs) * bucketMs;
-  const end = Math.ceil((tMax + 1) / bucketMs) * bucketMs;
-  const n = Math.max(1, Math.round((end - start) / bucketMs));
+  let start = Math.floor(tMin / bucketMs) * bucketMs;
+  let end = Math.ceil((tMax + 1) / bucketMs) * bucketMs;
+  let n = Math.max(1, Math.round((end - start) / bucketMs));
+  // Pad to a minimum column count so a tightly-clustered band still
+  // renders as columns instead of a single slab. Centre the populated
+  // band by adding empty buckets on both sides.
+  if (n < BUCKET_MIN_COUNT) {
+    const extra = BUCKET_MIN_COUNT - n;
+    const before = Math.floor(extra / 2);
+    const after = extra - before;
+    start -= before * bucketMs;
+    end += after * bucketMs;
+    n = BUCKET_MIN_COUNT;
+  }
   const buckets: Bucket[] = Array.from({ length: n }, (_, i) => ({
     ts: start + i * bucketMs,
     err: 0,
