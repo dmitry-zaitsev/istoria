@@ -469,6 +469,31 @@ export function wrapAsAndGroup(query: string): string {
   return `(${trimmed}) AND `;
 }
 
+/// Render an AST back to canonical query text. Exported so callers
+/// (toggleFacetOr) can rebuild a query after manipulating the AST.
+export function renderAst(ast: Ast): string {
+  return render(ast);
+}
+
+/// Flatten a left-leaning AND chain into the list of top-level
+/// conjuncts. \`a AND b AND c\` → [a, b, c].
+export function flattenAnd(ast: Ast): Ast[] {
+  if (ast.kind === "and") return [...flattenAnd(ast.left), ...flattenAnd(ast.right)];
+  return [ast];
+}
+
+/// Return the list of values bound to \`key\` if this node is either a
+/// bare \`key:value\` or an OR-chain of such bindings, else null.
+export function extractKeyOrValues(ast: Ast, key: string): string[] | null {
+  if (ast.kind === "key_exact" && ast.key === key) return [ast.value];
+  if (ast.kind === "or") {
+    const left = extractKeyOrValues(ast.left, key);
+    const right = extractKeyOrValues(ast.right, key);
+    if (left && right) return [...left, ...right];
+  }
+  return null;
+}
+
 function cmpStr(op: CmpOp): string {
   return op === "lt" ? "<" : op === "lte" ? "<=" : op === "gt" ? ">" : ">=";
 }

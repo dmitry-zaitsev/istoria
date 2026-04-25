@@ -1,4 +1,11 @@
 import type { Ast } from "./query";
+import {
+  extractKeyOrValues,
+  flattenAnd,
+  isError,
+  parse,
+  renderAst,
+} from "./query";
 import type { LogEvent } from "./ipc";
 
 export interface FacetValue {
@@ -130,10 +137,15 @@ function walk(ast: Ast, out: Map<string, Set<string>>): void {
       return;
     }
     case "and":
-    case "or":
       walk(ast.left, out);
       walk(ast.right, out);
       return;
+    case "or": {
+      // OR of key:value clauses for the same key — record all values.
+      walk(ast.left, out);
+      walk(ast.right, out);
+      return;
+    }
     case "not":
       walk(ast.expr, out);
       return;
@@ -167,4 +179,44 @@ function formatClause(key: string, value: string): string {
   // Quote values containing whitespace/parens.
   const needsQuotes = /[\s()"]/.test(value);
   return `${key}:${needsQuotes ? `"${value.replace(/"/g, '\\"')}"` : value}`;
+}
+
+/// Toggle a facet value for \`key\` while combining same-key selections
+/// as OR. Existing nodes for the same key (bare or OR-chain of
+/// \`key:v\`) are merged with the toggle target; everything else stays
+/// AND-joined. Empty selection drops the clause entirely.
+export function toggleFacetOr(
+  query: string,
+  key: string,
+  value: string,
+): string {
+  const ast = parse(query);
+  // Empty / unparseable: just emit the bare clause.
+  if (isError(ast)) return formatClause(key, value);
+  if (ast.kind === "free" && ast.term === "") {
+    return formatClause(key, value);
+  }
+  const conjuncts = flattenAnd(ast);
+  const otherConjuncts: Ast[] = [];
+  const collected = new Set<string>();
+  for (const c of conjuncts) {
+    const vals = extractKeyOrValues(c, key);
+    if (vals) {
+      for (const v of vals) collected.add(v);
+    } else {
+      otherConjuncts.push(c);
+    }
+  }
+  if (collected.has(value)) collected.delete(value);
+  else collected.add(value);
+
+  const otherText = otherConjuncts.map(renderAst).join(" AND ");
+  if (collected.size === 0) return otherText;
+  const sorted = [...collected];
+  const keyClause =
+    sorted.length === 1
+      ? formatClause(key, sorted[0]!)
+      : `(${sorted.map((v) => formatClause(key, v)).join(" OR ")})`;
+  if (!otherText) return keyClause;
+  return `${otherText} AND ${keyClause}`;
 }

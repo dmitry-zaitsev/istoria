@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 
 import {
-  addClause,
   computeFacets,
   pinnedFromAst,
-  removeClause,
+  toggleFacetOr,
   type FacetGroup,
 } from "../lib/facets";
 import type { LogEvent } from "../lib/ipc";
@@ -30,12 +29,7 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
   const pinned = useMemo(() => pinnedFromAst(ast), [ast]);
 
   const toggle = (key: string, value: string) => {
-    const set = pinned.get(key);
-    if (set?.has(value)) {
-      onFilterChange(removeClause(filter, key, value));
-    } else {
-      onFilterChange(addClause(filter, key, value));
-    }
+    onFilterChange(toggleFacetOr(filter, key, value));
   };
 
   return (
