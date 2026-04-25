@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod event;
+pub mod format;
 pub mod ingest;
 pub mod ring;
 pub mod state;
