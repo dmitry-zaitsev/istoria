@@ -5,6 +5,8 @@ export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
 export const INSPECTOR_DEFAULT = 320;
 
+export type SortKey = "time-desc" | "time-asc" | "level";
+
 interface Store {
   events: LogEvent[];
   filter: string;
@@ -14,6 +16,7 @@ interface Store {
   activeViewId: number | null;
   paused: boolean;
   pausedBaseline: number; // event count when paused
+  sort: SortKey;
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -21,6 +24,7 @@ interface Store {
   setViews: (views: View[]) => void;
   setActiveViewId: (id: number | null) => void;
   setPaused: (paused: boolean, baseline?: number) => void;
+  setSort: (sort: SortKey) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -32,6 +36,7 @@ export const useStore = create<Store>((set) => ({
   activeViewId: null,
   paused: false,
   pausedBaseline: 0,
+  sort: "time-desc",
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) => set({ selectedId }),
@@ -46,4 +51,5 @@ export const useStore = create<Store>((set) => ({
       paused,
       pausedBaseline: paused ? baseline ?? s.events.length : 0,
     })),
+  setSort: (sort) => set({ sort }),
 }));

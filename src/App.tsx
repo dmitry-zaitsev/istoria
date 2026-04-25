@@ -18,7 +18,7 @@ import {
   type LogEvent,
 } from "./lib/ipc";
 import { evalAst, isError, parse } from "./lib/query";
-import { useStore } from "./store";
+import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
 const SESSION_ID = "1";
@@ -33,6 +33,7 @@ export default function App() {
   const setSelected = useStore((s) => s.setSelected);
   const setViews = useStore((s) => s.setViews);
   const setActiveViewId = useStore((s) => s.setActiveViewId);
+  const sort = useStore((s) => s.sort);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
@@ -77,7 +78,8 @@ export default function App() {
         const filtered = filterValid
           ? ordered.filter((ev) => evalAst(parsed, ev))
           : ordered;
-        setEvents(filtered);
+        const sorted = applySort(filtered, sort);
+        setEvents(sorted);
         setUnfilteredEvents(ordered);
         setUnfilteredCount(ordered.length);
         setLastTickAt(Date.now());
@@ -97,7 +99,7 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setEvents, parsed, filterValid]);
+  }, [setEvents, parsed, filterValid, sort]);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow((n) => n + 1), 1_000);
@@ -155,4 +157,28 @@ export default function App() {
       />
     </div>
   );
+}
+
+const LEVEL_RANK: Record<string, number> = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+  trace: 4,
+};
+
+function applySort(events: LogEvent[], sort: SortKey): LogEvent[] {
+  if (sort === "time-desc") return events;
+  const out = events.slice();
+  if (sort === "time-asc") {
+    out.sort((a, b) => a.ts - b.ts || a.id - b.id);
+  } else if (sort === "level") {
+    out.sort((a, b) => {
+      const ra = LEVEL_RANK[a.level] ?? 9;
+      const rb = LEVEL_RANK[b.level] ?? 9;
+      if (ra !== rb) return ra - rb;
+      return b.ts - a.ts;
+    });
+  }
+  return out;
 }

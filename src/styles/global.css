@@ -520,7 +520,38 @@ kbd {
   height: 36px;
 }
 .stream-h .count b { color: var(--ink); font-weight: 600; }
-.stream-h .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.stream-h .right { margin-left: auto; position: relative; display: flex; align-items: center; gap: 8px; }
+.sort-btn {
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: default;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.sort-btn:hover { background: var(--hover); color: var(--ink); }
+.sort-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  z-index: 30;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(15, 23, 42, 0.08));
+  min-width: 160px;
+  padding: 4px 0;
+}
+.sort-menu-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: default;
+}
+.sort-menu-item:hover { background: var(--hover); color: var(--ink); }
+.sort-menu-item.active { color: var(--brand-700); font-weight: 500; }
 
 .pause-pill {
   position: sticky;
