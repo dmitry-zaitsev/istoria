@@ -447,7 +447,10 @@ function astToToken(ast: Ast): Token {
     case "free":
       return { kind: "free", text: ast.term };
     case "or":
-      return { kind: "group", text: `(${render(ast)})` };
+      return {
+        kind: "group",
+        text: `(${render(ast.left)} OR ${render(ast.right)})`,
+      };
     case "not":
       return { kind: "op", text: `NOT ${render(ast.expr)}` };
     case "and":
