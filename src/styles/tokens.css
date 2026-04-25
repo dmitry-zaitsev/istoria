@@ -1,97 +1,67 @@
 /*
- * v3 design tokens — ported from Logs Wireframes v3.
+ * v3 design tokens — ported verbatim from logs/project/Logs Wireframes v3.html.
  * Light theme, sky-blue brand. All colors here. No hex literals elsewhere.
  */
 
 :root {
-  /* Surfaces */
-  --paper: #fafafa;
-  --surface: #ffffff;
-  --surface-2: #f5f6f7;
-  --surface-sunken: #f1f3f5;
+  /* surfaces */
+  --paper:        #f4f6f9;
+  --surface:      #ffffff;
+  --surface-2:    #fafbfc;
+  --surface-3:    #f1f4f8;
+  --hover:        #f6f8fb;
 
-  /* Hairlines */
-  --hairline: #e6e8eb;
-  --hairline-strong: #d3d6da;
-  --hairline-soft: #eef0f2;
+  /* ink */
+  --ink:          #0f172a;
+  --ink-2:        #1f2937;
+  --muted:        #64748b;
+  --muted-2:      #94a3b8;
+  --muted-3:      #cbd5e1;
 
-  /* Ink */
-  --ink: #1a1f24;
-  --ink-soft: #4d5560;
-  --ink-faint: #818994;
-  --ink-mute: #9aa0aa;
-  --ink-on-brand: #ffffff;
+  /* hairlines */
+  --line:         #e4e8ee;
+  --line-soft:    #eef1f5;
+  --line-strong:  #d3d8e0;
 
-  /* Brand sky */
-  --brand: #4ea8e0;
-  --brand-strong: #2c8fcc;
-  --brand-soft: #b0d8ef;
-  --brand-tint: #e8f4fb;
-  --brand-ink: #0e6aa2;
+  /* brand sky */
+  --brand:        #4ea8e0;
+  --brand-50:     #eef7fc;
+  --brand-100:    #d8edf8;
+  --brand-200:    #b7dff2;
+  --brand-600:    #2d8fcc;
+  --brand-700:    #1f73a8;
 
-  /* Levels */
-  --err-fg: #c0392b;
-  --err-bg: #fde9e7;
-  --err-tint: #fef5f3;
-  --err-border: #f4b6ad;
+  /* levels — gentle, light-mode */
+  --err-bg:       #fdecec;
+  --err-fg:       #b42318;
+  --err-line:     #f4c4be;
 
-  --warn-fg: #b8730a;
-  --warn-bg: #fff4d6;
-  --warn-tint: #fffaec;
-  --warn-border: #f1d28a;
+  --warn-bg:      #fdf3e2;
+  --warn-fg:      #a65d12;
+  --warn-line:    #f0d6a8;
 
-  --info-fg: #1a6fa3;
-  --info-bg: #e8f4fb;
-  --info-border: #b6d8ec;
+  --info-bg:      #e9f2fb;
+  --info-fg:      #1f5f9c;
+  --info-line:    #c8def2;
 
-  --dbg-fg: #6b7180;
-  --dbg-bg: #eef0f2;
-  --dbg-border: #d8dbe0;
+  --dbg-bg:       #eef1f5;
+  --dbg-fg:       #475569;
+  --dbg-line:     #d8dee7;
 
-  /* Highlights */
-  --hl-bg: #fef2c7;
-  --hl-fg: #5a4400;
+  --ok-bg:        #e6f4ee;
+  --ok-fg:        #0f7a4a;
+  --ok-line:      #bedfcc;
 
-  /* JSON syntax */
-  --json-key: #1a6fa3;
-  --json-string: #2e7d32;
-  --json-number: #b8730a;
-  --json-boolean: #6a4cb0;
-  --json-null: var(--ink-mute);
+  /* type */
+  --ui:           "Inter", -apple-system, system-ui, sans-serif;
+  --mono:         "JetBrains Mono", ui-monospace, Menlo, monospace;
 
-  /* Shadows */
-  --shadow-1: 0 1px 2px rgba(15, 21, 28, 0.04), 0 1px 1px rgba(15, 21, 28, 0.06);
-  --shadow-2: 0 4px 12px rgba(15, 21, 28, 0.08);
-  --shadow-pop: 0 8px 24px rgba(15, 21, 28, 0.18);
+  /* shadows */
+  --shadow-sm:    0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md:    0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg:    0 24px 56px rgba(15, 23, 42, 0.16);
 
-  /* Radii */
-  --radius-1: 4px;
-  --radius-2: 6px;
-  --radius-3: 10px;
-  --radius-pill: 999px;
-
-  /* Type */
-  --ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --fs-ui: 13px;
-  --fs-ui-sm: 12px;
-  --fs-ui-xs: 11px;
-  --fs-mono: 12.5px;
-  --fs-h1: 15px;
-  --lh-ui: 1.45;
-  --lh-mono: 1.55;
-
-  /* Layout */
-  --row-h: 24px;
-  --tab-h: 32px;
-  --filter-h: 36px;
-  --histo-compact-h: 22px;
-  --histo-expanded-h: 96px;
-  --facets-w: 220px;
-  --inspector-h-default: 320px;
-  --inspector-h-min: 100px;
-  --inspector-h-max: 600px;
-
-  /* Misc */
-  --focus-ring: 0 0 0 2px var(--brand-soft);
+  --r-sm:         4px;
+  --r-md:         6px;
+  --r-lg:         10px;
 }

@@ -4,57 +4,63 @@ interface JsonViewProps {
 
 export function JsonView({ value }: JsonViewProps) {
   return (
-    <pre className="json">
-      <Node value={value} />
-    </pre>
+    <>
+      <Node value={value} indent={0} />
+    </>
   );
 }
 
-function Node({ value }: { value: unknown }) {
-  if (value === null) return <span className="null">null</span>;
+function Node({ value, indent }: { value: unknown; indent: number }) {
+  if (value === null) return <span className="p">null</span>;
   if (typeof value === "string")
     return <span className="s">"{escape(value)}"</span>;
   if (typeof value === "number")
     return <span className="n">{String(value)}</span>;
   if (typeof value === "boolean")
     return <span className="b">{String(value)}</span>;
-  if (Array.isArray(value)) return <Arr items={value} />;
+  if (Array.isArray(value)) return <Arr items={value} indent={indent} />;
   if (typeof value === "object")
-    return <Obj obj={value as Record<string, unknown>} />;
+    return <Obj obj={value as Record<string, unknown>} indent={indent} />;
   return <span>{String(value)}</span>;
 }
 
-function Obj({ obj }: { obj: Record<string, unknown> }) {
+function Obj({
+  obj,
+  indent,
+}: {
+  obj: Record<string, unknown>;
+  indent: number;
+}) {
   const entries = Object.entries(obj);
-  if (entries.length === 0) return <>{"{}"}</>;
+  if (entries.length === 0) return <span className="p">{"{}"}</span>;
   return (
     <>
-      {"{"}
+      <span className="p">{"{"}</span>
       {entries.map(([k, v], i) => (
-        <div className="json-line" key={k}>
+        <div key={k} className="row indent">
           <span className="k">"{k}"</span>
-          {": "}
-          <Node value={v} />
-          {i < entries.length - 1 ? "," : ""}
+          <span className="p">: </span>
+          <Node value={v} indent={indent + 1} />
+          {i < entries.length - 1 && <span className="p">,</span>}
         </div>
       ))}
-      {"}"}
+      <span className="p">{"}"}</span>
     </>
   );
 }
 
-function Arr({ items }: { items: unknown[] }) {
-  if (items.length === 0) return <>{"[]"}</>;
+function Arr({ items, indent }: { items: unknown[]; indent: number }) {
+  if (items.length === 0) return <span className="p">[]</span>;
   return (
     <>
-      {"["}
+      <span className="p">{"["}</span>
       {items.map((v, i) => (
-        <div className="json-line" key={i}>
-          <Node value={v} />
-          {i < items.length - 1 ? "," : ""}
+        <div key={i} className="row indent">
+          <Node value={v} indent={indent + 1} />
+          {i < items.length - 1 && <span className="p">,</span>}
         </div>
       ))}
-      {"]"}
+      <span className="p">{"]"}</span>
     </>
   );
 }

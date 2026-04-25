@@ -1,18 +1,20 @@
 interface ChromeProps {
   live: boolean;
   count: number;
+  session: string;
 }
 
-export function Chrome({ live, count }: ChromeProps) {
+export function Chrome({ live, count, session }: ChromeProps) {
   return (
-    <header className="chrome">
-      <div className="chrome-spacer" />
-      <div className="chrome-title">
-        <span className={`live-dot${live ? " on" : ""}`} aria-hidden />
-        <span className="chrome-title-text">istoria</span>
-        <span className="chrome-count">{count.toLocaleString()} events</span>
+    <header className="win-titlebar">
+      <div className="spacer" />
+      <div className="win-title">
+        logs · session #{session}
       </div>
-      <div className="chrome-spacer" />
+      <div className="win-side">
+        <span className={`live-dot${live ? "" : " idle"}`} />
+        <span>{live ? "live" : "idle"} · {count.toLocaleString()}</span>
+      </div>
     </header>
   );
 }

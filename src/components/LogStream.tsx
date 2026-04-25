@@ -1,17 +1,23 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-import type { LogEvent } from "../lib/ipc";
+import type { Level, LogEvent } from "../lib/ipc";
 
 interface LogStreamProps {
   events: LogEvent[];
   selectedId: number | null;
   onSelect: (id: number | null) => void;
+  bottomInset: number;
 }
 
-const ROW_PX = 24;
+const ROW_PX = 26;
 
-export function LogStream({ events, selectedId, onSelect }: LogStreamProps) {
+export function LogStream({
+  events,
+  selectedId,
+  onSelect,
+  bottomInset,
+}: LogStreamProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
 
@@ -40,20 +46,26 @@ export function LogStream({ events, selectedId, onSelect }: LogStreamProps) {
   }, [events.length, virtualizer]);
 
   return (
-    <div className="stream" ref={parentRef}>
+    <div
+      className="stream"
+      ref={parentRef}
+      style={{ paddingBottom: bottomInset }}
+    >
       <div
-        className="stream-spacer"
-        style={{ height: virtualizer.getTotalSize() }}
+        style={{
+          height: virtualizer.getTotalSize(),
+          width: "100%",
+          position: "relative",
+        }}
       >
         {virtualizer.getVirtualItems().map((vi) => {
           const ev = events[vi.index];
+          const cls = levelClass(ev.level);
           const isSel = ev.id === selectedId;
-          const levelClass = `lvl-row-${ev.level === "error" ? "err" : ev.level === "warn" ? "warn" : ev.level === "debug" ? "dbg" : "info"}`;
-          const lvlChip = `lvl-${ev.level === "error" ? "err" : ev.level === "warn" ? "warn" : ev.level === "debug" ? "dbg" : "info"}`;
           return (
             <div
               key={ev.id}
-              className={`logrow ${levelClass}${isSel ? " sel" : ""}`}
+              className={`logrow lvl-${cls}${isSel ? " sel" : ""}`}
               style={{
                 position: "absolute",
                 top: 0,
@@ -65,16 +77,21 @@ export function LogStream({ events, selectedId, onSelect }: LogStreamProps) {
               onClick={() => onSelect(isSel ? null : ev.id)}
             >
               <span className="ts">{formatTs(ev.ts)}</span>
+              <span>
+                <span className={`lvl ${cls}`} style={{ display: "block" }}>
+                  {cls}
+                </span>
+              </span>
               <span className="src" title={ev.source}>
                 {ev.source}
-              </span>
-              <span className={`lvl ${lvlChip}`}>
-                {labelForLevel(ev.level)}
               </span>
               <span className="msg">{ev.msg || ev.raw}</span>
             </div>
           );
         })}
+      </div>
+      <div className="stream-foot">
+        ▼ tailing — newest at bottom · scroll up to pause
       </div>
     </div>
   );
@@ -89,17 +106,16 @@ function formatTs(unixMs: number): string {
   return `${hh}:${mm}:${ss}.${ms}`;
 }
 
-function labelForLevel(level: LogEvent["level"]): string {
+function levelClass(level: Level): "err" | "warn" | "info" | "dbg" {
   switch (level) {
     case "error":
-      return "ERR";
+      return "err";
     case "warn":
-      return "WARN";
+      return "warn";
     case "debug":
-      return "DBG";
     case "trace":
-      return "TRC";
+      return "dbg";
     default:
-      return "INFO";
+      return "info";
   }
 }
