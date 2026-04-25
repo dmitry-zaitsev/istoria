@@ -246,8 +246,10 @@ function formatRangeClause(key: string, lo: number, hi: number): string {
 }
 
 /// Pull all numeric range pairs (>= lo, < hi) for \`key\` out of an
-/// AST node — handles bare \`key:>=N AND key:<M\` as well as a
-/// top-level OR-chain of such pairs.
+/// AST node. Handles:
+///   - bare \`key:>=N\` or \`key:<M\` (returns one-sided range)
+///   - bare \`key:>=N AND key:<M\` (single bucket, intersected)
+///   - top-level OR-chain of such pairs (multiple buckets)
 function extractRanges(ast: Ast, key: string): { lo: number; hi: number }[] {
   if (ast.kind === "or") {
     const left = extractRanges(ast.left, key);
@@ -280,6 +282,46 @@ function extractRanges(ast: Ast, key: string): { lo: number; hi: number }[] {
   return [{ lo, hi }];
 }
 
+/// Walk top-level conjuncts, pull out all range pieces for \`key\`,
+/// and intersect any one-sided partials into bucket-shaped ranges.
+/// Returns the consolidated range list plus the conjuncts that
+/// did NOT contribute (foreign clauses to keep AND-joined).
+function partitionConjuncts(
+  conjuncts: Ast[],
+  key: string,
+): { ranges: { lo: number; hi: number }[]; others: Ast[] } {
+  const ranges: { lo: number; hi: number }[] = [];
+  const partials: { lo: number; hi: number }[] = [];
+  const others: Ast[] = [];
+  for (const c of conjuncts) {
+    if (c.kind === "or") {
+      const r = extractRanges(c, key);
+      if (r.length > 0) ranges.push(...r);
+      else others.push(c);
+      continue;
+    }
+    if (c.kind === "key_cmp" && c.key === key) {
+      const r = extractRanges(c, key);
+      if (r.length > 0) partials.push(r[0]!);
+      else others.push(c);
+      continue;
+    }
+    others.push(c);
+  }
+  // Intersect all one-sided partials into one bucket. Top-level AND
+  // semantics: every conjunct must hold, so bounds tighten.
+  if (partials.length > 0) {
+    let lo = -Infinity;
+    let hi = Infinity;
+    for (const p of partials) {
+      lo = Math.max(lo, p.lo);
+      hi = Math.min(hi, p.hi);
+    }
+    ranges.push({ lo, hi });
+  }
+  return { ranges, others };
+}
+
 /// Toggle a percentile bucket selection for a numeric facet. Multiple
 /// active buckets are OR-joined; clearing the last bucket drops the
 /// clause entirely. Cross-key clauses stay AND-joined.
@@ -294,21 +336,13 @@ export function toggleFacetRange(
     return formatRangeClause(key, bucket.lo, bucket.hi);
   }
   const conjuncts = flattenAnd(ast);
-  const otherConjuncts: Ast[] = [];
-  const collected: { lo: number; hi: number }[] = [];
-  for (const c of conjuncts) {
-    const ranges = extractRanges(c, key);
-    if (ranges.length > 0) {
-      collected.push(...ranges);
-    } else {
-      otherConjuncts.push(c);
-    }
-  }
+  const { ranges: collected, others } = partitionConjuncts(conjuncts, key);
+
   const idx = collected.findIndex((r) => sameRange(bucket, r));
   if (idx >= 0) collected.splice(idx, 1);
   else collected.push({ lo: bucket.lo, hi: bucket.hi });
 
-  const otherText = otherConjuncts.map(renderAst).join(" AND ");
+  const otherText = others.map(renderAst).join(" AND ");
   if (collected.length === 0) return otherText;
   const rangeText =
     collected.length === 1
@@ -331,8 +365,7 @@ export function activeBuckets(
   const ast = parse(query);
   if (isError(ast)) return out;
   const conjuncts = flattenAnd(ast);
-  const ranges: { lo: number; hi: number }[] = [];
-  for (const c of conjuncts) ranges.push(...extractRanges(c, key));
+  const { ranges } = partitionConjuncts(conjuncts, key);
   for (const b of buckets) {
     if (ranges.some((r) => sameRange(b, r))) out.add(b.label);
   }
