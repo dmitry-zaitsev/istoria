@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Chrome } from "./components/Chrome";
 import { FilterBar } from "./components/FilterBar";
+import { Inspector } from "./components/Inspector";
 import { LogStream } from "./components/LogStream";
 import { queryRecent, subscribeEvents, type LogEvent } from "./lib/ipc";
 import { useStore } from "./store";
@@ -24,9 +25,11 @@ export default function App() {
     let cancelled = false;
     const refresh = async () => {
       try {
-        const next = await queryRecent(QUERY_LIMIT, filterRef.current || undefined);
+        const next = await queryRecent(
+          QUERY_LIMIT,
+          filterRef.current || undefined,
+        );
         if (cancelled) return;
-        // ring returns most-recent-first; reverse to chronological for display
         setEvents(next.slice().reverse() as LogEvent[]);
         setLastTickAt(Date.now());
       } catch (e) {
@@ -47,6 +50,12 @@ export default function App() {
     };
   }, [setEvents, filter]);
 
+  const selected = useMemo(
+    () =>
+      selectedId == null ? null : events.find((e) => e.id === selectedId),
+    [events, selectedId],
+  );
+
   const live = lastTickAt > 0 && Date.now() - lastTickAt < 5_000;
 
   return (
@@ -58,6 +67,9 @@ export default function App() {
         selectedId={selectedId}
         onSelect={setSelected}
       />
+      {selected && (
+        <Inspector event={selected} onClose={() => setSelected(null)} />
+      )}
     </div>
   );
 }
