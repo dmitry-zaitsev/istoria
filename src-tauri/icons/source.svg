@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3aa3da"/>
+      <stop offset="1" stop-color="#1f6fa1"/>
+    </linearGradient>
+    <linearGradient id="surface" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfcfd"/>
+      <stop offset="1" stop-color="#eef2f6"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer rounded square (macOS-style "squircle" approximation) -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
+  <!-- Subtle top highlight -->
+  <rect x="0" y="0" width="1024" height="320" rx="220" ry="220" fill="white" opacity="0.06"/>
+  <!-- Terminal window -->
+  <g transform="translate(168 220)">
+    <rect width="688" height="584" rx="56" ry="56" fill="url(#surface)" stroke="rgba(15,23,42,0.10)" stroke-width="2"/>
+    <!-- Title bar -->
+    <rect width="688" height="84" rx="56" ry="56" fill="#f1f4f8"/>
+    <rect y="42" width="688" height="42" fill="#f1f4f8"/>
+    <!-- Traffic lights -->
+    <circle cx="52" cy="42" r="13" fill="#ff5f57"/>
+    <circle cx="92" cy="42" r="13" fill="#febc2e"/>
+    <circle cx="132" cy="42" r="13" fill="#28c840"/>
+    <line x1="0" y1="84" x2="688" y2="84" stroke="rgba(15,23,42,0.10)" stroke-width="2"/>
+    <!-- Log rows -->
+    <g font-family="JetBrains Mono, Menlo, monospace" font-size="38" font-weight="500">
+      <rect x="40" y="130" width="14" height="40" fill="#0f7a4a"/>
+      <text x="68" y="162" fill="#1f6fa1">INFO</text>
+      <text x="200" y="162" fill="#475569">GET /api/users 200</text>
+
+      <rect x="40" y="200" width="14" height="40" fill="#a0691b"/>
+      <text x="68" y="232" fill="#a0691b">WARN</text>
+      <text x="200" y="232" fill="#a0691b">slow query 412ms</text>
+
+      <rect x="40" y="270" width="14" height="40" fill="#a8261c"/>
+      <text x="68" y="302" fill="#a8261c">ERR</text>
+      <text x="200" y="302" fill="#a8261c">500 POST /payments</text>
+
+      <rect x="40" y="340" width="14" height="40" fill="#1f6fa1"/>
+      <text x="68" y="372" fill="#1f6fa1">INFO</text>
+      <text x="200" y="372" fill="#475569">POST /sessions 201</text>
+
+      <rect x="40" y="410" width="14" height="40" fill="#475569"/>
+      <text x="68" y="442" fill="#475569">DEBUG</text>
+      <text x="240" y="442" fill="#94a3b8">cache hit users:list</text>
+
+      <rect x="40" y="480" width="14" height="40" fill="#1f6fa1"/>
+      <text x="68" y="512" fill="#1f6fa1">INFO</text>
+      <text x="200" y="512" fill="#475569">GET /api/feed 200</text>
+    </g>
+  </g>
+</svg>
