@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { registerFilterFocus } from "../lib/filterFocus";
 import { isError, parse, tokenize, type Token } from "../lib/query";
+import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
 interface FilterBarProps {
@@ -64,7 +65,17 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
       if (allSelected && (e.metaKey || e.ctrlKey) && e.key === "c") {
         e.preventDefault();
         const full = useStore.getState().filter;
-        if (full) navigator.clipboard?.writeText(full).catch(() => {});
+        if (full) {
+          navigator.clipboard
+            ?.writeText(full)
+            .then(() => toast("Copied"))
+            .catch(() => toast("Copy failed"));
+        }
+        setAllSelected(false);
+      }
+      if (allSelected && (e.key === "Backspace" || e.key === "Delete")) {
+        e.preventDefault();
+        onChange("");
         setAllSelected(false);
       }
       if (allSelected && e.key === "Escape") {
@@ -82,7 +93,7 @@ export function FilterBar({ value, onChange }: FilterBarProps) {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onMouseDown);
     };
-  }, [allSelected]);
+  }, [allSelected, onChange]);
 
   useEffect(() => {
     if (editing != null) editRef.current?.focus();
