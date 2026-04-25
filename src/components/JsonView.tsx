@@ -1,5 +1,6 @@
 interface JsonViewProps {
   value: unknown;
+  onFilter?: (path: string, value: unknown) => void;
 }
 
 const TS_KEYS = new Set([
@@ -13,35 +14,81 @@ const TS_KEYS = new Set([
 ]);
 const TS_MS_FLOOR = 1_000_000_000_000; // 2001-09-09 — anything above this is plausibly Unix-ms.
 
-export function JsonView({ value }: JsonViewProps) {
+export function JsonView({ value, onFilter }: JsonViewProps) {
   return (
     <>
-      <Node value={value} indent={0} />
+      <Node value={value} indent={0} path="" onFilter={onFilter} />
     </>
   );
 }
 
-function Node({
-  value,
-  indent,
-  keyName,
-}: {
+interface NodeProps {
   value: unknown;
   indent: number;
   keyName?: string;
-}) {
+  path: string;
+  onFilter?: (path: string, value: unknown) => void;
+}
+
+function Node({ value, indent, keyName, path, onFilter }: NodeProps) {
   if (value === null) return <span className="p">null</span>;
   if (typeof value === "string")
-    return <span className="s">"{escape(value)}"</span>;
+    return (
+      <Filterable path={path} value={value} onFilter={onFilter}>
+        <span className="s">"{escape(value)}"</span>
+      </Filterable>
+    );
   if (typeof value === "number") {
-    return <NumberNode value={value} keyName={keyName} />;
+    return (
+      <Filterable path={path} value={value} onFilter={onFilter}>
+        <NumberNode value={value} keyName={keyName} />
+      </Filterable>
+    );
   }
   if (typeof value === "boolean")
-    return <span className="b">{String(value)}</span>;
-  if (Array.isArray(value)) return <Arr items={value} indent={indent} />;
+    return (
+      <Filterable path={path} value={value} onFilter={onFilter}>
+        <span className="b">{String(value)}</span>
+      </Filterable>
+    );
+  if (Array.isArray(value))
+    return <Arr items={value} indent={indent} path={path} onFilter={onFilter} />;
   if (typeof value === "object")
-    return <Obj obj={value as Record<string, unknown>} indent={indent} />;
+    return (
+      <Obj
+        obj={value as Record<string, unknown>}
+        indent={indent}
+        path={path}
+        onFilter={onFilter}
+      />
+    );
   return <span>{String(value)}</span>;
+}
+
+function Filterable({
+  path,
+  value,
+  onFilter,
+  children,
+}: {
+  path: string;
+  value: unknown;
+  onFilter?: (p: string, v: unknown) => void;
+  children: React.ReactNode;
+}) {
+  if (!onFilter || !path) return <>{children}</>;
+  return (
+    <span
+      className="filterable"
+      title={`Click to filter by ${path}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onFilter(path, value);
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
 function NumberNode({ value, keyName }: { value: number; keyName?: string }) {
@@ -77,36 +124,66 @@ function formatIso(unixMs: number): string {
 function Obj({
   obj,
   indent,
+  path,
+  onFilter,
 }: {
   obj: Record<string, unknown>;
   indent: number;
+  path: string;
+  onFilter?: (p: string, v: unknown) => void;
 }) {
   const entries = Object.entries(obj);
   if (entries.length === 0) return <span className="p">{"{}"}</span>;
   return (
     <>
       <span className="p">{"{"}</span>
-      {entries.map(([k, v], i) => (
-        <div key={k} className="row indent">
-          <span className="k">"{k}"</span>
-          <span className="p">: </span>
-          <Node value={v} indent={indent + 1} keyName={k} />
-          {i < entries.length - 1 && <span className="p">,</span>}
-        </div>
-      ))}
+      {entries.map(([k, v], i) => {
+        const childPath = path ? `${path}.${k}` : k;
+        return (
+          <div key={k} className="row indent">
+            <Filterable path={childPath} value={v} onFilter={onFilter}>
+              <span className="k">"{k}"</span>
+            </Filterable>
+            <span className="p">: </span>
+            <Node
+              value={v}
+              indent={indent + 1}
+              keyName={k}
+              path={childPath}
+              onFilter={onFilter}
+            />
+            {i < entries.length - 1 && <span className="p">,</span>}
+          </div>
+        );
+      })}
       <span className="p">{"}"}</span>
     </>
   );
 }
 
-function Arr({ items, indent }: { items: unknown[]; indent: number }) {
+function Arr({
+  items,
+  indent,
+  path,
+  onFilter,
+}: {
+  items: unknown[];
+  indent: number;
+  path: string;
+  onFilter?: (p: string, v: unknown) => void;
+}) {
   if (items.length === 0) return <span className="p">[]</span>;
   return (
     <>
       <span className="p">{"["}</span>
       {items.map((v, i) => (
         <div key={i} className="row indent">
-          <Node value={v} indent={indent + 1} />
+          <Node
+            value={v}
+            indent={indent + 1}
+            path={`${path}.${i}`}
+            onFilter={onFilter}
+          />
           {i < items.length - 1 && <span className="p">,</span>}
         </div>
       ))}

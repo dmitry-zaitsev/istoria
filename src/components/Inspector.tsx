@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 
+import { addClause, removeClause } from "../lib/facets";
 import type { Level, LogEvent } from "../lib/ipc";
+import { isError, parse } from "../lib/query";
+import { pinnedFromAst } from "../lib/facets";
 import { INSPECTOR_MAX, INSPECTOR_MIN, useStore } from "../store";
 import { JsonView } from "./JsonView";
 
@@ -12,7 +15,23 @@ interface InspectorProps {
 export function Inspector({ event, onClose }: InspectorProps) {
   const height = useStore((s) => s.inspectorHeight);
   const setHeight = useStore((s) => s.setInspectorHeight);
+  const filter = useStore((s) => s.filter);
+  const setFilter = useStore((s) => s.setFilter);
   const drawerRef = useRef<HTMLDivElement | null>(null);
+
+  const onAddFilter = (path: string, value: unknown) => {
+    if (typeof value === "object" || value == null) return;
+    const v = String(value);
+    const ast = parse(filter);
+    if (!isError(ast)) {
+      const pinned = pinnedFromAst(ast).get(path);
+      if (pinned?.has(v)) {
+        setFilter(removeClause(filter, path, v));
+        return;
+      }
+    }
+    setFilter(addClause(filter, path, v));
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -114,7 +133,7 @@ export function Inspector({ event, onClose }: InspectorProps) {
           >
             {event.msg || event.raw}
           </div>
-          <JsonView value={fields} />
+          <JsonView value={fields} onFilter={onAddFilter} />
         </div>
       </div>
     </aside>

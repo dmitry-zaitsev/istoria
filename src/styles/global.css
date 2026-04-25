@@ -778,7 +778,15 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   margin: 0;
 }
 .json .k { color: var(--brand-700); cursor: default; }
-.json .k:hover { background: var(--brand-50); border-radius: 2px; }
+.json .filterable {
+  border-radius: 2px;
+  cursor: default;
+}
+.json .filterable:hover {
+  background: var(--brand-50);
+  outline: 1px solid var(--brand-100, var(--brand));
+  outline-offset: -1px;
+}
 .json .s { color: #9b3415; }
 .json .n { color: var(--info-fg); }
 .json .b { color: var(--ok-fg); }
