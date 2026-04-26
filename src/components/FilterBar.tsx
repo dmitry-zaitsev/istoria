@@ -347,8 +347,14 @@ function buildSuggestions(
   const tail = m?.[1] ?? "";
   const replaceFrom = input.length - tail.length;
 
-  // Top-level operator suggestion when no partial token at end.
+  // Top-level operator suggestion when no partial token at end —
+  // but only after the user has added a separator (whitespace), not
+  // immediately after a `)` closing a fn call. Otherwise pressing
+  // Enter to commit gets swallowed by an autocomplete pick.
   if (tail === "") {
+    if (input.length > 0 && !/\s$/.test(input)) {
+      return { replaceFrom, items: [] };
+    }
     return {
       replaceFrom,
       items: OPERATORS.map<SuggestionItem>((op) => ({
