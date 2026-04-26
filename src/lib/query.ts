@@ -219,8 +219,15 @@ function parseAtom(c: Cursor): Ast {
     }
     return { kind: "key_exact", key, value };
   }
-  // Free term — rewind to startPos and consume non-ws
+  // Free term — rewind to startPos and consume non-ws.
+  // A leading `"` opens a quoted free term so multi-word substrings
+  // (e.g. `"query result"`) stay as one search term instead of
+  // collapsing into N implicit-AND'd singletons.
   c.pos = startPos;
+  if (peek(c) === '"') {
+    const quoted = consumeQuoted(c);
+    return { kind: "free", term: quoted };
+  }
   const term = consumeBareValue(c);
   if (!term) throw new Error("expected expression");
   if (term === "AND" || term === "OR" || term === "NOT")
@@ -487,7 +494,12 @@ function astToToken(ast: Ast): Token {
     case "key_regex":
       return { kind: "key_regex", text: `${ast.key}~/${ast.pattern}/` };
     case "free":
-      return { kind: "free", text: ast.term };
+      // Quote multi-word terms so the chip text can be re-parsed as
+      // one Free node instead of N implicit-AND'd singletons.
+      return {
+        kind: "free",
+        text: /\s/.test(ast.term) ? `"${ast.term.replace(/"/g, '\\"')}"` : ast.term,
+      };
     case "or":
       return {
         kind: "group",
@@ -560,7 +572,9 @@ function render(ast: Ast): string {
     case "key_regex":
       return `${ast.key}~/${ast.pattern}/`;
     case "free":
-      return ast.term;
+      return /\s/.test(ast.term)
+        ? `"${ast.term.replace(/"/g, '\\"')}"`
+        : ast.term;
     case "and":
       return `(${render(ast.left)} AND ${render(ast.right)})`;
     case "or":
