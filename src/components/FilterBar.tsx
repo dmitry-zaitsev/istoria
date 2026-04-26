@@ -247,9 +247,19 @@ export function FilterBar({
               );
               return;
             }
-            if (showSuggestions && (e.key === "Enter" || e.key === "Tab")) {
+            if (
+              showSuggestions &&
+              (e.key === "Enter" || e.key === "Tab") &&
+              !(e.metaKey || e.ctrlKey)
+            ) {
               e.preventDefault();
               applySuggestion(suggestIdx);
+              return;
+            }
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              // Commit current trailing as-is, ignoring suggestions.
+              e.preventDefault();
+              commitTrailing();
               return;
             }
             if (showSuggestions && e.key === "Escape") {
@@ -285,6 +295,11 @@ export function FilterBar({
                 <span className="suggestion-text">{it.label}</span>
               </div>
             ))}
+            <div className="suggestion-hint">
+              <span><kbd>↵</kbd> apply</span>
+              <span><kbd>⌘↵</kbd> submit</span>
+              <span><kbd>⎋</kbd> close</span>
+            </div>
           </div>
         )}
       </div>
@@ -317,6 +332,16 @@ function buildSuggestions(
   keys: string[],
   valuesByKey?: Map<string, string[]>,
 ): SuggestionResult {
+  // Skip suggestions when the user is typing inside an unclosed
+  // function call — \`last(15 min)\`, \`percentile(50)\`, etc. Otherwise
+  // every keystroke surfaces an irrelevant key list.
+  let depth = 0;
+  for (const ch of input) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+  }
+  if (depth > 0) return { replaceFrom: input.length, items: [] };
+
   // Find the last "token" boundary (whitespace or ')').
   const m = input.match(/(?:^|[\s)])([^\s()]*)$/);
   const tail = m?.[1] ?? "";
