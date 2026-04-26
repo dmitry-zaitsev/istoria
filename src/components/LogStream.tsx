@@ -128,6 +128,15 @@ export function LogStream({
           .catch(() => toast("Copy failed"));
         e.preventDefault();
       }
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key === "a" &&
+        !inField &&
+        !target.closest(".filter-bar")
+      ) {
+        e.preventDefault();
+        onSelectIds(events.map((ev) => ev.id));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

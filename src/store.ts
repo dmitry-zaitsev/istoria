@@ -50,11 +50,7 @@ export const useStore = create<Store>((set) => ({
       selectedId,
       selectedIds: selectedId == null ? [] : [selectedId],
     }),
-  setSelectedIds: (selectedIds) =>
-    set({
-      selectedIds,
-      selectedId: selectedIds.length > 0 ? selectedIds[selectedIds.length - 1]! : null,
-    }),
+  setSelectedIds: (selectedIds) => set({ selectedIds }),
   setInspectorHeight: (h) =>
     set({
       inspectorHeight: Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, h)),
