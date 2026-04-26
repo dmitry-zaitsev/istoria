@@ -66,9 +66,13 @@ function statusForLevel(level) {
 }
 
 function durationFor(level) {
-  // Rough log-normal-ish distribution. Errors skew higher.
-  const base = level === "error" ? 600 : level === "warn" ? 200 : 30;
-  return Math.round(base * Math.exp(Math.random() * 4));
+  // Log-normal-ish distribution covering ~3 orders of magnitude so
+  // percentile bucketing has a real shape. Most requests fast, a
+  // long tail of slow ones; errors skew higher and produce a fatter
+  // tail.
+  const base = level === "error" ? 80 : level === "warn" ? 30 : 8;
+  // Random in [0,1) → exp(0..7) ≈ 1..1100× multiplier.
+  return Math.round(base * Math.exp(Math.random() * 7));
 }
 
 function makeHttpEvent() {
