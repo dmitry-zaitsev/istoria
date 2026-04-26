@@ -136,10 +136,19 @@ export function FilterBar({
     const text = override ?? trailing;
     const trimmed = text.trim();
     if (!trimmed) return;
-    const next =
-      usefulTokens.length === 0
-        ? trimmed
-        : `${usefulTokens.map((t) => t.text).join(" AND ")} AND ${trimmed}`;
+    const prev = usefulTokens.map((t) => t.text).join(" AND ");
+    let next: string;
+    if (!prev) {
+      next = trimmed;
+    } else if (/^(OR|AND)\b/i.test(trimmed)) {
+      // User explicitly typed a connector — don't double up.
+      next = `${prev} ${trimmed}`;
+    } else if (/^NOT\b/i.test(trimmed)) {
+      // NOT is unary; AND-join.
+      next = `${prev} AND ${trimmed}`;
+    } else {
+      next = `${prev} AND ${trimmed}`;
+    }
     onChange(next);
     setTrailing("");
     setSuggestIdx(0);
