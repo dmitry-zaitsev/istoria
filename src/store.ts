@@ -15,7 +15,8 @@ interface Store {
   views: View[];
   activeViewId: number | null;
   paused: boolean;
-  pausedBaseline: number; // event count when paused
+  pausedBaseline: number; // unused since DEE-75 (kept for future)
+  newCount: number;
   sort: SortKey;
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
@@ -24,6 +25,7 @@ interface Store {
   setViews: (views: View[]) => void;
   setActiveViewId: (id: number | null) => void;
   setPaused: (paused: boolean, baseline?: number) => void;
+  setNewCount: (n: number) => void;
   setSort: (sort: SortKey) => void;
 }
 
@@ -36,6 +38,7 @@ export const useStore = create<Store>((set) => ({
   activeViewId: null,
   paused: false,
   pausedBaseline: 0,
+  newCount: 0,
   sort: "newest-bottom",
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
@@ -51,5 +54,6 @@ export const useStore = create<Store>((set) => ({
       paused,
       pausedBaseline: paused ? baseline ?? s.events.length : 0,
     })),
+  setNewCount: (newCount) => set({ newCount }),
   setSort: (sort) => set({ sort }),
 }));

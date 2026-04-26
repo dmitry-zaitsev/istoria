@@ -39,6 +39,22 @@ export default function App() {
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
+  // Snapshot of unfilteredEvents at pause time. While set, all
+  // downstream derivations operate on this frozen slice instead of
+  // the live array, so rows under the user's cursor never shift.
+  const paused = useStore((s) => s.paused);
+  const [pausedSrc, setPausedSrc] = useState<LogEvent[] | null>(null);
+  useEffect(() => {
+    if (paused) {
+      setPausedSrc((prev) => prev ?? unfilteredEvents);
+    } else {
+      setPausedSrc(null);
+    }
+    // intentionally only react to `paused` — capturing on enter only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paused]);
+  const sourceEvents = pausedSrc ?? unfilteredEvents;
+  const newCount = pausedSrc ? unfilteredEvents.length - pausedSrc.length : 0;
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
@@ -118,11 +134,6 @@ export default function App() {
         const all = await queryRecent(QUERY_LIMIT);
         if (cancelled) return;
         const ordered = all.slice().reverse() as LogEvent[];
-        const filtered = filterValid
-          ? ordered.filter((ev) => evalAst(parsed, ev))
-          : ordered;
-        const sorted = applySort(filtered, sort);
-        setEvents(sorted);
         setUnfilteredEvents(ordered);
         setUnfilteredCount(ordered.length);
       } catch (e) {
@@ -141,7 +152,25 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [setEvents, parsed, filterValid, sort]);
+  }, []);
+
+  // Derive displayed events from sourceEvents (snapshot when paused),
+  // so the visible list freezes mid-scroll.
+  const displayedEvents = useMemo(() => {
+    const filtered = filterValid
+      ? sourceEvents.filter((ev) => evalAst(parsed, ev))
+      : sourceEvents;
+    return applySort(filtered, sort);
+  }, [sourceEvents, parsed, filterValid, sort]);
+
+  useEffect(() => {
+    setEvents(displayedEvents);
+  }, [displayedEvents, setEvents]);
+
+  const setNewCount = useStore((s) => s.setNewCount);
+  useEffect(() => {
+    setNewCount(newCount);
+  }, [newCount, setNewCount]);
 
   const selected = useMemo(
     () => (selectedId == null ? null : events.find((e) => e.id === selectedId)),
