@@ -18,6 +18,8 @@ const SORT_LABELS: Record<SortKey, string> = {
 export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProps) {
   const sort = useStore((s) => s.sort);
   const setSort = useStore((s) => s.setSort);
+  const events = useStore((s) => s.events);
+  const selectedIds = useStore((s) => s.selectedIds);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -48,6 +50,28 @@ export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProp
         )}
       </span>
       <span className="right" ref={ref}>
+        {selectedIds.length > 0 && (
+          <button
+            type="button"
+            className="sort-btn"
+            onClick={() => {
+              const sel = new Set(selectedIds);
+              const picked = events.filter((e) => sel.has(e.id));
+              const txt = picked.map((e) => JSON.stringify(e)).join("\n");
+              navigator.clipboard
+                ?.writeText(txt)
+                .then(() =>
+                  toast(
+                    `Copied ${picked.length} row${picked.length === 1 ? "" : "s"}`,
+                  ),
+                )
+                .catch(() => toast("Copy failed"));
+            }}
+            title="Copy selected rows as JSONL"
+          >
+            copy {selectedIds.length}
+          </button>
+        )}
         <button
           type="button"
           className="sort-btn"

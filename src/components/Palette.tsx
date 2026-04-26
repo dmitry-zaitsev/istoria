@@ -95,11 +95,16 @@ export function Palette() {
     },
     {
       id: "export-jsonl",
-      label: "Export selection as JSONL",
+      label: useStore.getState().selectedIds.length > 0
+        ? `Export ${useStore.getState().selectedIds.length} selected as JSONL`
+        : "Export all (filtered) as JSONL",
       group: "Export",
       run: () => {
+        const sel = new Set(useStore.getState().selectedIds);
+        const picked =
+          sel.size > 0 ? events.filter((e) => sel.has(e.id)) : events;
         const blob = new Blob(
-          [events.map((e) => JSON.stringify(e)).join("\n")],
+          [picked.map((e) => JSON.stringify(e)).join("\n")],
           { type: "application/x-ndjson" },
         );
         const a = document.createElement("a");

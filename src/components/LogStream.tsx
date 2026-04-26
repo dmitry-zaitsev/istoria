@@ -2,12 +2,15 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { Level, LogEvent } from "../lib/ipc";
+import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
 interface LogStreamProps {
   events: LogEvent[];
   selectedId: number | null;
+  selectedIds: number[];
   onSelect: (id: number | null) => void;
+  onSelectIds: (ids: number[]) => void;
   bottomInset: number;
   showSource: boolean;
 }
@@ -21,10 +24,13 @@ const STICK_THRESHOLD = 5;
 export function LogStream({
   events,
   selectedId,
+  selectedIds,
   onSelect,
+  onSelectIds,
   bottomInset,
   showSource,
 }: LogStreamProps) {
+  const selectedSet = new Set(selectedIds);
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToNewest = useRef(true);
   const paused = useStore((s) => s.paused);
@@ -72,9 +78,28 @@ export function LogStream({
     scrollToNewest();
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
-  const onSelectInternal = (id: number | null) => {
-    if (id != null && !paused) setPaused(true, events.length);
-    onSelect(id);
+  const onRowClick = (id: number, e: React.MouseEvent) => {
+    if (!paused) setPaused(true, events.length);
+    if (e.shiftKey && selectedId != null) {
+      // Range select between primary anchor and clicked id.
+      const a = events.findIndex((x) => x.id === selectedId);
+      const b = events.findIndex((x) => x.id === id);
+      if (a >= 0 && b >= 0) {
+        const lo = Math.min(a, b);
+        const hi = Math.max(a, b);
+        const ids = events.slice(lo, hi + 1).map((x) => x.id);
+        onSelectIds(ids);
+        return;
+      }
+    }
+    if (e.metaKey || e.ctrlKey) {
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      onSelectIds([...next]);
+      return;
+    }
+    onSelect(selectedSet.has(id) && selectedIds.length === 1 ? null : id);
   };
 
   const resume = () => {
@@ -86,11 +111,22 @@ export function LogStream({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " && paused) {
-        const target = e.target as HTMLElement;
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      const target = e.target as HTMLElement;
+      const inField =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      if (e.key === " " && paused && !inField) {
         e.preventDefault();
         resume();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "c" && !inField) {
+        if (selectedIds.length === 0) return;
+        const picked = events.filter((ev) => selectedSet.has(ev.id));
+        const txt = picked.map((ev) => JSON.stringify(ev)).join("\n");
+        navigator.clipboard
+          ?.writeText(txt)
+          .then(() => toast(`Copied ${picked.length} row${picked.length === 1 ? "" : "s"}`))
+          .catch(() => toast("Copy failed"));
+        e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -127,13 +163,14 @@ export function LogStream({
           const ev = events[vi.index];
           if (!ev) return null;
           const cls = levelClass(ev.level);
-          const isSel = ev.id === selectedId;
+          const isSel = selectedSet.has(ev.id);
+          const isPrimary = ev.id === selectedId;
           return (
             <div
               key={ev.id}
               className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
-                showSource ? "" : " no-src"
-              }`}
+                isPrimary ? " primary" : ""
+              }${showSource ? "" : " no-src"}`}
               style={{
                 position: "absolute",
                 top: 0,
@@ -142,7 +179,7 @@ export function LogStream({
                 transform: `translateY(${vi.start}px)`,
                 height: vi.size,
               }}
-              onClick={() => onSelectInternal(isSel ? null : ev.id)}
+              onClick={(e) => onRowClick(ev.id, e)}
             >
               <span className="ts">{formatTs(ev.ts)}</span>
               <span>

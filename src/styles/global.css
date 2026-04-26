@@ -812,6 +812,8 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .logrow:hover { background: var(--hover); }
 .logrow.sel {
   background: var(--brand-50);
+}
+.logrow.primary {
   border-left: 2px solid var(--brand);
   padding-left: 12px;
 }

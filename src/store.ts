@@ -11,6 +11,7 @@ interface Store {
   events: LogEvent[];
   filter: string;
   selectedId: number | null;
+  selectedIds: number[]; // multi-select; empty when none. selectedId is "primary".
   inspectorHeight: number;
   views: View[];
   activeViewId: number | null;
@@ -21,6 +22,7 @@ interface Store {
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
+  setSelectedIds: (ids: number[]) => void;
   setInspectorHeight: (h: number) => void;
   setViews: (views: View[]) => void;
   setActiveViewId: (id: number | null) => void;
@@ -33,6 +35,7 @@ export const useStore = create<Store>((set) => ({
   events: [],
   filter: "",
   selectedId: null,
+  selectedIds: [],
   inspectorHeight: INSPECTOR_DEFAULT,
   views: [],
   activeViewId: null,
@@ -42,7 +45,16 @@ export const useStore = create<Store>((set) => ({
   sort: "newest-bottom",
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
-  setSelected: (selectedId) => set({ selectedId }),
+  setSelected: (selectedId) =>
+    set({
+      selectedId,
+      selectedIds: selectedId == null ? [] : [selectedId],
+    }),
+  setSelectedIds: (selectedIds) =>
+    set({
+      selectedIds,
+      selectedId: selectedIds.length > 0 ? selectedIds[selectedIds.length - 1]! : null,
+    }),
   setInspectorHeight: (h) =>
     set({
       inspectorHeight: Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, h)),

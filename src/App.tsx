@@ -32,6 +32,8 @@ export default function App() {
   const setEvents = useStore((s) => s.setEvents);
   const setFilter = useStore((s) => s.setFilter);
   const setSelected = useStore((s) => s.setSelected);
+  const selectedIds = useStore((s) => s.selectedIds);
+  const setSelectedIds = useStore((s) => s.setSelectedIds);
   const setViews = useStore((s) => s.setViews);
   const setActiveViewId = useStore((s) => s.setActiveViewId);
   const sort = useStore((s) => s.sort);
@@ -224,7 +226,9 @@ export default function App() {
           <LogStream
             events={events}
             selectedId={selectedId}
+            selectedIds={selectedIds}
             onSelect={setSelected}
+            onSelectIds={setSelectedIds}
             bottomInset={bottomInset}
             showSource={showSource}
           />
