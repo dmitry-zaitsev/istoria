@@ -36,6 +36,24 @@ const MIRRORED_KEYS = new Set([
   "timestamp",
 ]);
 
+// Heuristic priority list for auto-discovered keys. Lower index =
+// higher priority. Anything not listed inherits Infinity and falls
+// back to cardinality-rank order.
+const KEY_PRIORITY = [
+  "method",
+  "status_code",
+  "status",
+  "code",
+  "path",
+  "endpoint",
+  "url",
+  "request_id",
+  "trace_id",
+  "user.id",
+  "user_id",
+];
+const PRIORITY_RANK = new Map(KEY_PRIORITY.map((k, i) => [k, i]));
+
 /// Compute facet groups from a list of events. Always emits Level
 /// and Source first; then auto-discovered JSON keys ordered by
 /// cardinality (count of distinct values × frequency). Returns
@@ -68,7 +86,16 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
     // surfaced too — the cardinality cap previously dropped them
     // outright, which hid useful range facets like dur_ms.
     .filter(([k, set]) => set.size > 1 && !MIRRORED_KEYS.has(k))
-    .sort((a, b) => b[1].size - a[1].size)
+    // Two-stage sort: KEY_PRIORITY heuristic first, then by raw
+    // cardinality. So method/status_code/path land at the top
+    // regardless of how many distinct values they have, while
+    // unknown keys still fall back to cardinality.
+    .sort((a, b) => {
+      const ra = PRIORITY_RANK.get(a[0]) ?? Number.POSITIVE_INFINITY;
+      const rb = PRIORITY_RANK.get(b[0]) ?? Number.POSITIVE_INFINITY;
+      if (ra !== rb) return ra - rb;
+      return b[1].size - a[1].size;
+    })
     .slice(0, ALL_KEYS_CAP)
     .map(([k]) => k);
 
