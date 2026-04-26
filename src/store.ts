@@ -5,7 +5,7 @@ export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
 export const INSPECTOR_DEFAULT = 320;
 
-export type SortKey = "newest-bottom" | "newest-top" | "level";
+export type SortKey = "newest-bottom" | "newest-top";
 
 interface Store {
   events: LogEvent[];

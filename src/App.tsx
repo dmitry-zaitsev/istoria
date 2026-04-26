@@ -115,7 +115,7 @@ export default function App() {
           setFilter(active.query);
         }
         const storedSort = await getMeta("sort");
-        if (storedSort === "newest-bottom" || storedSort === "newest-top" || storedSort === "level") {
+        if (storedSort === "newest-bottom" || storedSort === "newest-top") {
           setSort(storedSort);
         }
       } catch (e) {
@@ -247,14 +247,6 @@ export default function App() {
   );
 }
 
-const LEVEL_RANK: Record<string, number> = {
-  error: 0,
-  warn: 1,
-  info: 2,
-  debug: 3,
-  trace: 4,
-};
-
 function collectTsBounds(ast: Ast): { lo: number; hi: number } {
   let lo = -Infinity;
   let hi = Infinity;
@@ -287,16 +279,5 @@ function applySort(events: LogEvent[], sort: SortKey): LogEvent[] {
   // default keeps that order so LogStream's scroll-to-bottom places
   // newest at the bottom.
   if (sort === "newest-bottom") return events;
-  const out = events.slice();
-  if (sort === "newest-top") {
-    out.sort((a, b) => b.ts - a.ts || b.id - a.id);
-  } else if (sort === "level") {
-    out.sort((a, b) => {
-      const ra = LEVEL_RANK[a.level] ?? 9;
-      const rb = LEVEL_RANK[b.level] ?? 9;
-      if (ra !== rb) return ra - rb;
-      return b.ts - a.ts;
-    });
-  }
-  return out;
+  return events.slice().sort((a, b) => b.ts - a.ts || b.id - a.id);
 }

@@ -31,7 +31,7 @@ export function LogStream({
   const setPaused = useStore((s) => s.setPaused);
   const newCount = useStore((s) => s.newCount);
   const sort = useStore((s) => s.sort);
-  const liveTail = sort !== "level";
+  const liveTail = true;
   const newestAtTop = sort === "newest-top";
 
   const virtualizer = useVirtualizer({

@@ -12,7 +12,6 @@ interface StreamHeaderProps {
 const SORT_LABELS: Record<SortKey, string> = {
   "newest-bottom": "newest at bottom",
   "newest-top": "newest at top",
-  level: "level (err first)",
 };
 
 export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProps) {
