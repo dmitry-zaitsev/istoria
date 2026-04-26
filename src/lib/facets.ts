@@ -406,6 +406,64 @@ export function toggleFacetRange(
 
 /// Which buckets out of \`buckets\` are currently active for \`key\` in
 /// \`query\`? Used to render checked state in the UI.
+/// Toggle a percentile threshold clause for \`key\`. Multi-select OR-
+/// joined as \`(key:>=percentile(p1) OR key:>=percentile(p2))\`.
+export function toggleFacetPct(
+  query: string,
+  key: string,
+  p: number,
+): string {
+  const ast = parse(query);
+  const isEmpty = !isError(ast) && ast.kind === "free" && ast.term === "";
+  const seed = `${key}:>=percentile(${p})`;
+  if (isError(ast) || isEmpty) return seed;
+  const conjuncts = flattenAnd(ast);
+  const others: Ast[] = [];
+  const collected = new Set<number>();
+  for (const c of conjuncts) {
+    const ps = extractPctArgs(c, key);
+    if (ps.length > 0) for (const x of ps) collected.add(x);
+    else others.push(c);
+  }
+  if (collected.has(p)) collected.delete(p);
+  else collected.add(p);
+  const otherText = others.map(renderAst).join(" AND ");
+  if (collected.size === 0) return otherText;
+  const sorted = [...collected].sort((a, b) => a - b);
+  const clauses = sorted.map((x) => `${key}:>=percentile(${x})`);
+  const joined =
+    clauses.length === 1 ? clauses[0]! : `(${clauses.join(" OR ")})`;
+  return otherText ? `${otherText} AND ${joined}` : joined;
+}
+
+/// Walk a node and pull all percentile args bound to \`key:>=\`.
+function extractPctArgs(ast: Ast, key: string): number[] {
+  if (ast.kind === "or") {
+    const left = extractPctArgs(ast.left, key);
+    const right = extractPctArgs(ast.right, key);
+    if (left.length > 0 && right.length > 0) return [...left, ...right];
+    return [];
+  }
+  if (
+    ast.kind === "key_cmp_fn" &&
+    ast.key === key &&
+    ast.fn === "percentile" &&
+    (ast.op === "gte" || ast.op === "gt")
+  ) {
+    return [ast.arg];
+  }
+  return [];
+}
+
+export function activePctSet(query: string, key: string): Set<number> {
+  const out = new Set<number>();
+  const ast = parse(query);
+  if (isError(ast)) return out;
+  const conjuncts = flattenAnd(ast);
+  for (const c of conjuncts) for (const p of extractPctArgs(c, key)) out.add(p);
+  return out;
+}
+
 export function activeBuckets(
   query: string,
   key: string,

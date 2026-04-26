@@ -19,7 +19,7 @@ import {
   subscribeEvents,
   type LogEvent,
 } from "./lib/ipc";
-import { evalAst, isError, parse, type Ast } from "./lib/query";
+import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -167,9 +167,11 @@ export default function App() {
   // Derive displayed events from sourceEvents (snapshot when paused),
   // so the visible list freezes mid-scroll.
   const displayedEvents = useMemo(() => {
-    const filtered = filterValid
-      ? sourceEvents.filter((ev) => evalAst(parsed, ev))
-      : sourceEvents;
+    if (!filterValid) return applySort(sourceEvents, sort);
+    // Resolve aggregation functions (\`percentile(N)\`) against the
+    // current event set before walking the AST per row.
+    const resolved = resolveAst(parsed as Ast, sourceEvents);
+    const filtered = sourceEvents.filter((ev) => evalAst(resolved, ev));
     return applySort(filtered, sort);
   }, [sourceEvents, parsed, filterValid, sort]);
 

@@ -8,6 +8,7 @@ export type CmpOp = "lt" | "lte" | "gt" | "gte";
 export type Ast =
   | { kind: "key_exact"; key: string; value: string }
   | { kind: "key_cmp"; key: string; op: CmpOp; value: number }
+  | { kind: "key_cmp_fn"; key: string; op: CmpOp; fn: "percentile"; arg: number }
   | { kind: "key_regex"; key: string; pattern: string }
   | { kind: "free"; term: string }
   | { kind: "and"; left: Ast; right: Ast }
@@ -187,6 +188,21 @@ function parseAtom(c: Cursor): Ast {
     // numeric cmp?
     const cmp = matchCmpOp(c);
     if (cmp) {
+      // First-class aggregation: `percentile(N)` resolves dynamically
+      // against the events the filter is being evaluated over.
+      if (c.src.startsWith("percentile(", c.pos)) {
+        c.pos += "percentile(".length;
+        const argStart = c.pos;
+        const argStr = consumeBareValue(c).replace(/\)$/, "");
+        // If the close paren wasn't part of the bare token, consume it.
+        if (peek(c) === ")") c.pos++;
+        const arg = Number(argStr);
+        if (Number.isNaN(arg) || arg < 0 || arg > 100)
+          throw new Error(
+            `percentile expects 0..100, got '${argStr}' at ${argStart}`,
+          );
+        return { kind: "key_cmp_fn", key, op: cmp, fn: "percentile", arg };
+      }
       const numStart = c.pos;
       const numStr = peek(c) === '"' ? consumeQuoted(c) : consumeBareValue(c);
       const value = parseNumberOrDate(numStr);
@@ -361,6 +377,9 @@ export function evalAst(ast: Ast, ev: LogEvent): boolean {
         return false;
       }
     }
+    case "key_cmp_fn":
+      // Should be replaced by resolveAst before eval. Be safe.
+      return false;
     case "and":
       return evalAst(ast.left, ev) && evalAst(ast.right, ev);
     case "or":
@@ -460,6 +479,11 @@ function astToToken(ast: Ast): Token {
           chipValue(ast.key, ast.value),
         )}`,
       };
+    case "key_cmp_fn":
+      return {
+        kind: "key_cmp",
+        text: `${ast.key}:${cmpStr(ast.op)}${ast.fn}(${ast.arg})`,
+      };
     case "key_regex":
       return { kind: "key_regex", text: `${ast.key}~/${ast.pattern}/` };
     case "free":
@@ -531,6 +555,8 @@ function render(ast: Ast): string {
       return `${ast.key}:${renderValue(ast.value)}`;
     case "key_cmp":
       return `${ast.key}:${cmpStr(ast.op)}${renderValue(String(ast.value))}`;
+    case "key_cmp_fn":
+      return `${ast.key}:${cmpStr(ast.op)}${ast.fn}(${ast.arg})`;
     case "key_regex":
       return `${ast.key}~/${ast.pattern}/`;
     case "free":
@@ -542,4 +568,53 @@ function render(ast: Ast): string {
     case "not":
       return `NOT ${render(ast.expr)}`;
   }
+}
+
+/// Resolve aggregation functions (\`percentile(N)\`) against the
+/// supplied events so the rest of the evaluator only has to handle
+/// concrete numeric cmp clauses. Cached per (key, fn, arg) tuple.
+export function resolveAst(ast: Ast, events: LogEvent[]): Ast {
+  const cache = new Map<string, number>();
+  const valueAt = (key: string, fn: "percentile", arg: number) => {
+    const ck = `${key}|${fn}|${arg}`;
+    let v = cache.get(ck);
+    if (v != null) return v;
+    const nums: number[] = [];
+    for (const e of events) {
+      const x = lookup(e, key);
+      const n = typeof x === "number" ? x : Number(x);
+      if (!Number.isNaN(n)) nums.push(n);
+    }
+    nums.sort((a, b) => a - b);
+    if (nums.length === 0) v = 0;
+    else {
+      const idx = Math.min(
+        nums.length - 1,
+        Math.max(0, Math.floor((arg / 100) * nums.length)),
+      );
+      v = nums[idx]!;
+    }
+    cache.set(ck, v);
+    return v;
+  };
+  const walk = (a: Ast): Ast => {
+    switch (a.kind) {
+      case "key_cmp_fn":
+        return {
+          kind: "key_cmp",
+          key: a.key,
+          op: a.op,
+          value: valueAt(a.key, a.fn, a.arg),
+        };
+      case "and":
+        return { kind: "and", left: walk(a.left), right: walk(a.right) };
+      case "or":
+        return { kind: "or", left: walk(a.left), right: walk(a.right) };
+      case "not":
+        return { kind: "not", expr: walk(a.expr) };
+      default:
+        return a;
+    }
+  };
+  return walk(ast);
 }

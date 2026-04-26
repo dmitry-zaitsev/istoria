@@ -1,10 +1,6 @@
 import { useMemo } from "react";
 
-import {
-  activeBuckets,
-  toggleFacetRange,
-  type RangeBucket,
-} from "../lib/facets";
+import { activePctSet, toggleFacetPct } from "../lib/facets";
 import type { LogEvent } from "../lib/ipc";
 
 interface RangeSliderProps {
@@ -15,7 +11,7 @@ interface RangeSliderProps {
   onFilterChange: (q: string) => void;
 }
 
-const PERCENTILES = [50, 90, 99] as const;
+const PERCENTILES = [50, 75, 90, 95, 99] as const;
 const DURATION_KEYWORDS = ["dur", "latency", "elapsed", "ms", "_us", "time_"];
 const MIN_VALUES_FOR_PERCENTILES = 30;
 const MIN_DISTINCT_FOR_PERCENTILES = 10;
@@ -106,25 +102,26 @@ export function RangeSlider({
 
   if (sorted.length < MIN_VALUES_FOR_PERCENTILES) return null;
 
-  const buckets = useMemo(() => percentileBuckets(sorted), [sorted]);
-  const active = useMemo(
-    () => activeBuckets(filter, fieldKey, buckets),
-    [filter, fieldKey, buckets],
-  );
-  const counts = useMemo(() => bucketCounts(sorted, buckets), [sorted, buckets]);
+  // Single-side ≥ pN thresholds. Each is a self-contained clause
+  // (\`field:>=percentile(p)\`) that the resolver re-evaluates as new
+  // events flow in, so the bucket boundary stays correct.
+  const stops = PERCENTILES.map((p) => percentile(sorted, p));
+  const active = activePctSet(filter, fieldKey);
 
   return (
     <div className="facet-group">
       <div className="facet-h">{label}</div>
-      {buckets.map((b) => {
-        const checked = active.has(b.label);
+      {PERCENTILES.map((p, i) => {
+        const checked = active.has(p);
         return (
           <div
-            key={b.label}
+            key={p}
             className={`facet-row${checked ? " checked" : ""}`}
-            onClick={() => onFilterChange(toggleFacetRange(filter, fieldKey, b))}
+            onClick={() =>
+              onFilterChange(toggleFacetPct(filter, fieldKey, p))
+            }
             role="button"
-            title={b.label}
+            title={`≥ p${p}`}
           >
             <span
               className={`facet-check${checked ? " on" : ""}`}
@@ -132,55 +129,13 @@ export function RangeSlider({
             >
               {checked ? "✓" : ""}
             </span>
-            <span className="facet-value">{b.label}</span>
-            <span className="facet-count">
-              {counts.get(b.label)!.toLocaleString()}
-            </span>
+            <span className="facet-value">≥ p{p}</span>
+            <span className="facet-count">{fmt(stops[i]!)}</span>
           </div>
         );
       })}
     </div>
   );
-}
-
-function percentileBuckets(sorted: number[]): RangeBucket[] {
-  if (sorted.length === 0) return [];
-  const max = sorted[sorted.length - 1]!;
-  const stops = PERCENTILES.map((p) => percentile(sorted, p));
-  // Build [0,p50), [p50,p90), [p90,p99), [p99,max]
-  const out: RangeBucket[] = [];
-  let prev = 0;
-  for (let i = 0; i < PERCENTILES.length; i++) {
-    out.push({
-      lo: prev,
-      hi: stops[i]!,
-      label: `< p${PERCENTILES[i]} (≤ ${fmt(stops[i]!)})`,
-    });
-    prev = stops[i]!;
-  }
-  out.push({
-    lo: prev,
-    hi: Number.POSITIVE_INFINITY,
-    label: `≥ p${PERCENTILES[PERCENTILES.length - 1]} (> ${fmt(prev)}, max ${fmt(max)})`,
-  });
-  return out;
-}
-
-function bucketCounts(
-  sorted: number[],
-  buckets: RangeBucket[],
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const b of buckets) counts.set(b.label, 0);
-  for (const v of sorted) {
-    for (const b of buckets) {
-      if (v >= b.lo && v < b.hi) {
-        counts.set(b.label, (counts.get(b.label) ?? 0) + 1);
-        break;
-      }
-    }
-  }
-  return counts;
 }
 
 function percentile(sorted: number[], p: number): number {
