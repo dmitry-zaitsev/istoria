@@ -125,9 +125,26 @@ function parseAnd(c: Cursor): Ast {
     if (matchKeyword(c, "AND")) {
       const right = parseUnary(c);
       left = { kind: "and", left, right };
-    } else break;
+      continue;
+    }
+    // Implicit AND: adjacent atoms with no explicit connector get
+    // AND-joined (e.g. \`request mismatch\` → both must match msg).
+    // Stop on end-of-input, closing paren, or an OR that the parent
+    // parseExpr is responsible for.
+    if (c.pos >= c.src.length) break;
+    if (peek(c) === ")") break;
+    if (peekKeyword(c, "OR")) break;
+    const right = parseUnary(c);
+    left = { kind: "and", left, right };
   }
   return left;
+}
+
+function peekKeyword(c: Cursor, kw: string): boolean {
+  const start = c.pos;
+  const ok = matchKeyword(c, kw);
+  c.pos = start;
+  return ok;
 }
 
 function parseUnary(c: Cursor): Ast {
