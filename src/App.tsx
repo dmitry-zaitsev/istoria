@@ -142,7 +142,7 @@ export default function App() {
       <Tabs />
       <FilterBar value={filter} onChange={setFilter} />
       <Histogram
-        events={unfilteredEvents}
+        events={events}
         filter={filter}
         onFilterChange={setFilter}
       />
