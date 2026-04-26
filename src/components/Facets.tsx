@@ -72,15 +72,22 @@ function Group({
       )
     : group.values;
 
-  // Always show pinned values regardless of cap so a checked value
-  // never disappears off-screen. Then fill up to VISIBLE_CAP with the
-  // top-count remaining values (or the full matched list when the
-  // user has typed a search / clicked "show all").
-  const pinnedVisible = matched.filter((v) => pinnedSet.has(v.value));
-  const restRanked = matched.filter((v) => !pinnedSet.has(v.value));
-  const capped = showAll || search ? restRanked : restRanked.slice(0, VISIBLE_CAP);
-  const overflow = restRanked.length - capped.length;
-  const visible = [...pinnedVisible, ...capped];
+  // Keep the original count-desc order. Toggling a checkbox must NOT
+  // reorder the list — pinned values stay where they are. To keep
+  // pinned values from disappearing off-screen when the cap kicks in,
+  // we apply the cap by *count rank*: index 0..VISIBLE_CAP-1 OR
+  // pinned regardless of position.
+  const cappedSet = new Set<string>();
+  let kept = 0;
+  for (const v of matched) {
+    const isPinned = pinnedSet.has(v.value);
+    if (isPinned || showAll || search || kept < VISIBLE_CAP) {
+      cappedSet.add(v.value);
+      if (!isPinned) kept++;
+    }
+  }
+  const visible = matched.filter((v) => cappedSet.has(v.value));
+  const overflow = matched.length - visible.length;
 
   if (group.values.length === 0) return null;
 
