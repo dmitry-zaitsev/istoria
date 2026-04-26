@@ -81,6 +81,9 @@ export function LogStream({
   const onRowClick = (id: number, e: React.MouseEvent) => {
     if (!paused) setPaused(true, events.length);
     if (e.shiftKey) {
+      // Drop any text selection the browser started before our
+      // mousedown intercept could land.
+      window.getSelection()?.removeAllRanges();
       // Anchor: primary selection if any, else last item in current
       // multi-set, else just select the clicked row.
       const anchor =
@@ -201,6 +204,11 @@ export function LogStream({
                 right: 0,
                 transform: `translateY(${vi.start}px)`,
                 height: vi.size,
+              }}
+              onMouseDown={(e) => {
+                // Suppress browser text-selection on shift+click range
+                // picks; rows aren't text first, they're targets.
+                if (e.shiftKey) e.preventDefault();
               }}
               onClick={(e) => onRowClick(ev.id, e)}
             >
