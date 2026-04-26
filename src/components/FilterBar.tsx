@@ -334,24 +334,63 @@ function buildSuggestions(
     };
   }
 
-  // After `key:` → suggest values for that key.
+  // After `key:` → suggest values for that key, plus aggregation
+  // functions where they make sense (last() for ts/timestamp, and
+  // percentile() for numeric keys with a cmp op).
   const colon = tail.indexOf(":");
   if (colon > 0 && !tail.includes("~")) {
     const key = tail.slice(0, colon);
-    const partial = tail.slice(colon + 1);
+    const afterColon = tail.slice(colon + 1);
+    // Strip leading cmp op (>=, <=, >, <) to get the value partial.
+    const opMatch = afterColon.match(/^(>=|<=|>|<)?(.*)$/);
+    const cmp = opMatch?.[1] ?? "";
+    const partial = opMatch?.[2] ?? afterColon;
+    const items: SuggestionItem[] = [];
+
+    // last() — for time keys, accept bare or any cmp form.
+    if (key === "ts" || key === "timestamp") {
+      const presets = ["5 min", "15 min", "1 h", "24 h", "7 d"];
+      for (const p of presets) {
+        const lbl = `${key}:${cmp || ">="}last(${p})`;
+        if (`last(${p})`.toLowerCase().startsWith(partial.toLowerCase())) {
+          items.push({
+            kind: "value",
+            label: lbl,
+            completion: `${key}:${cmp || ">="}last(${p}) `,
+            commit: true,
+          });
+        }
+      }
+    }
+
+    // percentile() — only when a cmp op is present (semantics need it).
+    if (cmp) {
+      for (const p of [50, 75, 90, 95, 99]) {
+        if (`percentile(${p})`.startsWith(partial)) {
+          items.push({
+            kind: "value",
+            label: `${key}:${cmp}percentile(${p})`,
+            completion: `${key}:${cmp}percentile(${p}) `,
+            commit: true,
+          });
+        }
+      }
+    }
+
+    // Plain values from facets.
     const vals = valuesByKey?.get(key) ?? defaultValuesFor(key);
     const matched = vals
       .filter((v) => v.toLowerCase().startsWith(partial.toLowerCase()))
       .slice(0, 8);
-    return {
-      replaceFrom,
-      items: matched.map<SuggestionItem>((v) => ({
+    for (const v of matched) {
+      items.push({
         kind: "value",
-        label: `${key}:${v}`,
-        completion: `${key}:${renderValue(v)} `,
+        label: `${key}:${cmp}${v}`,
+        completion: `${key}:${cmp}${renderValue(v)} `,
         commit: true,
-      })),
-    };
+      });
+    }
+    return { replaceFrom, items };
   }
 
   // Bare token → suggest keys (and operators if the token looks like

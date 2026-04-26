@@ -8,7 +8,7 @@ export type CmpOp = "lt" | "lte" | "gt" | "gte";
 export type Ast =
   | { kind: "key_exact"; key: string; value: string }
   | { kind: "key_cmp"; key: string; op: CmpOp; value: number }
-  | { kind: "key_cmp_fn"; key: string; op: CmpOp; fn: "percentile" | "duration"; arg: number; argText?: string }
+  | { kind: "key_cmp_fn"; key: string; op: CmpOp; fn: "percentile" | "last"; arg: number; argText?: string }
   | { kind: "key_regex"; key: string; pattern: string }
   | { kind: "free"; term: string }
   | { kind: "and"; left: Ast; right: Ast }
@@ -323,18 +323,18 @@ function tryParseFnCall(
       throw new Error(`percentile expects 0..100, got '${inner}'`);
     return { kind: "key_cmp_fn", key, op, fn: "percentile", arg };
   }
-  if (c.src.startsWith("duration(", c.pos)) {
-    c.pos += "duration(".length;
+  if (c.src.startsWith("last(", c.pos)) {
+    c.pos += "last(".length;
     const inner = readUntil(c, ")");
     if (peek(c) === ")") c.pos++;
     const ms = parseDurationMs(inner.trim());
     if (ms == null)
-      throw new Error(`duration expects \`N unit\`, got '${inner}'`);
+      throw new Error(`last expects \`N unit\`, got '${inner}'`);
     return {
       kind: "key_cmp_fn",
       key,
       op,
-      fn: "duration",
+      fn: "last",
       arg: ms,
       argText: inner.trim(),
     };
@@ -667,13 +667,13 @@ export function resolveAst(ast: Ast, events: LogEvent[]): Ast {
   const cache = new Map<string, number>();
   const valueAt = (
     key: string,
-    fn: "percentile" | "duration",
+    fn: "percentile" | "last",
     arg: number,
   ) => {
     const ck = `${key}|${fn}|${arg}`;
     let v = cache.get(ck);
     if (v != null) return v;
-    if (fn === "duration") {
+    if (fn === "last") {
       // duration(N) is "events within the last N ms" — emit a lower
       // bound at now − arg.
       v = Date.now() - arg;
