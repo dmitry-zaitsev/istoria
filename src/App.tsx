@@ -8,6 +8,7 @@ import { StatusBar } from "./components/StatusBar";
 import { StreamHeader } from "./components/StreamHeader";
 import { Tabs } from "./components/Tabs";
 import { Facets } from "./components/Facets";
+import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
@@ -56,6 +57,22 @@ export default function App() {
       ),
     [unfilteredEvents, tsBounds.lo, tsBounds.hi],
   );
+  const suggestKeys = useMemo(() => {
+    const groups = computeFacets(tsScopedEvents);
+    return ["msg", "raw", "ts", ...groups.map((g) => g.key)];
+  }, [tsScopedEvents]);
+  const suggestValuesByKey = useMemo(() => {
+    const m = new Map<string, string[]>();
+    const groups = computeFacets(tsScopedEvents);
+    for (const g of groups) {
+      m.set(
+        g.key,
+        g.values.slice(0, 50).map((v) => v.value),
+      );
+    }
+    return m;
+  }, [tsScopedEvents]);
+
   const showSource = useMemo(() => {
     const seen = new Set<string>();
     for (const e of unfilteredEvents) {
@@ -140,7 +157,12 @@ export default function App() {
       <Toast />
       <Chrome />
       <Tabs />
-      <FilterBar value={filter} onChange={setFilter} />
+      <FilterBar
+        value={filter}
+        onChange={setFilter}
+        suggestKeys={suggestKeys}
+        suggestValuesByKey={suggestValuesByKey}
+      />
       <Histogram
         events={events}
         filter={filter}
