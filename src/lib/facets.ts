@@ -230,8 +230,13 @@ export interface RangeBucket {
 }
 
 const EPS = 1e-9;
+const closeEnough = (a: number, b: number) => {
+  if (a === b) return true; // covers Infinity == Infinity
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs(a - b) < EPS;
+};
 const sameRange = (a: RangeBucket, b: { lo: number; hi: number }) =>
-  Math.abs(a.lo - b.lo) < EPS && Math.abs(a.hi - b.hi) < EPS;
+  closeEnough(a.lo, b.lo) && closeEnough(a.hi, b.hi);
 
 /// Format a single bucket as a parser-round-trippable clause:
 /// \`(field:>=lo AND field:<hi)\`. Open-ended bounds drop the
