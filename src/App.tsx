@@ -129,6 +129,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let pending: ReturnType<typeof setTimeout> | null = null;
     const refresh = async () => {
       try {
         const all = await queryRecent(QUERY_LIMIT);
@@ -140,16 +141,25 @@ export default function App() {
         console.warn("queryRecent failed", e);
       }
     };
+    // Throttle: under heavy ingest we'd otherwise rebuild the
+    // event array (and re-derive facets/histogram/sort) on every
+    // backend tick. Coalesce notifications into ≤10 refreshes/s.
+    const scheduleRefresh = () => {
+      if (pending) return;
+      pending = setTimeout(() => {
+        pending = null;
+        void refresh();
+      }, 100);
+    };
     refresh();
     let unlisten: (() => void) | undefined;
-    subscribeEvents(() => {
-      void refresh();
-    }).then((u) => {
+    subscribeEvents(scheduleRefresh).then((u) => {
       if (cancelled) u();
       else unlisten = u;
     });
     return () => {
       cancelled = true;
+      if (pending) clearTimeout(pending);
       unlisten?.();
     };
   }, []);
