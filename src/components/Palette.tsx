@@ -2,6 +2,7 @@ import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 
 import { clearSession, setMeta } from "../lib/ipc";
+import { fireSessionCleared } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
@@ -88,6 +89,7 @@ export function Palette() {
       label: "Clear session (wipe all events)",
       group: "Session",
       run: () => {
+        fireSessionCleared();
         void clearSession()
           .then(() => toast("Session cleared"))
           .catch(() => toast("Clear failed"));

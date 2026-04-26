@@ -20,6 +20,7 @@ import {
   type LogEvent,
 } from "./lib/ipc";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
+import { onSessionCleared } from "./lib/sessionBus";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -41,10 +42,25 @@ export default function App() {
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
+
+  // Wipe local state the moment the user clears the session, even if
+  // we're paused or mid-throttle. Backend wipe runs in parallel.
+  useEffect(
+    () =>
+      onSessionCleared(() => {
+        setUnfilteredEvents([]);
+        setUnfilteredCount(0);
+        setPausedSrc(null);
+        setPaused(false);
+        setSelected(null);
+      }),
+    [],
+  );
   // Snapshot of unfilteredEvents at pause time. While set, all
   // downstream derivations operate on this frozen slice instead of
   // the live array, so rows under the user's cursor never shift.
   const paused = useStore((s) => s.paused);
+  const setPaused = useStore((s) => s.setPaused);
   const [pausedSrc, setPausedSrc] = useState<LogEvent[] | null>(null);
   useEffect(() => {
     if (paused) {
