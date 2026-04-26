@@ -24,6 +24,7 @@ export function LogStream({
 }: LogStreamProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToNewest = useRef(true);
+  const prevLen = useRef(0);
   const paused = useStore((s) => s.paused);
   const setPaused = useStore((s) => s.setPaused);
   const pausedBaseline = useStore((s) => s.pausedBaseline);
@@ -62,6 +63,20 @@ export function LogStream({
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, [events.length, setPaused, newestAtTop]);
+
+  // Anchor scroll position when newest-at-top and the user is reading
+  // mid-list: new events prepend, which would otherwise shift the
+  // visible content down. Bump scrollTop by the delta in row-pixels
+  // so the row under the cursor stays put.
+  useLayoutEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const delta = events.length - prevLen.current;
+    prevLen.current = events.length;
+    if (newestAtTop && delta > 0 && !stickToNewest.current) {
+      el.scrollTop += delta * ROW_PX;
+    }
+  }, [events.length, newestAtTop]);
 
   useLayoutEffect(() => {
     if (paused || !liveTail) return;
