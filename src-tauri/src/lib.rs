@@ -105,6 +105,7 @@ pub fn run(cli: cli::Cli) {
             ipc::views_duplicate,
             ipc::meta_get,
             ipc::meta_set,
+            ipc::clear_session,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

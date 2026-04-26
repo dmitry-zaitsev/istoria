@@ -69,3 +69,7 @@ export async function getMeta(key: string): Promise<string | null> {
 export async function setMeta(key: string, value: string): Promise<void> {
   return invoke("meta_set", { key, value });
 }
+
+export async function clearSession(): Promise<void> {
+  return invoke("clear_session");
+}

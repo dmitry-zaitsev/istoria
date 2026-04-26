@@ -68,6 +68,14 @@ impl Ring {
         self.dropped.load(Ordering::Relaxed)
     }
 
+    /// Wipe ring contents. ID counter is left intact so subsequent
+    /// events keep their monotonic order.
+    pub fn clear(&self) {
+        self.inner.write().clear();
+        self.dropped.store(0, Ordering::Relaxed);
+        self.notify.notify_waiters();
+    }
+
     /// Most-recent-first snapshot, optionally substring-filtered on `msg`.
     pub fn snapshot(&self, limit: usize, filter: Option<&str>) -> Vec<Event> {
         let q = self.inner.read();

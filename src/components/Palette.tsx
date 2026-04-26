@@ -1,7 +1,8 @@
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 
-import { setMeta } from "../lib/ipc";
+import { clearSession, setMeta } from "../lib/ipc";
+import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
 const RECENTS_KEY = "palette_recents";
@@ -83,10 +84,14 @@ export function Palette() {
       run: () => setPaused(!paused, events.length),
     },
     {
-      id: "session-current",
-      label: "Switch session → current",
+      id: "session-clear",
+      label: "Clear session (wipe all events)",
       group: "Session",
-      run: () => {},
+      run: () => {
+        void clearSession()
+          .then(() => toast("Session cleared"))
+          .catch(() => toast("Clear failed"));
+      },
     },
     {
       id: "export-jsonl",

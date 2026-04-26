@@ -104,3 +104,12 @@ pub async fn meta_set(
     let store = store_or_err(&state)?;
     views::set_meta(store, &key, &value).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.ring.clear();
+    if let Some(store) = state.store.as_deref() {
+        store.clear_session().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

@@ -63,6 +63,16 @@ impl Store {
         self.session_id
     }
 
+    /// Delete all events for the current session from disk.
+    pub fn clear_session(&self) -> duckdb::Result<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "DELETE FROM events WHERE session_id = ?",
+            params![self.session_id as i32],
+        )?;
+        Ok(())
+    }
+
     pub fn conn(&self) -> Arc<Mutex<Connection>> {
         Arc::clone(&self.conn)
     }

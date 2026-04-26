@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { setMeta } from "../lib/ipc";
+import { clearSession, setMeta } from "../lib/ipc";
+import { toast } from "../lib/toast";
 import { useStore, type SortKey } from "../store";
 
 interface StreamHeaderProps {
@@ -47,6 +48,18 @@ export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProp
         )}
       </span>
       <span className="right" ref={ref}>
+        <button
+          type="button"
+          className="sort-btn"
+          onClick={() => {
+            void clearSession()
+              .then(() => toast("Session cleared"))
+              .catch(() => toast("Clear failed"));
+          }}
+          title="Wipe all events from the current session"
+        >
+          clear
+        </button>
         <button
           type="button"
           className="sort-btn"
