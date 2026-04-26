@@ -28,3 +28,11 @@ dev:
 # exercise the UI: `just fakeLogs | just dev`.
 fakeLogs *args:
     @node examples/generator/fake-logs.mjs {{args}}
+
+# Re-render src-tauri/icons/source.svg into all per-platform icon
+# artifacts. Touches build.rs so cargo picks up the new bytes on
+# next build (macOS LaunchServices may still need an app reinstall).
+icon:
+    magick -background none -density 384 src-tauri/icons/source.svg -resize 1024x1024 -define png:color-type=6 src-tauri/icons/icon.png
+    npm run tauri -- icon src-tauri/icons/icon.png
+    touch src-tauri/build.rs
