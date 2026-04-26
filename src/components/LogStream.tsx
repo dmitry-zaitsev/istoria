@@ -80,17 +80,24 @@ export function LogStream({
 
   const onRowClick = (id: number, e: React.MouseEvent) => {
     if (!paused) setPaused(true, events.length);
-    if (e.shiftKey && selectedId != null) {
-      // Range select between primary anchor and clicked id.
-      const a = events.findIndex((x) => x.id === selectedId);
-      const b = events.findIndex((x) => x.id === id);
-      if (a >= 0 && b >= 0) {
-        const lo = Math.min(a, b);
-        const hi = Math.max(a, b);
-        const ids = events.slice(lo, hi + 1).map((x) => x.id);
-        onSelectIds(ids);
-        return;
+    if (e.shiftKey) {
+      // Anchor: primary selection if any, else last item in current
+      // multi-set, else just select the clicked row.
+      const anchor =
+        selectedId ?? selectedIds[selectedIds.length - 1] ?? null;
+      if (anchor != null) {
+        const a = events.findIndex((x) => x.id === anchor);
+        const b = events.findIndex((x) => x.id === id);
+        if (a >= 0 && b >= 0) {
+          const lo = Math.min(a, b);
+          const hi = Math.max(a, b);
+          const ids = events.slice(lo, hi + 1).map((x) => x.id);
+          onSelectIds(ids);
+          return;
+        }
       }
+      onSelect(id);
+      return;
     }
     if (e.metaKey || e.ctrlKey) {
       const next = new Set(selectedIds);
@@ -136,6 +143,13 @@ export function LogStream({
       ) {
         e.preventDefault();
         onSelectIds(events.map((ev) => ev.id));
+      }
+      if (e.key === "Escape" && !inField) {
+        if (selectedIds.length > 0 || selectedId != null) {
+          e.preventDefault();
+          onSelect(null);
+          onSelectIds([]);
+        }
       }
     };
     window.addEventListener("keydown", onKey);

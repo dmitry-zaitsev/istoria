@@ -839,6 +839,15 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .logrow.lvl-warn .msg { color: var(--warn-fg); }
 .logrow.lvl-dbg  { color: var(--muted); }
 .logrow.lvl-dbg  .msg { color: var(--muted); }
+/* Selection wins over level tinting so error/warn rows still show
+   when picked. Listed AFTER lvl-* so equal-specificity cascade
+   resolves in selection's favour. */
+.logrow.sel,
+.logrow.sel.lvl-err,
+.logrow.sel.lvl-warn,
+.logrow.sel.lvl-dbg {
+  background: var(--brand-50);
+}
 
 .lvl {
   font-family: var(--mono);
