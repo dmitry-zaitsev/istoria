@@ -372,16 +372,15 @@ function buildSuggestions(
     const partial = opMatch?.[2] ?? afterColon;
     const items: SuggestionItem[] = [];
 
-    // last() — for time keys, accept bare or any cmp form.
+    // last() — for time keys; op is implicit (>=), so don't render it.
     if (key === "ts" || key === "timestamp") {
       const presets = ["5 min", "15 min", "1 h", "24 h", "7 d"];
       for (const p of presets) {
-        const lbl = `${key}:${cmp || ">="}last(${p})`;
         if (`last(${p})`.toLowerCase().startsWith(partial.toLowerCase())) {
           items.push({
             kind: "value",
-            label: lbl,
-            completion: `${key}:${cmp || ">="}last(${p}) `,
+            label: `${key}:last(${p})`,
+            completion: `${key}:last(${p}) `,
             commit: true,
           });
         }

@@ -560,9 +560,10 @@ function astToToken(ast: Ast): Token {
       };
     case "key_cmp_fn": {
       const inner = ast.argText ?? String(ast.arg);
+      const op = ast.fn === "last" ? "" : cmpStr(ast.op);
       return {
         kind: "key_cmp",
-        text: `${ast.key}:${cmpStr(ast.op)}${ast.fn}(${inner})`,
+        text: `${ast.key}:${op}${ast.fn}(${inner})`,
       };
     }
     case "key_regex":
@@ -643,7 +644,10 @@ function render(ast: Ast): string {
       return `${ast.key}:${cmpStr(ast.op)}${renderValue(String(ast.value))}`;
     case "key_cmp_fn": {
       const inner = ast.argText ?? String(ast.arg);
-      return `${ast.key}:${cmpStr(ast.op)}${ast.fn}(${inner})`;
+      // \`last\` always means "within the last N" — implicit >=.
+      // Hide the op so the chip / canonical text reads cleanly.
+      const op = ast.fn === "last" ? "" : cmpStr(ast.op);
+      return `${ast.key}:${op}${ast.fn}(${inner})`;
     }
     case "key_regex":
       return `${ast.key}~/${ast.pattern}/`;
