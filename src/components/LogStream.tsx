@@ -23,12 +23,13 @@ export function LogStream({
   showSource,
 }: LogStreamProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
-  const stickToBottom = useRef(true);
+  const stickToNewest = useRef(true);
   const paused = useStore((s) => s.paused);
   const setPaused = useStore((s) => s.setPaused);
   const pausedBaseline = useStore((s) => s.pausedBaseline);
   const sort = useStore((s) => s.sort);
-  const liveTail = sort === "newest-bottom";
+  const liveTail = sort !== "level";
+  const newestAtTop = sort === "newest-top";
 
   const virtualizer = useVirtualizer({
     count: events.length,
@@ -37,27 +38,36 @@ export function LogStream({
     overscan: 12,
   });
 
+  const isAtNewestEnd = (el: HTMLDivElement) => {
+    if (newestAtTop) return el.scrollTop < STICK_THRESHOLD;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD;
+  };
+
+  const scrollToNewest = () => {
+    if (events.length === 0) return;
+    if (newestAtTop) virtualizer.scrollToIndex(0, { align: "start" });
+    else virtualizer.scrollToIndex(events.length - 1, { align: "end" });
+  };
+
   useEffect(() => {
     const el = parentRef.current;
     if (!el) return;
     const onScroll = () => {
-      const distanceFromBottom =
-        el.scrollHeight - el.scrollTop - el.clientHeight;
-      const atBottom = distanceFromBottom < STICK_THRESHOLD;
-      stickToBottom.current = atBottom;
-      if (!atBottom && !useStore.getState().paused) {
-        setPaused(true, events.length);
-      }
+      const at = isAtNewestEnd(el);
+      stickToNewest.current = at;
+      const wasPaused = useStore.getState().paused;
+      if (!at && !wasPaused) setPaused(true, events.length);
+      if (at && wasPaused) setPaused(false);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [events.length, setPaused]);
+  }, [events.length, setPaused, newestAtTop]);
 
   useLayoutEffect(() => {
     if (paused || !liveTail) return;
-    if (!stickToBottom.current || events.length === 0) return;
-    virtualizer.scrollToIndex(events.length - 1, { align: "end" });
-  }, [events.length, virtualizer, paused, liveTail]);
+    if (!stickToNewest.current || events.length === 0) return;
+    scrollToNewest();
+  }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
   const onSelectInternal = (id: number | null) => {
     if (id != null && !paused) setPaused(true, events.length);
@@ -66,9 +76,8 @@ export function LogStream({
 
   const resume = () => {
     setPaused(false);
-    stickToBottom.current = true;
-    if (events.length > 0)
-      virtualizer.scrollToIndex(events.length - 1, { align: "end" });
+    stickToNewest.current = true;
+    scrollToNewest();
   };
 
   const newCount = paused ? Math.max(0, events.length - pausedBaseline) : 0;
@@ -86,6 +95,10 @@ export function LogStream({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Resume affordance: only when paused, new events arrived, AND we
+  // are not already sitting at the newest-end position.
+  const showPill = paused && newCount > 0;
+
   return (
     <div
       className="stream"
@@ -93,7 +106,7 @@ export function LogStream({
       style={{ paddingBottom: bottomInset }}
       tabIndex={0}
     >
-      {paused && newCount > 0 && (
+      {showPill && (
         <div className="pause-pill" role="button" onClick={resume}>
           <span style={{ color: "var(--ink)" }}>
             {newCount.toLocaleString()} new
@@ -147,7 +160,8 @@ export function LogStream({
       </div>
       {!paused && liveTail && (
         <div className="stream-foot">
-          ▼ tailing — newest at bottom · scroll up to pause
+          ▼ tailing — newest at {newestAtTop ? "top" : "bottom"} · scroll{" "}
+          {newestAtTop ? "down" : "up"} to pause
         </div>
       )}
     </div>
