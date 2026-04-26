@@ -13,7 +13,10 @@ interface LogStreamProps {
 }
 
 const ROW_PX = 26;
-const STICK_THRESHOLD = 50;
+// Tight: any meaningful scroll motion away from the newest end
+// flips into pause. 5px tolerates rounding / sub-pixel drift but
+// catches a slow finger swipe immediately.
+const STICK_THRESHOLD = 5;
 
 export function LogStream({
   events,
