@@ -23,6 +23,18 @@ export interface FacetGroup {
 const TOP_N_KEYS = 5;
 const ALL_KEYS_CAP = 50;
 const TOP_N_VALUES = 50;
+// Top-level event fields are mirrored into facet groups
+// (Level / Source) explicitly. Skip them in auto-discovery so they
+// don't show up twice when the JSON payload also carries the value.
+const MIRRORED_KEYS = new Set([
+  "level",
+  "source",
+  "msg",
+  "raw",
+  "ts",
+  "id",
+  "timestamp",
+]);
 
 /// Compute facet groups from a list of events. Always emits Level
 /// and Source first; then auto-discovered JSON keys ordered by
@@ -51,7 +63,11 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
     });
   }
   const ranked = [...keyStats.entries()]
-    .filter(([, set]) => set.size > 1 && set.size <= 200)
+    // Skip top-level mirrors and degenerate single-value keys.
+    // Numeric / high-cardinality keys (status_code, dur_ms, ids) are
+    // surfaced too — the cardinality cap previously dropped them
+    // outright, which hid useful range facets like dur_ms.
+    .filter(([k, set]) => set.size > 1 && !MIRRORED_KEYS.has(k))
     .sort((a, b) => b[1].size - a[1].size)
     .slice(0, ALL_KEYS_CAP)
     .map(([k]) => k);
