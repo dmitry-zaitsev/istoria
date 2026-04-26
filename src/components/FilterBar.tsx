@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { registerFilterFocus } from "../lib/filterFocus";
-import { isError, parse, tokenize, type Token } from "../lib/query";
+import { isError, parse, renderValue, tokenize, type Token } from "../lib/query";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
@@ -339,7 +339,7 @@ function buildSuggestions(
       items: matched.map<SuggestionItem>((v) => ({
         kind: "value",
         label: `${key}:${v}`,
-        completion: `${key}:${quoteIfNeeded(v)} `,
+        completion: `${key}:${renderValue(v)} `,
         commit: true,
       })),
     };
@@ -372,9 +372,4 @@ function buildSuggestions(
 function defaultValuesFor(key: string): string[] {
   if (key === "level") return ["error", "warn", "info", "debug", "trace"];
   return [];
-}
-
-function quoteIfNeeded(v: string): string {
-  if (/[\s()"]/.test(v)) return `"${v.replace(/"/g, '\\"')}"`;
-  return v;
 }
