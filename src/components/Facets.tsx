@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
   computeFacets,
   pinnedFromAst,
+  TOP_N_FACET_GROUPS,
   toggleFacetOr,
   type FacetGroup,
 } from "../lib/facets";
@@ -27,14 +28,39 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
     return isError(r) ? null : r;
   }, [filter]);
   const pinned = useMemo(() => pinnedFromAst(ast), [ast]);
+  const [keySearch, setKeySearch] = useState("");
 
   const toggle = (key: string, value: string) => {
     onFilterChange(toggleFacetOr(filter, key, value));
   };
 
+  // When the user types in the top-level search, surface ANY group
+  // (or any value within a group) that matches; otherwise cap at the
+  // top N groups by cardinality + level/source.
+  const q = keySearch.trim().toLowerCase();
+  const matchedGroups: FacetGroup[] = q
+    ? groups.filter(
+        (g) =>
+          g.key.toLowerCase().includes(q) ||
+          g.label.toLowerCase().includes(q) ||
+          g.values.some((v) => v.value.toLowerCase().includes(q)),
+      )
+    : groups.slice(0, TOP_N_FACET_GROUPS);
+  const hidden = q ? 0 : Math.max(0, groups.length - matchedGroups.length);
+
   return (
     <aside className="facets">
-      {groups.map((g) =>
+      <div className="facet-key-search-wrap">
+        <input
+          className="facet-key-search"
+          placeholder={
+            hidden > 0 ? `search facets (+${hidden} hidden)…` : "search facets…"
+          }
+          value={keySearch}
+          onChange={(e) => setKeySearch(e.target.value)}
+        />
+      </div>
+      {matchedGroups.map((g) =>
         numericKeys.has(g.key) ? (
           <RangeSlider
             key={g.key}
@@ -45,8 +71,17 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
             onFilterChange={onFilterChange}
           />
         ) : (
-          <Group key={g.key} group={g} pinned={pinned} onToggle={toggle} />
+          <Group
+            key={g.key}
+            group={g}
+            pinned={pinned}
+            onToggle={toggle}
+            valueFilter={q}
+          />
         ),
+      )}
+      {matchedGroups.length === 0 && (
+        <div className="facet-empty">No facets match.</div>
       )}
     </aside>
   );
@@ -56,19 +91,23 @@ function Group({
   group,
   pinned,
   onToggle,
+  valueFilter,
 }: {
   group: FacetGroup;
   pinned: Map<string, Set<string>>;
   onToggle: (key: string, value: string) => void;
+  valueFilter?: string;
 }) {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const pinnedSet = pinned.get(group.key) ?? new Set<string>();
   const showSearch = group.values.length > SEARCH_OVERFLOW;
 
-  const matched = search
+  // Top-level facet search overrides per-group search when active.
+  const effective = valueFilter || search;
+  const matched = effective
     ? group.values.filter((v) =>
-        v.value.toLowerCase().includes(search.toLowerCase()),
+        v.value.toLowerCase().includes(effective.toLowerCase()),
       )
     : group.values;
 

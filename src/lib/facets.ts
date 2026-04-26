@@ -21,21 +21,21 @@ export interface FacetGroup {
 }
 
 const TOP_N_KEYS = 5;
+const ALL_KEYS_CAP = 50;
 const TOP_N_VALUES = 50;
 
 /// Compute facet groups from a list of events. Always emits Level
 /// and Source first; then auto-discovered JSON keys ordered by
-/// cardinality (count of distinct values × frequency).
+/// cardinality (count of distinct values × frequency). Returns
+/// up to ALL_KEYS_CAP groups; the UI can decide how many to show
+/// at a time vs surface via search.
 export function computeFacets(events: LogEvent[]): FacetGroup[] {
   const groups: FacetGroup[] = [];
 
   groups.push(group("level", "Level", events, (e) => [e.level]));
   const sourceGroup = group("source", "Source", events, (e) => [e.source]);
-  // Single-source case: don't bother with the facet — there's nothing
-  // to filter and it's redundant with the (also-hidden) row column.
   if (sourceGroup.values.length > 1) groups.push(sourceGroup);
 
-  // Top-N JSON keys by cardinality
   const keyStats = new Map<string, Set<string>>();
   for (const e of events) {
     const fields = e.fields as Record<string, unknown> | undefined;
@@ -53,7 +53,7 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
   const ranked = [...keyStats.entries()]
     .filter(([, set]) => set.size > 1 && set.size <= 200)
     .sort((a, b) => b[1].size - a[1].size)
-    .slice(0, TOP_N_KEYS)
+    .slice(0, ALL_KEYS_CAP)
     .map(([k]) => k);
 
   for (const key of ranked) {
@@ -68,6 +68,8 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
 
   return groups;
 }
+
+export const TOP_N_FACET_GROUPS = TOP_N_KEYS + 2; // level + source + top N
 
 function group(
   key: string,
