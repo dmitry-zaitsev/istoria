@@ -156,19 +156,26 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
         )?;
     }
 
+    // v3+ are feature-add migrations. Run them best-effort: a failure
+    // here used to abort `Store::open_default`, which propagated to
+    // `state.store = None` and surfaced as "persistent store
+    // unavailable" on every IPC call. The cost of a missing pins or
+    // alerts table is feature-degradation, not an unusable app.
     if stored < 3 {
-        conn.execute_batch(
+        if let Err(e) = conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS pins (
                 event_id  BIGINT PRIMARY KEY,
                 pinned_at TIMESTAMP NOT NULL DEFAULT now()
             );
             "#,
-        )?;
+        ) {
+            tracing::warn!(error = %e, "v3 pins migration failed");
+        }
     }
 
     if stored < 4 {
-        conn.execute_batch(
+        if let Err(e) = conn.execute_batch(
             r#"
             CREATE SEQUENCE IF NOT EXISTS alerts_id_seq;
             CREATE TABLE IF NOT EXISTS alerts (
@@ -181,7 +188,9 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
                 created_at  TIMESTAMP NOT NULL DEFAULT now()
             );
             "#,
-        )?;
+        ) {
+            tracing::warn!(error = %e, "v4 alerts migration failed");
+        }
     }
 
     if stored < 5 {
@@ -197,15 +206,19 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
             )
             .unwrap_or(0);
         if has_col == 0 {
-            conn.execute(
+            if let Err(e) = conn.execute(
                 "ALTER TABLE alerts ADD COLUMN enabled BOOLEAN DEFAULT TRUE",
                 [],
-            )?;
+            ) {
+                tracing::warn!(error = %e, "v5 alerts.enabled ALTER failed");
+            }
         }
-        conn.execute(
+        if let Err(e) = conn.execute(
             "UPDATE alerts SET enabled = TRUE WHERE enabled IS NULL",
             [],
-        )?;
+        ) {
+            tracing::warn!(error = %e, "v5 alerts.enabled backfill failed");
+        }
     }
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('user_version', ?)",

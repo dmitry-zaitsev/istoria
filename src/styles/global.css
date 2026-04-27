@@ -149,6 +149,11 @@ body,
   cursor: default;
 }
 .tab-add:hover { color: var(--ink); background: var(--hover); }
+.tabs-drag-fill {
+  flex: 1 1 auto;
+  min-width: 40px;
+  align-self: stretch;
+}
 .tab-menu {
   position: absolute;
   top: 32px;

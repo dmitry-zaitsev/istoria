@@ -17,13 +17,40 @@ pub struct Alert {
 pub fn list(store: &Store) -> duckdb::Result<Vec<Alert>> {
     let conn = store.conn();
     let g = conn.lock();
-    let mut stmt = g.prepare(
+    // Try modern schema first; fall back to legacy (no `enabled`
+    // column) if the v5 migration was skipped or failed on this DB.
+    if let Ok(mut stmt) = g.prepare(
         "SELECT id, name, query, color, notify, debounce_ms, enabled FROM alerts ORDER BY id",
+    ) {
+        if let Ok(mut rows) = stmt.query([]) {
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(read_alert(row)?);
+            }
+            return Ok(out);
+        }
+    }
+    let mut stmt = g.prepare(
+        "SELECT id, name, query, color, notify, debounce_ms FROM alerts ORDER BY id",
     )?;
     let mut rows = stmt.query([])?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
-        out.push(read_alert(row)?);
+        let id: i32 = row.get(0)?;
+        let name: String = row.get(1)?;
+        let query: String = row.get(2)?;
+        let color: String = row.get(3)?;
+        let notify: bool = row.get(4)?;
+        let debounce_ms: i32 = row.get(5)?;
+        out.push(Alert {
+            id: id as i64,
+            name,
+            query,
+            color,
+            notify,
+            debounce_ms: debounce_ms as i64,
+            enabled: true,
+        });
     }
     Ok(out)
 }

@@ -86,7 +86,7 @@ export function Tabs() {
   };
 
   return (
-    <div className="tabs" data-tauri-drag-region>
+    <div className="tabs">
       {views.map((v) => {
         const active = v.id === activeId;
         return (
@@ -160,6 +160,11 @@ export function Tabs() {
       >
         +
       </button>
+      {/* Leaf drag-region: putting data-tauri-drag-region on .tabs
+          root would let Tauri's mousedown handler swallow tab clicks
+          via closest()-traversal. Keep it on this empty spacer so
+          buttons/tabs above stay interactive. */}
+      <div className="tabs-drag-fill" data-tauri-drag-region />
     </div>
   );
 }
