@@ -243,30 +243,7 @@ export default function App() {
   const suppressedRef = useRef<Map<string, number>>(new Map());
   const lastSeenIdRef = useRef<number>(-1);
   const notifyPermitRef = useRef<boolean | null>(null);
-
-  // Probe + request macOS notification permission once on first
-  // notify-enabled alert. Without this, sendNotification silently
-  // no-ops on a fresh macOS profile.
-  useEffect(() => {
-    if (alerts.every((a) => !a.notify)) return;
-    if (notifyPermitRef.current != null) return;
-    void (async () => {
-      try {
-        let granted = await isPermissionGranted();
-        if (!granted) {
-          const r = await requestPermission();
-          granted = r === "granted";
-        }
-        notifyPermitRef.current = granted;
-        if (!granted) {
-          console.warn("notification permission denied");
-        }
-      } catch (e) {
-        console.warn("notification permission probe failed", e);
-        notifyPermitRef.current = false;
-      }
-    })();
-  }, [alerts]);
+  const notifyPermitInflightRef = useRef<Promise<boolean> | null>(null);
   useEffect(() => {
     const notifying = alerts.filter((a) => a.notify);
     if (notifying.length === 0) {
@@ -311,9 +288,33 @@ export default function App() {
           suppressedRef.current.set(a.id, 0);
           const head = (ev.msg || ev.raw).slice(0, 120);
           const body = suppressed > 0 ? `${head}\n+${suppressed} more` : head;
-          if (notifyPermitRef.current === false) {
-            // Permission denied — fall back to in-app toast so user
-            // still sees the match instead of nothing.
+          // Lazy permission probe: cached after the very first match
+          // that wants to fire. Avoids prompting at launch when no
+          // alert has actually triggered yet.
+          let permit = notifyPermitRef.current;
+          if (permit == null) {
+            if (!notifyPermitInflightRef.current) {
+              notifyPermitInflightRef.current = (async () => {
+                try {
+                  let g = await isPermissionGranted();
+                  if (!g) {
+                    const r = await requestPermission();
+                    g = r === "granted";
+                  }
+                  notifyPermitRef.current = g;
+                  return g;
+                } catch (e) {
+                  console.warn("notification permission probe failed", e);
+                  notifyPermitRef.current = false;
+                  return false;
+                } finally {
+                  notifyPermitInflightRef.current = null;
+                }
+              })();
+            }
+            permit = await notifyPermitInflightRef.current;
+          }
+          if (!permit) {
             toast(`${a.name}: ${head}`);
             continue;
           }
