@@ -73,3 +73,15 @@ export async function setMeta(key: string, value: string): Promise<void> {
 export async function clearSession(): Promise<void> {
   return invoke("clear_session");
 }
+
+export async function pinEvent(eventId: number): Promise<void> {
+  return invoke("pin_event", { eventId });
+}
+
+export async function unpinEvent(eventId: number): Promise<void> {
+  return invoke("unpin_event", { eventId });
+}
+
+export async function listPins(): Promise<number[]> {
+  return invoke<number[]>("list_pins");
+}

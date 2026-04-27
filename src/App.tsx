@@ -14,6 +14,7 @@ import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
 import {
   getMeta,
+  listPins,
   listViews,
   queryRecent,
   subscribeEvents,
@@ -40,6 +41,7 @@ export default function App() {
   const setActiveViewId = useStore((s) => s.setActiveViewId);
   const sort = useStore((s) => s.sort);
   const setSort = useStore((s) => s.setSort);
+  const setPinnedIds = useStore((s) => s.setPinnedIds);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
@@ -54,6 +56,7 @@ export default function App() {
         setPausedSrc(null);
         setPaused(false);
         setSelected(null);
+        setPinnedIds(new Set());
       }),
     [],
   );
@@ -120,6 +123,19 @@ export default function App() {
     }
     return false;
   }, [unfilteredEvents]);
+
+  // Bootstrap pins on mount.
+  useEffect(() => {
+    let cancelled = false;
+    listPins()
+      .then((ids) => {
+        if (!cancelled) setPinnedIds(new Set(ids));
+      })
+      .catch((e) => console.warn("listPins failed", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [setPinnedIds]);
 
   // Bootstrap views + active id from DuckDB.
   useEffect(() => {
@@ -243,6 +259,7 @@ export default function App() {
             total={unfilteredCount}
             filtered={events.length}
             filterActive={filterActive}
+            unfilteredEvents={unfilteredEvents}
           />
           <LogStream
             events={events}

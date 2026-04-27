@@ -19,6 +19,8 @@ interface Store {
   pausedBaseline: number; // unused since DEE-75 (kept for future)
   newCount: number;
   sort: SortKey;
+  pinnedIds: Set<number>;
+  scrollTargetId: number | null;
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -29,6 +31,9 @@ interface Store {
   setPaused: (paused: boolean, baseline?: number) => void;
   setNewCount: (n: number) => void;
   setSort: (sort: SortKey) => void;
+  setPinnedIds: (ids: Set<number>) => void;
+  togglePinLocal: (id: number) => void;
+  setScrollTarget: (id: number | null) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -43,6 +48,8 @@ export const useStore = create<Store>((set) => ({
   pausedBaseline: 0,
   newCount: 0,
   sort: "newest-bottom",
+  pinnedIds: new Set<number>(),
+  scrollTargetId: null,
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) =>
@@ -64,4 +71,13 @@ export const useStore = create<Store>((set) => ({
     })),
   setNewCount: (newCount) => set({ newCount }),
   setSort: (sort) => set({ sort }),
+  setPinnedIds: (pinnedIds) => set({ pinnedIds }),
+  togglePinLocal: (id) =>
+    set((s) => {
+      const next = new Set(s.pinnedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { pinnedIds: next };
+    }),
+  setScrollTarget: (scrollTargetId) => set({ scrollTargetId }),
 }));

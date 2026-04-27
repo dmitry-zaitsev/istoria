@@ -1235,3 +1235,96 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .status .live.idle { color: var(--muted); }
 .status .live.idle .dot { background: var(--muted-2); }
 .status .right { margin-left: auto; display: flex; gap: 14px; }
+
+/* ── Pin button + pinned rows + pins panel ─────────────────────── */
+.logrow .pin-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted-2);
+  opacity: 0;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.logrow:hover .pin-btn,
+.logrow .pin-btn.on { opacity: 1; }
+.logrow .pin-btn.on { color: #d97706; }
+.logrow .pin-btn:hover { background: var(--surface-3); color: var(--ink); }
+.logrow.pinned { box-shadow: inset 2px 0 0 #d97706; }
+
+.pins-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  width: 480px;
+  max-height: 480px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+  z-index: 50;
+  font-size: 12px;
+}
+.pins-panel-h {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+.pins-empty { padding: 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.pins-empty kbd {
+  font-family: var(--mono);
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-size: 11px;
+}
+.pins-list { max-height: 380px; overflow: auto; }
+.pins-row {
+  display: grid;
+  grid-template-columns: 64px 56px 1fr auto;
+  gap: 10px;
+  padding: 6px 12px;
+  align-items: center;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+}
+.pins-row:hover { background: var(--hover); }
+.pins-row .ts { color: var(--muted-2); font-size: 11px; font-family: var(--mono); }
+.pins-row .msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-2);
+}
+.pins-row.lvl-err  .msg { color: var(--err-fg); }
+.pins-row.lvl-warn .msg { color: var(--warn-fg); }
+.pins-row .pin-btn {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: #d97706;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.pins-row .pin-btn:hover { background: var(--surface-3); }
+.pins-absent {
+  padding: 8px 12px;
+  color: var(--muted-2);
+  font-size: 11px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}

@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
-import { clearSession, setMeta } from "../lib/ipc";
+import { clearSession, setMeta, type LogEvent } from "../lib/ipc";
 import { fireSessionCleared } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
 import { useStore, type SortKey } from "../store";
+import { PinsPanel } from "./PinsPanel";
 
 interface StreamHeaderProps {
   total: number;
   filtered: number;
   filterActive: boolean;
+  unfilteredEvents: LogEvent[];
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -16,12 +18,19 @@ const SORT_LABELS: Record<SortKey, string> = {
   "newest-top": "newest at top",
 };
 
-export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProps) {
+export function StreamHeader({
+  total,
+  filtered,
+  filterActive,
+  unfilteredEvents,
+}: StreamHeaderProps) {
   const sort = useStore((s) => s.sort);
   const setSort = useStore((s) => s.setSort);
   const events = useStore((s) => s.events);
   const selectedIds = useStore((s) => s.selectedIds);
+  const pinnedIds = useStore((s) => s.pinnedIds);
   const [open, setOpen] = useState(false);
+  const [pinsOpen, setPinsOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -51,6 +60,21 @@ export function StreamHeader({ total, filtered, filterActive }: StreamHeaderProp
         )}
       </span>
       <span className="right" ref={ref}>
+        {pinnedIds.size > 0 && (
+          <button
+            type="button"
+            className="sort-btn"
+            onClick={() => setPinsOpen((x) => !x)}
+            title="Show pinned events"
+          >
+            ★ {pinnedIds.size}
+          </button>
+        )}
+        <PinsPanel
+          events={unfilteredEvents}
+          open={pinsOpen}
+          onClose={() => setPinsOpen(false)}
+        />
         {selectedIds.length > 0 && (
           <button
             type="button"
