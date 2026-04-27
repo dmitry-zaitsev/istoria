@@ -124,7 +124,14 @@ jobs:
           mkdir -p dist
           BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
           ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
-          tar -czf "dist/${ARTIFACT}" -C "$BUNDLE_DIR" istoria.app
+          # Wrap istoria.app in a parent dir so Homebrew's extract-and-
+          # chdir strips the wrapper, not the .app itself. Without this
+          # brew enters istoria.app/ and the formula's `prefix.install
+          # "istoria.app"` fails with ENOENT.
+          STAGE="$(mktemp -d)"
+          mkdir "$STAGE/istoria-${VERSION}"
+          cp -R "$BUNDLE_DIR/istoria.app" "$STAGE/istoria-${VERSION}/"
+          tar -czf "dist/${ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
           (cd dist && shasum -a 256 "$ARTIFACT" > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4
