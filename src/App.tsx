@@ -20,6 +20,7 @@ import {
   type LogEvent,
 } from "./lib/ipc";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
+import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
 import { useStore, type SortKey } from "./store";
 
@@ -76,6 +77,10 @@ export default function App() {
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
+  const highlightTerms = useMemo(
+    () => (filterValid ? termsFromAst(parsed as Ast) : []),
+    [parsed, filterValid],
+  );
 
   // Facets only respect the ts: bounds (if any), not the full query —
   // so changing a level filter doesn't shrink the source list to one
@@ -247,6 +252,7 @@ export default function App() {
             onSelectIds={setSelectedIds}
             bottomInset={bottomInset}
             showSource={showSource}
+            highlightTerms={highlightTerms}
           />
           {selected && (
             <Inspector
@@ -254,6 +260,7 @@ export default function App() {
               events={unfilteredEvents}
               onSelect={setSelected}
               onClose={() => setSelected(null)}
+              highlightTerms={highlightTerms}
             />
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+import { highlight, type HighlightTerm } from "../lib/highlight";
 import type { Level, LogEvent } from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
@@ -13,6 +14,7 @@ interface LogStreamProps {
   onSelectIds: (ids: number[]) => void;
   bottomInset: number;
   showSource: boolean;
+  highlightTerms: HighlightTerm[];
 }
 
 const ROW_PX = 26;
@@ -29,6 +31,7 @@ export function LogStream({
   onSelectIds,
   bottomInset,
   showSource,
+  highlightTerms,
 }: LogStreamProps) {
   const selectedSet = new Set(selectedIds);
   const parentRef = useRef<HTMLDivElement | null>(null);
@@ -223,7 +226,9 @@ export function LogStream({
                   {ev.source}
                 </span>
               )}
-              <span className="msg">{ev.msg || ev.raw}</span>
+              <span className="msg">
+                {highlight(ev.msg || ev.raw, highlightTerms)}
+              </span>
             </div>
           );
         })}
