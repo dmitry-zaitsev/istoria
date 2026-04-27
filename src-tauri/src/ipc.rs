@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::event::Event;
+use crate::pins;
 use crate::query::{self, Ast};
 use crate::state::AppState;
 use crate::views::{self, View};
@@ -103,6 +104,30 @@ pub async fn meta_set(
 ) -> Result<(), String> {
     let store = store_or_err(&state)?;
     views::set_meta(store, &key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pin_event(
+    state: tauri::State<'_, AppState>,
+    event_id: i64,
+) -> Result<(), String> {
+    let store = store_or_err(&state)?;
+    pins::pin(store, event_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn unpin_event(
+    state: tauri::State<'_, AppState>,
+    event_id: i64,
+) -> Result<(), String> {
+    let store = store_or_err(&state)?;
+    pins::unpin(store, event_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_pins(state: tauri::State<'_, AppState>) -> Result<Vec<i64>, String> {
+    let store = store_or_err(&state)?;
+    pins::list(store).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

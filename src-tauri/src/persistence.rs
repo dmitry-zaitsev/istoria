@@ -10,7 +10,7 @@ use crate::event::{Event, Level};
 
 pub const DB_DIR_NAME: &str = "istoria";
 pub const DB_FILE_NAME: &str = "istoria.db";
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 pub const FLUSH_INTERVAL_MS: u64 = 250;
 pub const FLUSH_BATCH: usize = 1_000;
 
@@ -63,9 +63,15 @@ impl Store {
         self.session_id
     }
 
-    /// Delete all events for the current session from disk.
+    /// Delete all events for the current session from disk. Also drops
+    /// pins pointing at those events so the pins set never references
+    /// rows that no longer exist.
     pub fn clear_session(&self) -> duckdb::Result<()> {
         let conn = self.conn.lock();
+        conn.execute(
+            "DELETE FROM pins WHERE event_id IN (SELECT id FROM events WHERE session_id = ?)",
+            params![self.session_id as i32],
+        )?;
         conn.execute(
             "DELETE FROM events WHERE session_id = ?",
             params![self.session_id as i32],
@@ -145,6 +151,17 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
             CREATE TABLE IF NOT EXISTS meta (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            "#,
+        )?;
+    }
+
+    if stored < 3 {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS pins (
+                event_id  BIGINT PRIMARY KEY,
+                pinned_at TIMESTAMP NOT NULL DEFAULT now()
             );
             "#,
         )?;

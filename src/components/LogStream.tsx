@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
-import type { Level, LogEvent } from "../lib/ipc";
+import { pinEvent, unpinEvent, type Level, type LogEvent } from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
@@ -37,6 +37,10 @@ export function LogStream({
   const setPaused = useStore((s) => s.setPaused);
   const newCount = useStore((s) => s.newCount);
   const sort = useStore((s) => s.sort);
+  const pinnedIds = useStore((s) => s.pinnedIds);
+  const togglePinLocal = useStore((s) => s.togglePinLocal);
+  const scrollTargetId = useStore((s) => s.scrollTargetId);
+  const setScrollTarget = useStore((s) => s.setScrollTarget);
   const liveTail = true;
   const newestAtTop = sort === "newest-top";
 
@@ -118,6 +122,29 @@ export function LogStream({
     scrollToNewest();
   };
 
+  const togglePin = (id: number) => {
+    const isPinned = pinnedIds.has(id);
+    togglePinLocal(id);
+    const op = isPinned ? unpinEvent(id) : pinEvent(id);
+    op
+      .then(() => toast(isPinned ? "Unpinned" : "Pinned"))
+      .catch((e) => {
+        // revert on failure
+        togglePinLocal(id);
+        toast(`Pin failed: ${String(e)}`);
+      });
+  };
+
+  // Scroll to a requested event id (from PinsPanel etc.). Cleared after.
+  useLayoutEffect(() => {
+    if (scrollTargetId == null) return;
+    const idx = events.findIndex((e) => e.id === scrollTargetId);
+    if (idx >= 0) {
+      virtualizer.scrollToIndex(idx, { align: "center" });
+    }
+    setScrollTarget(null);
+  }, [scrollTargetId, events, virtualizer, setScrollTarget]);
+
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -152,6 +179,12 @@ export function LogStream({
           e.preventDefault();
           onSelect(null);
           onSelectIds([]);
+        }
+      }
+      if (e.key === "p" && !inField && !e.metaKey && !e.ctrlKey) {
+        if (selectedId != null) {
+          e.preventDefault();
+          togglePin(selectedId);
         }
       }
     };
@@ -191,12 +224,13 @@ export function LogStream({
           const cls = levelClass(ev.level);
           const isSel = selectedSet.has(ev.id);
           const isPrimary = ev.id === selectedId;
+          const isPinned = pinnedIds.has(ev.id);
           return (
             <div
               key={ev.id}
               className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
                 isPrimary ? " primary" : ""
-              }${showSource ? "" : " no-src"}`}
+              }${isPinned ? " pinned" : ""}${showSource ? "" : " no-src"}`}
               style={{
                 position: "absolute",
                 top: 0,
@@ -224,6 +258,18 @@ export function LogStream({
                 </span>
               )}
               <span className="msg">{ev.msg || ev.raw}</span>
+              <button
+                type="button"
+                className={`pin-btn${isPinned ? " on" : ""}`}
+                title={isPinned ? "Unpin" : "Pin"}
+                aria-label={isPinned ? "Unpin event" : "Pin event"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePin(ev.id);
+                }}
+              >
+                {isPinned ? "★" : "☆"}
+              </button>
             </div>
           );
         })}

@@ -4,6 +4,7 @@ pub mod format;
 pub mod ingest;
 pub mod ipc;
 pub mod persistence;
+pub mod pins;
 pub mod query;
 pub mod ring;
 pub mod socket;
@@ -105,6 +106,9 @@ pub fn run(cli: cli::Cli) {
             ipc::views_duplicate,
             ipc::meta_get,
             ipc::meta_set,
+            ipc::pin_event,
+            ipc::unpin_event,
+            ipc::list_pins,
             ipc::clear_session,
         ])
         .setup(move |app| {
