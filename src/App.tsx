@@ -278,16 +278,16 @@ export default function App() {
             continue;
           }
           lastFiredRef.current.set(a.id, now);
-          if (focused) {
-            // Don't pile up a phantom "+N more" while the user is
-            // looking at the stream — they can already see them.
-            suppressedRef.current.set(a.id, 0);
-            continue;
-          }
           const suppressed = suppressedRef.current.get(a.id) ?? 0;
           suppressedRef.current.set(a.id, 0);
           const head = (ev.msg || ev.raw).slice(0, 120);
           const body = suppressed > 0 ? `${head}\n+${suppressed} more` : head;
+          if (focused) {
+            // Window already showing — surface match in-app instead
+            // of pinging the user's notification center.
+            toast(`${a.name}: ${head}`);
+            continue;
+          }
           // Lazy permission probe: cached after the very first match
           // that wants to fire. Avoids prompting at launch when no
           // alert has actually triggered yet.
@@ -322,6 +322,7 @@ export default function App() {
             sendNotification({ title: a.name, body });
           } catch (e) {
             console.warn("sendNotification failed", e);
+            toast(`${a.name}: ${head}`);
           }
         }
       }
