@@ -314,6 +314,11 @@ export default function App() {
     <div className="win">
       <Palette />
       <Toast />
+      {/* Always-on drag handle: titleBarStyle: "Overlay" hides the
+          native bar, so we need a dedicated draggable strip at the
+          top edge that doesn't depend on the tabs row having empty
+          space. */}
+      <div className="drag-strip" data-tauri-drag-region />
       <Chrome />
       <Tabs />
       <FilterBar

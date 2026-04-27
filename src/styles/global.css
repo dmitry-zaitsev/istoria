@@ -33,6 +33,14 @@ body,
   display: flex;
   flex-direction: column;
 }
+/* Always-on drag region at top edge of window. Sits above the tabs
+   row so the user can grab the window even when tabs fill the row. */
+.drag-strip {
+  height: 6px;
+  -webkit-app-region: drag;
+  flex-shrink: 0;
+  background: transparent;
+}
 .win-titlebar {
   height: 28px;
   display: grid;
@@ -151,6 +159,11 @@ body,
   cursor: default;
 }
 .tab-add:hover { color: var(--ink); background: var(--hover); }
+.tab-drag-fill {
+  flex: 1;
+  align-self: stretch;
+  -webkit-app-region: drag;
+}
 .tab-menu {
   position: absolute;
   top: 32px;

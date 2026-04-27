@@ -28,8 +28,14 @@ pub async fn run_stdin_reader(
                     let _ = stdout.write_all(line.as_bytes()).await;
                     let _ = stdout.write_all(b"\n").await;
                 }
+                if line.trim().is_empty() {
+                    continue;
+                }
                 let id = ring.next_id();
                 let ev = detector.parse(id, &source, line);
+                if ev.msg.trim().is_empty() && ev.fields.is_none() {
+                    continue;
+                }
                 if let Some(s) = store.as_ref() {
                     s.submit(ev.clone());
                 }

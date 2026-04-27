@@ -110,11 +110,14 @@ async fn handle_forwarder(
             break;
         }
         let trimmed = line.trim_end_matches(['\n', '\r']).to_string();
-        if trimmed.is_empty() {
+        if trimmed.trim().is_empty() {
             continue;
         }
         let id = ring.next_id();
         let ev = detector.parse(id, &source_name, trimmed);
+        if ev.msg.trim().is_empty() && ev.fields.is_none() {
+            continue;
+        }
         if let Some(s) = store.as_ref() {
             s.submit(ev.clone());
         }
