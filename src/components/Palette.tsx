@@ -1,6 +1,7 @@
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 
+import { fireAlertsModalOpen } from "../lib/alertsBus";
 import { clearSession, setMeta } from "../lib/ipc";
 import { fireSessionCleared } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
@@ -12,7 +13,7 @@ const RECENTS_MAX = 5;
 interface Action {
   id: string;
   label: string;
-  group: "View" | "Time" | "Stream" | "Session" | "Export";
+  group: "View" | "Time" | "Stream" | "Session" | "Export" | "Alerts";
   shortcut?: string;
   run: () => void | Promise<void>;
 }
@@ -96,6 +97,25 @@ export function Palette() {
       },
     },
     {
+      id: "alerts-manage",
+      label: "Manage alert rules",
+      group: "Alerts",
+      run: () => fireAlertsModalOpen(null),
+    },
+    {
+      id: "alerts-from-query",
+      label: "Save current query as alert",
+      group: "Alerts",
+      run: () => {
+        const q = useStore.getState().filter.trim();
+        if (!q) {
+          toast("Filter is empty");
+          return;
+        }
+        fireAlertsModalOpen(q);
+      },
+    },
+    {
       id: "export-jsonl",
       label: useStore.getState().selectedIds.length > 0
         ? `Export ${useStore.getState().selectedIds.length} selected as JSONL`
@@ -134,7 +154,7 @@ export function Palette() {
           <Command.Input placeholder="Jump to view, time, session…" autoFocus />
           <Command.List>
             <Command.Empty>No actions match.</Command.Empty>
-            {(["View", "Time", "Stream", "Session", "Export"] as const).map(
+            {(["View", "Time", "Stream", "Alerts", "Session", "Export"] as const).map(
               (group) => {
                 const items = ranked.filter((a) => a.group === group);
                 if (items.length === 0) return null;

@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::alerts::{self, Alert};
 use crate::event::Event;
 use crate::pins;
 use crate::query::{self, Ast};
@@ -128,6 +129,50 @@ pub async fn unpin_event(
 pub async fn list_pins(state: tauri::State<'_, AppState>) -> Result<Vec<i64>, String> {
     let store = store_or_err(&state)?;
     pins::list(store).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn alerts_list(state: tauri::State<'_, AppState>) -> Result<Vec<Alert>, String> {
+    let store = store_or_err(&state)?;
+    alerts::list(store).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn alerts_create(
+    state: tauri::State<'_, AppState>,
+    name: String,
+    query: String,
+    color: String,
+    notify: bool,
+    debounce_ms: i64,
+) -> Result<Alert, String> {
+    let store = store_or_err(&state)?;
+    alerts::create(store, name, query, color, notify, debounce_ms)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn alerts_update(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    name: String,
+    query: String,
+    color: String,
+    notify: bool,
+    debounce_ms: i64,
+) -> Result<(), String> {
+    let store = store_or_err(&state)?;
+    alerts::update(store, id, name, query, color, notify, debounce_ms)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn alerts_delete(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    let store = store_or_err(&state)?;
+    alerts::delete(store, id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

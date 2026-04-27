@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { sendNotification } from "@tauri-apps/plugin-notification";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AlertsModal } from "./components/AlertsModal";
 import { Chrome } from "./components/Chrome";
 import { FilterBar } from "./components/FilterBar";
 import { Inspector } from "./components/Inspector";
@@ -12,8 +14,10 @@ import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
+import { compileAlerts, matchAlerts } from "./lib/alerts";
 import {
   getMeta,
+  listAlerts,
   listPins,
   listViews,
   queryRecent,
@@ -23,6 +27,7 @@ import {
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
+import { onAlertsModalOpen } from "./lib/alertsBus";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -42,9 +47,22 @@ export default function App() {
   const sort = useStore((s) => s.sort);
   const setSort = useStore((s) => s.setSort);
   const setPinnedIds = useStore((s) => s.setPinnedIds);
+  const alerts = useStore((s) => s.alerts);
+  const setAlerts = useStore((s) => s.setAlerts);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertsInitialQuery, setAlertsInitialQuery] = useState<string | null>(null);
+
+  useEffect(
+    () =>
+      onAlertsModalOpen((q) => {
+        setAlertsInitialQuery(q);
+        setAlertsOpen(true);
+      }),
+    [],
+  );
 
   // Wipe local state the moment the user clears the session, even if
   // we're paused or mid-throttle. Backend wipe runs in parallel.
@@ -137,6 +155,19 @@ export default function App() {
     };
   }, [setPinnedIds]);
 
+  // Bootstrap alerts on mount.
+  useEffect(() => {
+    let cancelled = false;
+    listAlerts()
+      .then((all) => {
+        if (!cancelled) setAlerts(all);
+      })
+      .catch((e) => console.warn("listAlerts failed", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [setAlerts]);
+
   // Bootstrap views + active id from DuckDB.
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +233,53 @@ export default function App() {
       unlisten?.();
     };
   }, []);
+
+  // Compile alert queries once per alerts change, then derive matches
+  // for displayed (downstream) events. Map: event.id → alertId[].
+  const compiledAlerts = useMemo(() => compileAlerts(alerts), [alerts]);
+  const alertMatches = useMemo(
+    () => matchAlerts(unfilteredEvents, compiledAlerts),
+    [unfilteredEvents, compiledAlerts],
+  );
+
+  // Notification: track last fired time per alert id; on new matching
+  // events for notify-enabled alerts, fire native notification only
+  // if elapsed > debounce_ms.
+  const lastFiredRef = useRef<Map<number, number>>(new Map());
+  const lastSeenIdRef = useRef<number>(-1);
+  useEffect(() => {
+    const notifying = alerts.filter((a) => a.notify);
+    if (notifying.length === 0) {
+      lastSeenIdRef.current = unfilteredEvents.length > 0
+        ? unfilteredEvents[unfilteredEvents.length - 1]!.id
+        : -1;
+      return;
+    }
+    const now = Date.now();
+    const newEvents = unfilteredEvents.filter((e) => e.id > lastSeenIdRef.current);
+    for (const ev of newEvents) {
+      const ids = alertMatches.get(ev.id);
+      if (!ids) continue;
+      for (const id of ids) {
+        const a = notifying.find((x) => x.id === id);
+        if (!a) continue;
+        const last = lastFiredRef.current.get(a.id) ?? 0;
+        if (now - last < a.debounce_ms) continue;
+        lastFiredRef.current.set(a.id, now);
+        try {
+          sendNotification({
+            title: a.name,
+            body: (ev.msg || ev.raw).slice(0, 120),
+          });
+        } catch (e) {
+          console.warn("sendNotification failed", e);
+        }
+      }
+    }
+    if (unfilteredEvents.length > 0) {
+      lastSeenIdRef.current = unfilteredEvents[unfilteredEvents.length - 1]!.id;
+    }
+  }, [unfilteredEvents, alertMatches, alerts]);
 
   // Derive displayed events from sourceEvents (snapshot when paused),
   // so the visible list freezes mid-scroll.
@@ -270,6 +348,7 @@ export default function App() {
             bottomInset={bottomInset}
             showSource={showSource}
             highlightTerms={highlightTerms}
+            alertMatches={alertMatches}
           />
           {selected && (
             <Inspector
@@ -286,6 +365,14 @@ export default function App() {
         total={unfilteredCount}
         filtered={events.length}
         filterActive={filterActive}
+      />
+      <AlertsModal
+        open={alertsOpen}
+        onClose={() => {
+          setAlertsOpen(false);
+          setAlertsInitialQuery(null);
+        }}
+        initialQuery={alertsInitialQuery ?? undefined}
       />
     </div>
   );

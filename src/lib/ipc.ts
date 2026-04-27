@@ -85,3 +85,41 @@ export async function unpinEvent(eventId: number): Promise<void> {
 export async function listPins(): Promise<number[]> {
   return invoke<number[]>("list_pins");
 }
+
+export interface Alert {
+  id: number;
+  name: string;
+  query: string;
+  color: string;
+  notify: boolean;
+  debounce_ms: number;
+}
+
+export async function listAlerts(): Promise<Alert[]> {
+  return invoke<Alert[]>("alerts_list");
+}
+
+export async function createAlert(input: Omit<Alert, "id">): Promise<Alert> {
+  return invoke<Alert>("alerts_create", {
+    name: input.name,
+    query: input.query,
+    color: input.color,
+    notify: input.notify,
+    debounceMs: input.debounce_ms,
+  });
+}
+
+export async function updateAlert(input: Alert): Promise<void> {
+  return invoke("alerts_update", {
+    id: input.id,
+    name: input.name,
+    query: input.query,
+    color: input.color,
+    notify: input.notify,
+    debounceMs: input.debounce_ms,
+  });
+}
+
+export async function deleteAlert(id: number): Promise<void> {
+  return invoke("alerts_delete", { id });
+}

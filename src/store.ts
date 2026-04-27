@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { LogEvent, View } from "./lib/ipc";
+import type { Alert, LogEvent, View } from "./lib/ipc";
 
 export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
@@ -21,6 +21,7 @@ interface Store {
   sort: SortKey;
   pinnedIds: Set<number>;
   scrollTargetId: number | null;
+  alerts: Alert[];
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -34,6 +35,7 @@ interface Store {
   setPinnedIds: (ids: Set<number>) => void;
   togglePinLocal: (id: number) => void;
   setScrollTarget: (id: number | null) => void;
+  setAlerts: (alerts: Alert[]) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -50,6 +52,7 @@ export const useStore = create<Store>((set) => ({
   sort: "newest-bottom",
   pinnedIds: new Set<number>(),
   scrollTargetId: null,
+  alerts: [],
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) =>
@@ -80,4 +83,5 @@ export const useStore = create<Store>((set) => ({
       return { pinnedIds: next };
     }),
   setScrollTarget: (scrollTargetId) => set({ scrollTargetId }),
+  setAlerts: (alerts) => set({ alerts }),
 }));
