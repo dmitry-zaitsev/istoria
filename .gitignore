@@ -20,3 +20,6 @@ tsconfig.tsbuildinfo
 # Env
 .env
 .env.local
+
+# Claude
+.claude/scheduled_tasks.lock

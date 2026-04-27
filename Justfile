@@ -36,3 +36,61 @@ icon:
     magick -background none -density 384 src-tauri/icons/source.svg -resize 1024x1024 -define png:color-type=6 src-tauri/icons/icon.png
     npm run tauri -- icon src-tauri/icons/icon.png
     touch src-tauri/build.rs
+
+# Build a signed + notarized macOS .app for the host arch and pack
+# it as dist/istoria-<version>-<target>.app.tar.gz with a sha256.
+# Mirrors the CI release job for local smoke tests before tagging.
+#
+# Required env (load from a gitignored .envrc / direnv or export inline):
+#   APPLE_SIGNING_IDENTITY  e.g. "Developer ID Application: Name (TEAMID)"
+#   APPLE_ID                Apple ID email
+#   APPLE_PASSWORD          app-specific password
+#   APPLE_TEAM_ID           Apple Developer team ID
+#
+# Signing cert must already be in your login keychain. No .p12 import
+# is done locally — that path is only for CI.
+release-mac:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${APPLE_SIGNING_IDENTITY:?missing — see recipe comment}"
+    : "${APPLE_ID:?missing — see recipe comment}"
+    : "${APPLE_PASSWORD:?missing — see recipe comment}"
+    : "${APPLE_TEAM_ID:?missing — see recipe comment}"
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+        echo "release-mac only runs on macOS" >&2
+        exit 1
+    fi
+    case "$(uname -m)" in
+        arm64)  TARGET="aarch64-apple-darwin" ;;
+        x86_64) TARGET="x86_64-apple-darwin"  ;;
+        *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
+    esac
+    VERSION="$(node -p "require('./package.json').version")"
+    rustup target add "$TARGET" >/dev/null
+    npm run tauri -- build --target "$TARGET" --bundles app
+    BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
+    APP="${BUNDLE_DIR}/istoria.app"
+    echo "[verify] codesign…"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    echo "[verify] gatekeeper…"
+    spctl --assess --type execute --verbose=2 "$APP" || \
+        echo "::warning:: spctl assess failed — notarization may not have stapled"
+    mkdir -p dist
+    ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
+    tar -czf "dist/${ARTIFACT}" -C "$BUNDLE_DIR" istoria.app
+    (cd dist && shasum -a 256 "$ARTIFACT" | tee "${ARTIFACT}.sha256")
+    echo "✓ dist/${ARTIFACT}"
+
+# Same as `release-mac` but pulls Apple secrets from 1Password
+# (vault Private, item "istoria release") so you don't have to
+# export anything to your shell. Requires the 1Password CLI (`op`)
+# signed in (run `op signin` once per session).
+release-mac-op:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ITEM="op://Private/istoria release/release"
+    export APPLE_SIGNING_IDENTITY="$(op read "${ITEM}/APPLE_SIGNING_IDENTITY")"
+    export APPLE_ID="$(op read "${ITEM}/APPLE_ID")"
+    export APPLE_PASSWORD="$(op read "${ITEM}/APPLE_PASSWORD")"
+    export APPLE_TEAM_ID="$(op read "${ITEM}/APPLE_TEAM_ID")"
+    exec just release-mac
