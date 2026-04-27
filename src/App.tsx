@@ -18,7 +18,12 @@ import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
-import { compileAlerts, loadAlerts, matchAlerts } from "./lib/alerts";
+import {
+  compileAlerts,
+  loadAlerts,
+  matchAlerts,
+  MIN_DEBOUNCE_MS,
+} from "./lib/alerts";
 import {
   listPins,
   queryRecent,
@@ -244,6 +249,9 @@ export default function App() {
   const lastSeenIdRef = useRef<number>(-1);
   const notifyPermitRef = useRef<boolean | null>(null);
   const notifyPermitInflightRef = useRef<Promise<boolean> | null>(null);
+  // Global floor: regardless of per-alert debounce_ms, never fire
+  // more than one notification across all alerts inside a 5s window.
+  const globalLastFireRef = useRef<number>(0);
   useEffect(() => {
     const notifying = alerts.filter((a) => a.notify);
     if (notifying.length === 0) {
@@ -268,7 +276,11 @@ export default function App() {
           const a = notifying.find((x) => x.id === id);
           if (!a) continue;
           const last = lastFiredRef.current.get(a.id) ?? 0;
-          if (now - last < a.debounce_ms) {
+          const perAlertGap = Math.max(a.debounce_ms || 0, MIN_DEBOUNCE_MS);
+          const inPerAlertCooldown = now - last < perAlertGap;
+          const inGlobalCooldown =
+            now - globalLastFireRef.current < MIN_DEBOUNCE_MS;
+          if (inPerAlertCooldown || inGlobalCooldown) {
             // Still in cooldown — accumulate so the next fire can
             // tell the user "+N more matched while you were away".
             suppressedRef.current.set(
@@ -278,6 +290,7 @@ export default function App() {
             continue;
           }
           lastFiredRef.current.set(a.id, now);
+          globalLastFireRef.current = now;
           const suppressed = suppressedRef.current.get(a.id) ?? 0;
           suppressedRef.current.set(a.id, 0);
           const head = (ev.msg || ev.raw).slice(0, 120);

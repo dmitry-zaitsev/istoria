@@ -17,19 +17,41 @@ export interface Alert {
 
 const STORAGE_KEY = "alerts.v1";
 
+export const MIN_DEBOUNCE_MS = 5000;
+
 export function loadAlerts(): Alert[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (a): a is Alert =>
-        a != null &&
-        typeof a.id === "string" &&
-        typeof a.name === "string" &&
-        typeof a.query === "string",
-    );
+    return parsed
+      .filter(
+        (a) =>
+          a != null &&
+          typeof a.id === "string" &&
+          typeof a.name === "string" &&
+          typeof a.query === "string",
+      )
+      .map(
+        (a): Alert => ({
+          id: a.id,
+          name: a.name,
+          query: a.query,
+          color: typeof a.color === "string" ? a.color : "red",
+          notify: a.notify === true,
+          // Coerce + clamp: legacy entries pre-MIN_DEBOUNCE may have
+          // debounce_ms missing or below the floor — those would
+          // bypass the cooldown entirely (NaN compares yield false).
+          debounce_ms: Math.max(
+            typeof a.debounce_ms === "number" ? a.debounce_ms : 0,
+            MIN_DEBOUNCE_MS,
+          ),
+          enabled: a.enabled !== false,
+          created_at:
+            typeof a.created_at === "number" ? a.created_at : Date.now(),
+        }),
+      );
   } catch {
     return [];
   }
