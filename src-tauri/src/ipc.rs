@@ -121,6 +121,27 @@ pub async fn list_editors() -> Result<Vec<EditorEntry>, String> {
 }
 
 #[tauri::command]
+pub async fn notify_macos(title: String, body: String) -> Result<(), String> {
+    if !cfg!(target_os = "macos") {
+        return Err("not macos".into());
+    }
+    fn esc(s: &str) -> String {
+        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+    let script = format!(
+        "display notification {} with title {}",
+        esc(&body),
+        esc(&title),
+    );
+    std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
     // Whitelist schemes derived from the known-editors list so a
     // malicious payload (e.g. via a crafted log message that the user

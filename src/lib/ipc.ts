@@ -78,6 +78,10 @@ export async function openUrl(url: string): Promise<void> {
   return invoke("open_url", { url });
 }
 
+export async function notifyMacos(title: string, body: string): Promise<void> {
+  return invoke("notify_macos", { title, body });
+}
+
 export interface EditorEntry {
   id: string;
   name: string;
