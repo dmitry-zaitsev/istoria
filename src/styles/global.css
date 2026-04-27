@@ -33,28 +33,6 @@ body,
   display: flex;
   flex-direction: column;
 }
-/* Always-on macOS titlebar strip. data-tauri-drag-region marks every
-   non-interactive surface as draggable. Height matches macOS native
-   title bar (28px). Padding-left keeps content clear of the
-   traffic-light overlay. */
-.titlebar {
-  height: 28px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  background: linear-gradient(180deg, #fbfcfd 0%, #f1f4f8 100%);
-  border-bottom: 1px solid var(--line);
-}
-.titlebar-traffic-spacer { width: 80px; height: 100%; flex-shrink: 0; }
-.titlebar-center {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.titlebar-right { width: 80px; height: 100%; flex-shrink: 0; }
 .win-titlebar {
   height: 28px;
   display: grid;
@@ -118,7 +96,7 @@ body,
   display: flex;
   align-items: stretch;
   gap: 0;
-  padding: 0 8px;
+  padding: 0 8px 0 80px; /* leave room for macOS traffic-light overlay */
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
   height: 36px;
@@ -1419,7 +1397,16 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .alerts-meta { flex: 1; min-width: 0; }
 .alerts-row .alert-name { font-weight: 600; font-size: 12px; }
 .alerts-row .alert-q { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.alerts-row .alert-bell { font-size: 12px; }
+.alerts-row .alert-notify-tag {
+  font-size: 10px;
+  font-family: var(--mono);
+  background: var(--surface-3);
+  color: var(--muted);
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .alert-swatch {
   width: 14px;
@@ -1513,6 +1500,35 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 }
 
 .open-in-ide { position: relative; margin-left: auto; }
+.open-in-ide-split { display: flex; align-items: stretch; }
+.open-in-ide-primary,
+.open-in-ide-caret {
+  font-family: var(--ui);
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  cursor: pointer;
+  line-height: 1.2;
+  padding: 3px 10px;
+}
+.open-in-ide-primary {
+  border-right: 0;
+  border-radius: 4px 0 0 4px;
+}
+.open-in-ide-caret {
+  border-radius: 0 4px 4px 0;
+  padding: 3px 6px;
+}
+.open-in-ide-primary:hover,
+.open-in-ide-caret:hover { background: var(--hover); color: var(--ink); }
+.open-in-ide-empty {
+  font-family: var(--ui);
+  font-size: 11px;
+  color: var(--muted-2);
+  margin-left: auto;
+  font-style: italic;
+}
 .open-in-ide-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -1522,7 +1538,7 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.10);
   z-index: 50;
-  min-width: 130px;
+  min-width: 160px;
   padding: 4px 0;
 }
 .open-in-ide-item {

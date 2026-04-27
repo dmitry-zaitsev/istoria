@@ -86,7 +86,7 @@ export function Tabs() {
   };
 
   return (
-    <div className="tabs">
+    <div className="tabs" data-tauri-drag-region>
       {views.map((v) => {
         const active = v.id === activeId;
         return (

@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::alerts::{self, Alert};
-use crate::code::{self, CodeLine, EmissionSite};
+use crate::code::{self, CodeLine, EditorEntry, EmissionSite};
 use crate::event::Event;
 use crate::pins;
 use crate::query::{self, Ast};
@@ -221,11 +221,17 @@ pub async fn alerts_delete(
 }
 
 #[tauri::command]
+pub async fn list_editors() -> Result<Vec<EditorEntry>, String> {
+    Ok(code::list_installed_editors())
+}
+
+#[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
-    // Whitelist allowed schemes so a malicious payload (e.g. via a
-    // crafted log message that the user clicks through) can't trigger
-    // arbitrary file:// or javascript: opens.
-    let allowed = ["vscode://", "cursor://", "zed://", "idea://"];
+    // Whitelist schemes derived from the known-editors list so a
+    // malicious payload (e.g. via a crafted log message that the user
+    // clicks through) can't trigger arbitrary file:// or javascript:
+    // opens.
+    let allowed = code::allowed_schemes();
     if !allowed.iter().any(|p| url.starts_with(p)) {
         return Err(format!("scheme not allowed: {url}"));
     }

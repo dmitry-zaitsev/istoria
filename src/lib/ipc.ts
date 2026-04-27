@@ -148,3 +148,13 @@ export async function getEmissionSite(
 export async function openUrl(url: string): Promise<void> {
   return invoke("open_url", { url });
 }
+
+export interface EditorEntry {
+  id: string;
+  name: string;
+  url_template: string;
+}
+
+export async function listEditors(): Promise<EditorEntry[]> {
+  return invoke<EditorEntry[]>("list_editors");
+}

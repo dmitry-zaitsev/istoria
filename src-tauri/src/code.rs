@@ -48,6 +48,157 @@ pub struct EmissionSite {
     pub is_local: bool,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct EditorEntry {
+    pub id: String,
+    pub name: String,
+    /// URL template with `{path}` and `{line}` placeholders. Frontend
+    /// substitutes per-event before invoking `open_url`.
+    pub url_template: String,
+}
+
+/// Per-product list of known macOS .app bundle names + display name +
+/// URL scheme template. Tested against /Applications,
+/// /System/Applications, and ~/Applications. Linux/Windows return
+/// empty for now — file:// URLs would be the fallback.
+const KNOWN_EDITORS: &[(&str, &[&str], &str, &str)] = &[
+    (
+        "vscode",
+        &["Visual Studio Code"],
+        "VSCode",
+        "vscode://file/{path}:{line}",
+    ),
+    (
+        "cursor",
+        &["Cursor"],
+        "Cursor",
+        "cursor://file/{path}:{line}",
+    ),
+    (
+        "zed",
+        &["Zed", "Zed Preview"],
+        "Zed",
+        "zed://{path}:{line}",
+    ),
+    (
+        "idea",
+        &[
+            "IntelliJ IDEA",
+            "IntelliJ IDEA CE",
+            "IntelliJ IDEA Community Edition",
+            "IntelliJ IDEA Ultimate",
+        ],
+        "IntelliJ IDEA",
+        "idea://open?file={path}&line={line}",
+    ),
+    (
+        "pycharm",
+        &[
+            "PyCharm",
+            "PyCharm CE",
+            "PyCharm Community Edition",
+            "PyCharm Professional Edition",
+        ],
+        "PyCharm",
+        "pycharm://open?file={path}&line={line}",
+    ),
+    (
+        "webstorm",
+        &["WebStorm"],
+        "WebStorm",
+        "webstorm://open?file={path}&line={line}",
+    ),
+    (
+        "goland",
+        &["GoLand"],
+        "GoLand",
+        "goland://open?file={path}&line={line}",
+    ),
+    (
+        "rubymine",
+        &["RubyMine"],
+        "RubyMine",
+        "rubymine://open?file={path}&line={line}",
+    ),
+    (
+        "clion",
+        &["CLion"],
+        "CLion",
+        "clion://open?file={path}&line={line}",
+    ),
+    (
+        "phpstorm",
+        &["PhpStorm"],
+        "PhpStorm",
+        "phpstorm://open?file={path}&line={line}",
+    ),
+    (
+        "rustrover",
+        &["RustRover"],
+        "RustRover",
+        "rustrover://open?file={path}&line={line}",
+    ),
+    (
+        "rider",
+        &["Rider", "JetBrains Rider"],
+        "Rider",
+        "rider://open?file={path}&line={line}",
+    ),
+    (
+        "datagrip",
+        &["DataGrip"],
+        "DataGrip",
+        "datagrip://open?file={path}&line={line}",
+    ),
+    (
+        "android-studio",
+        &["Android Studio"],
+        "Android Studio",
+        "studio://open?file={path}&line={line}",
+    ),
+];
+
+pub fn list_installed_editors() -> Vec<EditorEntry> {
+    if !cfg!(target_os = "macos") {
+        return Vec::new();
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let prefixes = [
+        "/Applications".to_string(),
+        "/System/Applications".to_string(),
+        format!("{home}/Applications"),
+    ];
+    let mut out = Vec::new();
+    for (id, names, display, template) in KNOWN_EDITORS {
+        let installed = names.iter().any(|n| {
+            prefixes
+                .iter()
+                .any(|p| std::path::Path::new(&format!("{p}/{n}.app")).exists())
+        });
+        if installed {
+            out.push(EditorEntry {
+                id: (*id).to_string(),
+                name: (*display).to_string(),
+                url_template: (*template).to_string(),
+            });
+        }
+    }
+    out
+}
+
+/// Schemes accepted by `open_url` — derived from KNOWN_EDITORS so a
+/// single source of truth governs which URL schemes the IPC will
+/// launch.
+pub fn allowed_schemes() -> Vec<&'static str> {
+    let mut out = Vec::new();
+    for (_, _, _, template) in KNOWN_EDITORS {
+        if let Some(idx) = template.find("://") {
+            out.push(&template[..idx + 3]);
+        }
+    }
+    out
+}
+
 /// In-memory caches: shared across IPC calls. Bounded by use:
 /// emission-site grep is bounded per call, and the cache means a repeat
 /// click on the same row is free.

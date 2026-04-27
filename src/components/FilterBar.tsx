@@ -329,7 +329,7 @@ export function FilterBar({
               .catch((e) => toast(`notify failed: ${String(e)}`));
           }}
         >
-          🔔 notify
+          notify
         </button>
       )}
       {error && (

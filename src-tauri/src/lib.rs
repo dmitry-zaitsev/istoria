@@ -133,6 +133,7 @@ pub fn run(cli: cli::Cli) {
             ipc::alerts_delete,
             ipc::get_code_preview,
             ipc::get_emission_site,
+            ipc::list_editors,
             ipc::open_url,
             ipc::clear_session,
         ])

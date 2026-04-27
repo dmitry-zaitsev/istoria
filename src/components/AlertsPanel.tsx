@@ -81,8 +81,8 @@ export function AlertsPanel({ open, onClose }: Props) {
             </div>
           </div>
           {a.notify && (
-            <span className="alert-bell" title={`debounce ${a.debounce_ms}ms`}>
-              🔔
+            <span className="alert-notify-tag" title={`debounce ${a.debounce_ms}ms`}>
+              notify
             </span>
           )}
           <button

@@ -185,15 +185,26 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
     }
 
     if stored < 5 {
-        // ALTER ADD COLUMN with NOT NULL+DEFAULT can fail on DuckDB
-        // when existing rows are present, and there's no clean way to
-        // recover once it has — so drop the NOT NULL and tolerate
-        // legacy NULLs by treating them as "enabled" in read_alert.
-        // IF NOT EXISTS guards a partial earlier failure where the
-        // column already got added but schema_meta wasn't bumped.
-        conn.execute_batch(
-            "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE;
-             UPDATE alerts SET enabled = TRUE WHERE enabled IS NULL;",
+        // Older DuckDB versions reject `ADD COLUMN IF NOT EXISTS`;
+        // probe information_schema instead so the migration is safe
+        // across versions and re-runs after a partial earlier failure.
+        let has_col: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM information_schema.columns \
+                 WHERE lower(table_name) = 'alerts' AND lower(column_name) = 'enabled'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if has_col == 0 {
+            conn.execute(
+                "ALTER TABLE alerts ADD COLUMN enabled BOOLEAN DEFAULT TRUE",
+                [],
+            )?;
+        }
+        conn.execute(
+            "UPDATE alerts SET enabled = TRUE WHERE enabled IS NULL",
+            [],
         )?;
     }
     conn.execute(

@@ -6,8 +6,10 @@ import { highlight, type HighlightTerm } from "../lib/highlight";
 import {
   getCodePreview,
   getEmissionSite,
+  listEditors,
   openUrl,
   type CodeLine,
+  type EditorEntry,
   type EmissionSite,
   type Level,
   type LogEvent,
@@ -314,9 +316,34 @@ function CodeTab({ site }: { site: EmissionSite | null | "loading" }) {
   );
 }
 
+const LAST_EDITOR_KEY = "last_editor_id";
+
+function buildOpenUrl(template: string, path: string, line: number): string {
+  return template
+    .replace("{path}", encodeURI(path))
+    .replace("{line}", String(line));
+}
+
 function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
+  const [editors, setEditors] = useState<EditorEntry[]>([]);
+  const [lastId, setLastId] = useState<string | null>(() =>
+    localStorage.getItem(LAST_EDITOR_KEY),
+  );
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listEditors()
+      .then((list) => {
+        if (!cancelled) setEditors(list);
+      })
+      .catch((e) => console.warn("listEditors failed", e));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
@@ -325,35 +352,59 @@ function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
-  const opts: { label: string; build: (p: string, l: number) => string }[] = [
-    { label: "VSCode", build: (p, l) => `vscode://file/${p}:${l}` },
-    { label: "Cursor", build: (p, l) => `cursor://file/${p}:${l}` },
-    { label: "Zed", build: (p, l) => `zed://${p}:${l}` },
-    { label: "JetBrains", build: (p, l) => `idea://open?file=${encodeURIComponent(p)}&line=${l}` },
-  ];
-  const launch = (url: string) => {
+
+  if (editors.length === 0) {
+    return (
+      <span className="open-in-ide-empty" title="No supported editors detected in /Applications">
+        no editor detected
+      </span>
+    );
+  }
+
+  const primary =
+    editors.find((e) => e.id === lastId) ?? editors[0]!;
+  const others = editors.filter((e) => e.id !== primary.id);
+
+  const launch = (e: EditorEntry) => {
+    setLastId(e.id);
+    localStorage.setItem(LAST_EDITOR_KEY, e.id);
     setOpen(false);
-    openUrl(url).catch((e) => toast(`open failed: ${String(e)}`));
+    openUrl(buildOpenUrl(e.url_template, absPath, line)).catch((err) =>
+      toast(`open failed: ${String(err)}`),
+    );
   };
+
   return (
     <div className="open-in-ide" ref={ref}>
-      <button
-        type="button"
-        className="sort-btn"
-        onClick={() => setOpen((x) => !x)}
-        title="Open file in editor"
-      >
-        open in…
-      </button>
-      {open && (
+      <div className="open-in-ide-split">
+        <button
+          type="button"
+          className="open-in-ide-primary"
+          onClick={() => launch(primary)}
+          title={`Open in ${primary.name}`}
+        >
+          open in {primary.name}
+        </button>
+        {others.length > 0 && (
+          <button
+            type="button"
+            className="open-in-ide-caret"
+            onClick={() => setOpen((x) => !x)}
+            aria-label="More editors"
+          >
+            ▾
+          </button>
+        )}
+      </div>
+      {open && others.length > 0 && (
         <div className="open-in-ide-menu">
-          {opts.map((o) => (
+          {others.map((e) => (
             <div
-              key={o.label}
+              key={e.id}
               className="open-in-ide-item"
-              onClick={() => launch(o.build(absPath, line))}
+              onClick={() => launch(e)}
             >
-              {o.label}
+              {e.name}
             </div>
           ))}
         </div>

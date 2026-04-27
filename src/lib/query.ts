@@ -401,6 +401,19 @@ export interface EvalCtx {
   pinnedIds?: Set<number>;
 }
 
+const STACK_KEYS = ["stack", "stacktrace", "stack_trace", "trace"];
+
+function hasStackTrace(ev: LogEvent): boolean {
+  const f = ev.fields as Record<string, unknown> | undefined;
+  if (!f) return false;
+  for (const k of STACK_KEYS) {
+    const v = f[k];
+    if (Array.isArray(v) && v.length > 0) return true;
+    if (typeof v === "string" && v.trim().length > 0) return true;
+  }
+  return false;
+}
+
 /// Walk a path like `user.id` against an event's `fields` JSON.
 function lookup(ev: LogEvent, key: string, ctx?: EvalCtx): unknown {
   if (key === "level") return ev.level;
@@ -410,6 +423,7 @@ function lookup(ev: LogEvent, key: string, ctx?: EvalCtx): unknown {
   if (key === "ts" || key === "timestamp") return ev.ts;
   if (key === "id") return ev.id;
   if (key === "pinned") return ctx?.pinnedIds?.has(ev.id) ?? false;
+  if (key === "hasStackTrace" || key === "stack") return hasStackTrace(ev);
   let cur: unknown = ev.fields;
   for (const part of key.split(".")) {
     if (cur && typeof cur === "object") {

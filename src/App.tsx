@@ -119,7 +119,7 @@ export default function App() {
   );
   const suggestKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
-    return ["msg", "raw", "ts", "pinned", ...groups.map((g) => g.key)];
+    return ["msg", "raw", "ts", "pinned", "stack", ...groups.map((g) => g.key)];
   }, [tsScopedEvents]);
   const suggestValuesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -131,6 +131,7 @@ export default function App() {
       );
     }
     m.set("pinned", ["true", "false"]);
+    m.set("stack", ["true", "false"]);
     return m;
   }, [tsScopedEvents]);
 
