@@ -1,62 +1,75 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
+      bump:
+        description: Version bump (ignored if override_version is set)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      override_version:
+        description: Override version (e.g. 0.1.0). Leave blank to use bump.
+        required: false
+        type: string
       dry_run:
-        description: Build only, do not publish
+        description: Build only — no commit, tag, or publish.
         type: boolean
-        default: true
+        default: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  preflight:
+  prepare:
     runs-on: ubuntu-22.04
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.compute.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - id: version
-        name: Resolve version
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          else
-            VERSION="$(node -p "require('./package.json').version")"
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: ${VERSION}"
-
-      - name: Verify versions match
+      - id: compute
+        name: Compute next version
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          BUMP: ${{ inputs.bump }}
+          OVERRIDE: ${{ inputs.override_version }}
         run: |
           set -euo pipefail
-          PKG=$(node -p "require('./package.json').version")
-          CARGO=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -1)
-          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          echo "tag=$VERSION pkg=$PKG cargo=$CARGO tauri=$TAURI"
-          for v in "$PKG" "$CARGO" "$TAURI"; do
-            if [[ "$v" != "$VERSION" ]]; then
-              echo "::error::version mismatch — tag=$VERSION pkg=$PKG cargo=$CARGO tauri=$TAURI"
-              exit 1
-            fi
-          done
+          if [ -n "$OVERRIDE" ]; then
+            VERSION="$OVERRIDE"
+          else
+            CURRENT=$(node -p "require('./package.json').version")
+            IFS='.' read -r MAJ MIN PAT <<< "$CURRENT"
+            case "$BUMP" in
+              patch) PAT=$((PAT+1)) ;;
+              minor) MIN=$((MIN+1)); PAT=0 ;;
+              major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
+              *) echo "::error::unknown bump: $BUMP"; exit 1 ;;
+            esac
+            VERSION="${MAJ}.${MIN}.${PAT}"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::invalid version: $VERSION"; exit 1
+          fi
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::tag v$VERSION already exists"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing v$VERSION (dry_run=${{ inputs.dry_run }})"
 
   build:
-    needs: preflight
+    needs: prepare
     runs-on: macos-14
     env:
-      VERSION: ${{ needs.preflight.outputs.version }}
+      VERSION: ${{ needs.prepare.outputs.version }}
       TARGET: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
+
+      - name: Stamp version into source tree
+        run: node scripts/set-version.mjs "$VERSION"
 
       - uses: actions/setup-node@v4
         with:
@@ -121,21 +134,40 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [preflight, build]
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+    needs: [prepare, build]
+    if: ${{ inputs.dry_run == false }}
     runs-on: ubuntu-22.04
     env:
-      VERSION: ${{ needs.preflight.outputs.version }}
-      GH_TOKEN: ${{ secrets.GH_RELEASES_PAT }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        # default GITHUB_TOKEN persists in .git/config so we can push back
 
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
 
+      - name: Bump + commit + tag in source repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/set-version.mjs "$VERSION"
+          git config user.name "istoria-release-bot"
+          git config user.email "noreply@github.com"
+          git add package.json Cargo.toml src-tauri/tauri.conf.json
+          if git diff --cached --quiet; then
+            echo "version files already at $VERSION"
+          else
+            git commit -m "release: v${VERSION}"
+          fi
+          git tag "v${VERSION}"
+          git push origin HEAD "v${VERSION}"
+
       - name: Create release on dmitry-zaitsev/istoria-releases
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASES_PAT }}
         run: |
           set -euo pipefail
           cd dist
@@ -145,14 +177,14 @@ jobs:
             --notes "Release v${VERSION}" \
             *.tar.gz SHA256SUMS
 
-      - name: Compute formula values
+      - name: Compute formula sha
         id: formula
         run: |
           set -euo pipefail
           cd dist
           ARM_FILE="istoria-${VERSION}-aarch64-apple-darwin.app.tar.gz"
           arm_sha=$(awk -v f="$ARM_FILE" '$2==f {print $1}' SHA256SUMS)
-          if [ -z "$arm_sha" ]; then echo "::error::missing sha in SHA256SUMS"; cat SHA256SUMS; exit 1; fi
+          if [ -z "$arm_sha" ]; then echo "::error::missing sha"; cat SHA256SUMS; exit 1; fi
           echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
 
       - name: Render formula
@@ -168,6 +200,8 @@ jobs:
           cat /tmp/istoria.rb
 
       - name: Push formula to dmitry-zaitsev/homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASES_PAT }}
         run: |
           set -euo pipefail
           git clone "https://x-access-token:${GH_TOKEN}@github.com/dmitry-zaitsev/homebrew-tap.git" /tmp/tap
@@ -179,7 +213,7 @@ jobs:
           git add Formula/istoria.rb
           if git diff --cached --quiet; then
             echo "no formula changes"
-            exit 0
+          else
+            git commit -m "istoria ${VERSION}"
+            git push
           fi
-          git commit -m "istoria ${VERSION}"
-          git push
