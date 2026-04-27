@@ -1,0 +1,35 @@
+class Istoria < Formula
+  desc "Local log viewer — pipe stdout into a native window"
+  homepage "https://github.com/dmitry-zaitsev/istoria"
+  version "${VERSION}"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/istoria-${VERSION}-aarch64-apple-darwin.app.tar.gz"
+      sha256 "${ARM_SHA}"
+    end
+    on_intel do
+      url "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/istoria-${VERSION}-x86_64-apple-darwin.app.tar.gz"
+      sha256 "${INTEL_SHA}"
+    end
+
+    def install
+      prefix.install "istoria.app"
+      bin.write_exec_script prefix/"istoria.app/Contents/MacOS/istoria"
+    end
+  end
+
+  on_linux do
+    url "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/istoria-${VERSION}-x86_64-linux.tar.gz"
+    sha256 "${LINUX_SHA}"
+
+    def install
+      bin.install "istoria"
+    end
+  end
+
+  test do
+    system "#{bin}/istoria", "--version"
+  end
+end
