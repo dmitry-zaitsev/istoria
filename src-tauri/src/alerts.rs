@@ -72,7 +72,9 @@ fn read_alert(row: &duckdb::Row<'_>) -> duckdb::Result<Alert> {
     let color: String = row.get(3)?;
     let notify: bool = row.get(4)?;
     let debounce_ms: i32 = row.get(5)?;
-    let enabled: bool = row.get(6)?;
+    // Column is nullable post-migration; legacy rows (created before
+    // the column existed) are treated as enabled.
+    let enabled: Option<bool> = row.get(6)?;
     Ok(Alert {
         id: id as i64,
         name,
@@ -80,7 +82,7 @@ fn read_alert(row: &duckdb::Row<'_>) -> duckdb::Result<Alert> {
         color,
         notify,
         debounce_ms: debounce_ms as i64,
-        enabled,
+        enabled: enabled.unwrap_or(true),
     })
 }
 
