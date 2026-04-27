@@ -1,12 +1,25 @@
 import { create } from "zustand";
 import type { Alert } from "./lib/alerts";
-import type { LogEvent, View } from "./lib/ipc";
+import type { LogEvent } from "./lib/ipc";
+import type { View } from "./lib/views";
 
 export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
 export const INSPECTOR_DEFAULT = 320;
 
 export type SortKey = "newest-bottom" | "newest-top";
+
+const SORT_KEY = "sort.v1";
+
+function loadInitialSort(): SortKey {
+  try {
+    const raw = localStorage.getItem(SORT_KEY);
+    if (raw === "newest-bottom" || raw === "newest-top") return raw;
+  } catch {
+    // ignore
+  }
+  return "newest-top";
+}
 
 interface Store {
   events: LogEvent[];
@@ -52,7 +65,7 @@ export const useStore = create<Store>((set) => ({
   paused: false,
   pausedBaseline: 0,
   newCount: 0,
-  sort: "newest-bottom",
+  sort: loadInitialSort(),
   pinnedIds: new Set<number>(),
   scrollTargetId: null,
   alerts: [],
@@ -77,7 +90,14 @@ export const useStore = create<Store>((set) => ({
       pausedBaseline: paused ? baseline ?? s.events.length : 0,
     })),
   setNewCount: (newCount) => set({ newCount }),
-  setSort: (sort) => set({ sort }),
+  setSort: (sort) => {
+    try {
+      localStorage.setItem(SORT_KEY, sort);
+    } catch {
+      // ignore
+    }
+    set({ sort });
+  },
   setPinnedIds: (pinnedIds) => set({ pinnedIds }),
   togglePinLocal: (id) =>
     set((s) => {

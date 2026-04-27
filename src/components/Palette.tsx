@@ -1,7 +1,8 @@
 import { Command } from "cmdk";
 import { useEffect, useState } from "react";
 
-import { clearSession, setMeta } from "../lib/ipc";
+import { clearSession } from "../lib/ipc";
+import { saveActiveViewId } from "../lib/views";
 import { fireSessionCleared } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
@@ -60,7 +61,7 @@ export function Palette() {
       run: () => {
         setActiveViewId(v.id);
         setFilter(v.query);
-        void setMeta("active_view", String(v.id));
+        saveActiveViewId(v.id);
       },
     })),
     {

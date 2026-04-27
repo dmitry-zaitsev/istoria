@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { clearSession, setMeta, type LogEvent } from "../lib/ipc";
+import { clearSession, type LogEvent } from "../lib/ipc";
 import { fireSessionCleared } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
 import { useStore, type SortKey } from "../store";
@@ -48,7 +48,7 @@ export function StreamHeader({
   const select = (key: SortKey) => {
     setSort(key);
     setOpen(false);
-    void setMeta("sort", key).catch(() => {});
+    // sort persists via setSort → localStorage in store.ts
   };
 
   return (

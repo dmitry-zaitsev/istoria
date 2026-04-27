@@ -3,14 +3,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { useStore } from "../store";
 import {
-  createView,
-  deleteView,
-  duplicateView,
-  listViews,
-  setMeta,
-  updateView,
+  createViewLocal,
+  deleteViewLocal,
+  duplicateViewLocal,
+  loadViews,
+  saveActiveViewId,
+  updateViewLocal,
   type View,
-} from "../lib/ipc";
+} from "../lib/views";
 import { toast } from "../lib/toast";
 
 export function Tabs() {
@@ -32,10 +32,12 @@ export function Tabs() {
     const v = views.find((x) => x.id === activeId);
     if (!v || v.query === filter) return;
     const handle = window.setTimeout(() => {
-      void updateView(activeId, v.name, filter).then(async () => {
-        const all = await listViews();
-        setViews(all);
-      });
+      try {
+        updateViewLocal(activeId, v.name, filter);
+        setViews(loadViews());
+      } catch (e) {
+        toast(`view persist failed: ${String(e)}`);
+      }
     }, 400);
     return () => window.clearTimeout(handle);
   }, [filter, activeId, views, setViews]);
@@ -47,26 +49,25 @@ export function Tabs() {
   const onSelect = (v: View) => {
     setActiveId(v.id);
     setFilter(v.query);
-    void setMeta("active_view", String(v.id));
+    saveActiveViewId(v.id);
   };
 
-  const onCreate = async () => {
+  const onCreate = () => {
     try {
       const name = `View ${views.length + 1}`;
-      const created = await createView(name, "");
-      const all = await listViews();
-      setViews(all);
+      const created = createViewLocal(name, "");
+      setViews(loadViews());
       onSelect(created);
     } catch (e) {
       toast(`new view failed: ${String(e)}`);
     }
   };
 
-  const onClose = async (e: React.MouseEvent, v: View) => {
+  const onClose = (e: React.MouseEvent, v: View) => {
     e.stopPropagation();
     if (views.length <= 1) return;
-    await deleteView(v.id);
-    const all = await listViews();
+    deleteViewLocal(v.id);
+    const all = loadViews();
     setViews(all);
     if (activeId === v.id) {
       const next = all[0];
@@ -74,20 +75,18 @@ export function Tabs() {
     }
   };
 
-  const onDuplicate = async (v: View) => {
-    const dup = await duplicateView(v.id);
-    const all = await listViews();
-    setViews(all);
+  const onDuplicate = (v: View) => {
+    const dup = duplicateViewLocal(v.id);
+    setViews(loadViews());
     setMenuFor(null);
-    onSelect(dup);
+    if (dup) onSelect(dup);
   };
 
-  const onRenameSubmit = async (v: View, value: string) => {
+  const onRenameSubmit = (v: View, value: string) => {
     const trimmed = value.trim();
     if (trimmed && trimmed !== v.name) {
-      await updateView(v.id, trimmed, v.query);
-      const all = await listViews();
-      setViews(all);
+      updateViewLocal(v.id, trimmed, v.query);
+      setViews(loadViews());
     }
     setRenaming(null);
   };

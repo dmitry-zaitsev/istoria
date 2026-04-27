@@ -16,9 +16,7 @@ import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
 import { compileAlerts, loadAlerts, matchAlerts } from "./lib/alerts";
 import {
-  getMeta,
   listPins,
-  listViews,
   queryRecent,
   subscribeEvents,
   type LogEvent,
@@ -26,6 +24,7 @@ import {
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
+import { loadActiveViewId, loadViews } from "./lib/views";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -43,7 +42,6 @@ export default function App() {
   const setViews = useStore((s) => s.setViews);
   const setActiveViewId = useStore((s) => s.setActiveViewId);
   const sort = useStore((s) => s.sort);
-  const setSort = useStore((s) => s.setSort);
   const setPinnedIds = useStore((s) => s.setPinnedIds);
   const pinnedIds = useStore((s) => s.pinnedIds);
   const setScrollTarget = useStore((s) => s.setScrollTarget);
@@ -173,34 +171,18 @@ export default function App() {
     setAlerts(loadAlerts());
   }, [setAlerts]);
 
-  // Bootstrap views + active id from DuckDB.
+  // Bootstrap views + active id from localStorage. Synchronous —
+  // no DuckDB round trip, so it can't be wedged by a broken store.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const all = await listViews();
-        if (cancelled) return;
-        setViews(all);
-        if (all.length > 0) {
-          const stored = await getMeta("active_view");
-          const storedId = stored ? Number(stored) : NaN;
-          const active =
-            all.find((v) => v.id === storedId) ?? all[0]!;
-          setActiveViewId(active.id);
-          setFilter(active.query);
-        }
-        const storedSort = await getMeta("sort");
-        if (storedSort === "newest-bottom" || storedSort === "newest-top") {
-          setSort(storedSort);
-        }
-      } catch (e) {
-        console.warn("views bootstrap failed", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [setViews, setActiveViewId, setFilter, setSort]);
+    const all = loadViews();
+    setViews(all);
+    if (all.length > 0) {
+      const storedId = loadActiveViewId();
+      const active = all.find((v) => v.id === storedId) ?? all[0]!;
+      setActiveViewId(active.id);
+      setFilter(active.query);
+    }
+  }, [setViews, setActiveViewId, setFilter]);
 
   useEffect(() => {
     let cancelled = false;
