@@ -67,6 +67,9 @@ export function updateViewLocal(id: number, name: string, query: string): void {
 }
 
 export function deleteViewLocal(id: number): void {
+  // Default seeded view (id=1, "All") is permanent — guard against
+  // accidental deletion via stale UI / palette commands.
+  if (id === 1) return;
   const all = loadViews().filter((v) => v.id !== id);
   saveViews(all);
 }

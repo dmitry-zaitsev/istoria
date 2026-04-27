@@ -120,14 +120,16 @@ export function Tabs() {
             ) : (
               <span className="tab-name">{v.name}</span>
             )}
-            <span
-              className="tab-close"
-              role="button"
-              aria-label={`close ${v.name}`}
-              onClick={(e) => void onClose(e, v)}
-            >
-              ×
-            </span>
+            {v.id !== 1 && (
+              <span
+                className="tab-close"
+                role="button"
+                aria-label={`close ${v.name}`}
+                onClick={(e) => void onClose(e, v)}
+              >
+                ×
+              </span>
+            )}
             {menuFor === v.id && (
               <div className="tab-menu" onClick={(e) => e.stopPropagation()}>
                 <div
@@ -142,7 +144,7 @@ export function Tabs() {
                 <div className="tab-menu-item" onClick={() => onDuplicate(v)}>
                   Duplicate
                 </div>
-                {views.length > 1 && (
+                {views.length > 1 && v.id !== 1 && (
                   <div
                     className="tab-menu-item danger"
                     onClick={(e) => {
