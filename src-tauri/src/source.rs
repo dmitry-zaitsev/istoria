@@ -59,46 +59,81 @@ fn suffix_with_counter(base: &str, existing: &[String]) -> String {
     unreachable!()
 }
 
-/// Find the upstream pipeline-stage command. Shell pipelines fork
-/// each stage as a sibling under the same shell, so anything sharing
-/// our parent PID and isn't us is part of the same pipeline. Picks
-/// the lowest-PID sibling (typically the leftmost stage forked
-/// first) and returns the first 1-3 non-flag words of its command,
-/// e.g. `npm run dev | grep foo | istoria` → `npm run dev`.
+/// Find the upstream pipeline-stage command. The shell forks each
+/// pipeline stage as a sibling under itself, but a stage like
+/// `just dev` may bury istoria several processes deep
+/// (just→cargo→istoria). Walking only direct siblings of istoria's
+/// parent misses the actual pipe peer. Instead walk our ancestor
+/// chain; the first ancestor whose own parent has another child
+/// outside our chain is the upstream pipe stage.
 fn pipeline_sibling_name() -> Option<String> {
     if !cfg!(any(target_os = "macos", target_os = "linux")) {
         return None;
     }
     let our_pid = std::process::id() as i32;
     let our_ppid = unsafe { libc::getppid() };
-    if our_ppid <= 0 {
-        return None;
+    if our_ppid <= 1 {
+        return None; // orphaned / launchd-rooted: every daemon would match
     }
+
     let out = std::process::Command::new("ps")
         .args(["-o", "pid=,ppid=,command=", "-A"])
         .output()
         .ok()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let mut sibs: Vec<(i32, String)> = Vec::new();
+
+    // (pid, ppid, command) for every visible process. split_whitespace
+    // collapses the variable-width column padding `ps` emits.
+    let mut by_pid: std::collections::HashMap<i32, (i32, String)> =
+        std::collections::HashMap::new();
+    let mut by_ppid: std::collections::HashMap<i32, Vec<(i32, String)>> =
+        std::collections::HashMap::new();
     for line in stdout.lines() {
-        let trimmed = line.trim_start();
-        let mut iter = trimmed.splitn(3, char::is_whitespace);
-        let Some(pid_s) = iter.next() else { continue };
-        let Some(ppid_s) = iter.next() else { continue };
-        let Some(cmd) = iter.next() else { continue };
-        let Ok(pid) = pid_s.trim().parse::<i32>() else {
+        let mut iter = line.split_whitespace();
+        let pid: i32 = iter.next()?.parse().ok().unwrap_or(0);
+        let ppid: i32 = iter.next()?.parse().ok().unwrap_or(0);
+        let cmd: String = iter.collect::<Vec<_>>().join(" ");
+        if pid <= 0 || cmd.is_empty() {
             continue;
-        };
-        let Ok(ppid) = ppid_s.trim().parse::<i32>() else {
-            continue;
-        };
-        if ppid == our_ppid && pid != our_pid {
-            sibs.push((pid, cmd.trim().to_string()));
         }
+        by_pid.insert(pid, (ppid, cmd.clone()));
+        by_ppid.entry(ppid).or_default().push((pid, cmd));
     }
-    sibs.sort_by_key(|(pid, _)| *pid);
-    let (_, cmd) = sibs.into_iter().next()?;
-    Some(first_command_words(&cmd))
+
+    // Walk from our PID up through ancestors; the chain bottoms out at
+    // pid 1 / launchd. We never want to consider those a "sibling".
+    let mut chain: Vec<i32> = vec![our_pid];
+    let mut cur = our_pid;
+    while let Some((ppid, _)) = by_pid.get(&cur) {
+        if *ppid <= 1 {
+            break;
+        }
+        chain.push(*ppid);
+        cur = *ppid;
+    }
+
+    // For each link in the chain, see if its parent has another child
+    // that isn't already in our chain. That child is the pipeline peer.
+    for &node_pid in chain.iter().take(chain.len() - 1) {
+        let Some((parent_pid, _)) = by_pid.get(&node_pid) else {
+            continue;
+        };
+        let Some(children) = by_ppid.get(parent_pid) else {
+            continue;
+        };
+        let mut peers: Vec<&(i32, String)> = children
+            .iter()
+            .filter(|(pid, _)| !chain.contains(pid))
+            .collect();
+        if peers.is_empty() {
+            continue;
+        }
+        // Lowest PID = leftmost stage the shell forked first.
+        peers.sort_by_key(|(pid, _)| *pid);
+        let (_, cmd) = peers[0];
+        return Some(first_command_words(cmd));
+    }
+    None
 }
 
 fn first_command_words(cmd: &str) -> String {
