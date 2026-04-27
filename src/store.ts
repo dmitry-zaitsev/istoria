@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { LogEvent, View } from "./lib/ipc";
+import type { Alert, LogEvent, View } from "./lib/ipc";
 
 export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
@@ -19,6 +19,7 @@ interface Store {
   pausedBaseline: number; // unused since DEE-75 (kept for future)
   newCount: number;
   sort: SortKey;
+  alerts: Alert[];
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -29,6 +30,7 @@ interface Store {
   setPaused: (paused: boolean, baseline?: number) => void;
   setNewCount: (n: number) => void;
   setSort: (sort: SortKey) => void;
+  setAlerts: (alerts: Alert[]) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -43,6 +45,7 @@ export const useStore = create<Store>((set) => ({
   pausedBaseline: 0,
   newCount: 0,
   sort: "newest-bottom",
+  alerts: [],
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) =>
@@ -64,4 +67,5 @@ export const useStore = create<Store>((set) => ({
     })),
   setNewCount: (newCount) => set({ newCount }),
   setSort: (sort) => set({ sort }),
+  setAlerts: (alerts) => set({ alerts }),
 }));

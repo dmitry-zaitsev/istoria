@@ -36,6 +36,7 @@ libc = "0.2"
 interprocess = { version = "2", features = ["tokio"] }
 chumsky = "0.9"
 regex = "1"
+tauri-plugin-notification = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

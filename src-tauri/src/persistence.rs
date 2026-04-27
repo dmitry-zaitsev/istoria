@@ -10,7 +10,7 @@ use crate::event::{Event, Level};
 
 pub const DB_DIR_NAME: &str = "istoria";
 pub const DB_FILE_NAME: &str = "istoria.db";
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 pub const FLUSH_INTERVAL_MS: u64 = 250;
 pub const FLUSH_BATCH: usize = 1_000;
 
@@ -145,6 +145,23 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
             CREATE TABLE IF NOT EXISTS meta (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            "#,
+        )?;
+    }
+
+    if stored < 3 {
+        conn.execute_batch(
+            r#"
+            CREATE SEQUENCE IF NOT EXISTS alerts_id_seq;
+            CREATE TABLE IF NOT EXISTS alerts (
+                id          INTEGER PRIMARY KEY DEFAULT nextval('alerts_id_seq'),
+                name        TEXT NOT NULL,
+                query       TEXT NOT NULL,
+                color       TEXT NOT NULL DEFAULT 'red',
+                notify      BOOLEAN NOT NULL DEFAULT FALSE,
+                debounce_ms INTEGER NOT NULL DEFAULT 5000,
+                created_at  TIMESTAMP NOT NULL DEFAULT now()
             );
             "#,
         )?;

@@ -13,6 +13,7 @@ interface LogStreamProps {
   onSelectIds: (ids: number[]) => void;
   bottomInset: number;
   showSource: boolean;
+  alertMatches: Map<number, number[]>;
 }
 
 const ROW_PX = 26;
@@ -29,8 +30,11 @@ export function LogStream({
   onSelectIds,
   bottomInset,
   showSource,
+  alertMatches,
 }: LogStreamProps) {
   const selectedSet = new Set(selectedIds);
+  const alerts = useStore((s) => s.alerts);
+  const alertColorById = new Map(alerts.map((a) => [a.id, a.color]));
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToNewest = useRef(true);
   const paused = useStore((s) => s.paused);
@@ -191,12 +195,17 @@ export function LogStream({
           const cls = levelClass(ev.level);
           const isSel = selectedSet.has(ev.id);
           const isPrimary = ev.id === selectedId;
+          const matchedIds = alertMatches.get(ev.id);
+          const alertColor =
+            matchedIds && matchedIds.length > 0
+              ? alertColorById.get(matchedIds[0]!)
+              : undefined;
           return (
             <div
               key={ev.id}
               className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
                 isPrimary ? " primary" : ""
-              }${showSource ? "" : " no-src"}`}
+              }${alertColor ? ` alert-${alertColor}` : ""}${showSource ? "" : " no-src"}`}
               style={{
                 position: "absolute",
                 top: 0,

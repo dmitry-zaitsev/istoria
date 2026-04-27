@@ -1,3 +1,4 @@
+pub mod alerts;
 pub mod cli;
 pub mod event;
 pub mod format;
@@ -94,6 +95,7 @@ pub fn run(cli: cli::Cli) {
     let ring_for_emit = Arc::clone(&ring);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState { ring, store })
         .invoke_handler(tauri::generate_handler![
             ipc::query_recent,
@@ -105,6 +107,10 @@ pub fn run(cli: cli::Cli) {
             ipc::views_duplicate,
             ipc::meta_get,
             ipc::meta_set,
+            ipc::alerts_list,
+            ipc::alerts_create,
+            ipc::alerts_update,
+            ipc::alerts_delete,
             ipc::clear_session,
         ])
         .setup(move |app| {
