@@ -1,3 +1,8 @@
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -16,7 +21,6 @@ import { Toast } from "./components/Toast";
 import { compileAlerts, loadAlerts, matchAlerts } from "./lib/alerts";
 import {
   listPins,
-  notifyMacos,
   queryRecent,
   subscribeEvents,
   type LogEvent,
@@ -238,6 +242,8 @@ export default function App() {
   const lastFiredRef = useRef<Map<string, number>>(new Map());
   const suppressedRef = useRef<Map<string, number>>(new Map());
   const lastSeenIdRef = useRef<number>(-1);
+  const notifyPermitRef = useRef<boolean | null>(null);
+  const notifyPermitInflightRef = useRef<Promise<boolean> | null>(null);
   useEffect(() => {
     const notifying = alerts.filter((a) => a.notify);
     if (notifying.length === 0) {
@@ -282,15 +288,40 @@ export default function App() {
             toast(`${a.name}: ${head}`);
             continue;
           }
-          // Bypass tauri-plugin-notification entirely. In dev mode the
-          // unsigned binary's bundle identity isn't recognized by
-          // macOS Notification Center so notifications get filtered
-          // even with permission "granted". Shelling out to osascript
-          // sidesteps the bundle issue and Just Works.
+          // Lazy permission probe: cached after the very first match
+          // that wants to fire. Avoids prompting at launch when no
+          // alert has actually triggered yet.
+          let permit = notifyPermitRef.current;
+          if (permit == null) {
+            if (!notifyPermitInflightRef.current) {
+              notifyPermitInflightRef.current = (async () => {
+                try {
+                  let g = await isPermissionGranted();
+                  if (!g) {
+                    const r = await requestPermission();
+                    g = r === "granted";
+                  }
+                  notifyPermitRef.current = g;
+                  return g;
+                } catch (e) {
+                  console.warn("notification permission probe failed", e);
+                  notifyPermitRef.current = false;
+                  return false;
+                } finally {
+                  notifyPermitInflightRef.current = null;
+                }
+              })();
+            }
+            permit = await notifyPermitInflightRef.current;
+          }
+          if (!permit) {
+            toast(`${a.name}: ${head}`);
+            continue;
+          }
           try {
-            await notifyMacos(a.name, body);
+            sendNotification({ title: a.name, body });
           } catch (e) {
-            console.warn("notify_macos failed", e);
+            console.warn("sendNotification failed", e);
             toast(`${a.name}: ${head}`);
           }
         }
