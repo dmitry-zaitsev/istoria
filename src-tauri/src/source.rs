@@ -1,20 +1,14 @@
-use std::path::Path;
-
-const SHELL_FALLBACKS: &[&str] = &[
-    "bash", "zsh", "sh", "fish", "dash", "ksh", "tcsh", "csh", "ash", "pwsh",
-];
-
 /// Resolve the source name for this istoria invocation.
 ///
-/// Precedence:
-///  1. `--name` override (no counter unless `existing` already has it)
-///  2. upstream pipeline command (e.g. `npm run dev` for
-///     `npm run dev | istoria`)
-///  3. parent process binary name (e.g. `npm`, `go`)
-///  4. `pipe` for shells / unknowable parents
+/// Two paths only:
+///  1. `--name <X>` override (with collision counter against `existing`)
+///  2. `pipe-N` counter
 ///
-/// Auto-derived names get a per-session counter (`npm-1`, `npm-2`).
-/// User-supplied `--name` only gets a counter when it would clash.
+/// Earlier rounds tried to infer a name from the parent process or the
+/// upstream pipe peer. Every heuristic ended up wrong somewhere — ppid
+/// gets fooled by recipe-level wrappers, fd-pair detection picked up
+/// orphan kernel pipes — so it's gone. If you want a meaningful source
+/// name, pass `--name`.
 pub fn resolve(name_override: Option<&str>, existing: &[String]) -> String {
     if let Some(n) = name_override {
         let trimmed = n.trim();
@@ -22,24 +16,7 @@ pub fn resolve(name_override: Option<&str>, existing: &[String]) -> String {
             return suffix_if_clash(trimmed, existing);
         }
     }
-    let base = pipeline_sibling_name()
-        .or_else(|| {
-            parent_command()
-                .map(|s| sanitize(&s))
-                .filter(|s| !s.is_empty())
-                .filter(|s| !SHELL_FALLBACKS.contains(&s.as_str()))
-        })
-        .unwrap_or_else(|| "pipe".into());
-    suffix_with_counter(&base, existing)
-}
-
-fn sanitize(s: &str) -> String {
-    let path: &Path = Path::new(s);
-    let stem = path
-        .file_stem()
-        .and_then(|x| x.to_str())
-        .unwrap_or(s);
-    stem.to_ascii_lowercase()
+    suffix_with_counter("pipe", existing)
 }
 
 fn suffix_if_clash(base: &str, existing: &[String]) -> String {
@@ -59,160 +36,6 @@ fn suffix_with_counter(base: &str, existing: &[String]) -> String {
     unreachable!()
 }
 
-/// Find the upstream pipeline-stage command. The shell forks each
-/// pipeline stage as a sibling under itself, but a stage like
-/// `just dev` may bury istoria several processes deep
-/// (just→cargo→istoria). Walking only direct siblings of istoria's
-/// parent misses the actual pipe peer. Instead walk our ancestor
-/// chain; the first ancestor whose own parent has another child
-/// outside our chain is the upstream pipe stage.
-fn pipeline_sibling_name() -> Option<String> {
-    if !cfg!(any(target_os = "macos", target_os = "linux")) {
-        return None;
-    }
-    let our_pid = std::process::id() as i32;
-    let our_ppid = unsafe { libc::getppid() };
-    if our_ppid <= 1 {
-        return None; // orphaned / launchd-rooted: every daemon would match
-    }
-
-    let out = std::process::Command::new("ps")
-        .args(["-o", "pid=,ppid=,command=", "-A"])
-        .output()
-        .ok()?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-
-    // (pid, ppid, command) for every visible process. split_whitespace
-    // collapses the variable-width column padding `ps` emits.
-    let mut by_pid: std::collections::HashMap<i32, (i32, String)> =
-        std::collections::HashMap::new();
-    let mut by_ppid: std::collections::HashMap<i32, Vec<(i32, String)>> =
-        std::collections::HashMap::new();
-    for line in stdout.lines() {
-        let mut iter = line.split_whitespace();
-        let pid: i32 = iter.next()?.parse().ok().unwrap_or(0);
-        let ppid: i32 = iter.next()?.parse().ok().unwrap_or(0);
-        let cmd: String = iter.collect::<Vec<_>>().join(" ");
-        if pid <= 0 || cmd.is_empty() {
-            continue;
-        }
-        by_pid.insert(pid, (ppid, cmd.clone()));
-        by_ppid.entry(ppid).or_default().push((pid, cmd));
-    }
-
-    // Walk from our PID up through ancestors; the chain bottoms out at
-    // pid 1 / launchd. We never want to consider those a "sibling".
-    let mut chain: Vec<i32> = vec![our_pid];
-    let mut cur = our_pid;
-    while let Some((ppid, _)) = by_pid.get(&cur) {
-        if *ppid <= 1 {
-            break;
-        }
-        chain.push(*ppid);
-        cur = *ppid;
-    }
-
-    // For each link in the chain, see if its parent has another child
-    // that isn't already in our chain. That child is the pipeline peer.
-    for &node_pid in chain.iter().take(chain.len() - 1) {
-        let Some((parent_pid, _)) = by_pid.get(&node_pid) else {
-            continue;
-        };
-        let Some(children) = by_ppid.get(parent_pid) else {
-            continue;
-        };
-        let mut peers: Vec<&(i32, String)> = children
-            .iter()
-            .filter(|(pid, _)| !chain.contains(pid))
-            .collect();
-        if peers.is_empty() {
-            continue;
-        }
-        // Lowest PID = leftmost stage the shell forked first.
-        peers.sort_by_key(|(pid, _)| *pid);
-        let (_, cmd) = peers[0];
-        return Some(first_command_words(cmd));
-    }
-    None
-}
-
-fn first_command_words(cmd: &str) -> String {
-    let words: Vec<&str> = cmd
-        .split_whitespace()
-        .take_while(|w| !w.starts_with('-') && *w != "--")
-        .take(3)
-        .collect();
-    if words.is_empty() {
-        // pure-flag oddity (e.g. binary launched as `--something`):
-        // fall back to first whitespace-separated token.
-        return cmd
-            .split_whitespace()
-            .next()
-            .unwrap_or("")
-            .to_string();
-    }
-    let first_basename = std::path::Path::new(words[0])
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or(words[0])
-        .to_string();
-    let mut out = vec![first_basename];
-    for w in &words[1..] {
-        out.push((*w).to_string());
-    }
-    out.join(" ")
-}
-
-/// Read parent process binary name. macOS uses `proc_pidpath`; Linux
-/// reads `/proc/<pid>/comm`. Returns `None` on other platforms or
-/// permission errors.
-pub fn parent_command() -> Option<String> {
-    let ppid = unsafe { libc::getppid() };
-    if ppid <= 0 {
-        return None;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        proc_pidpath_macos(ppid)
-    }
-    #[cfg(target_os = "linux")]
-    {
-        proc_comm_linux(ppid)
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        let _ = ppid;
-        None
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn proc_pidpath_macos(pid: libc::pid_t) -> Option<String> {
-    extern "C" {
-        fn proc_pidpath(pid: libc::c_int, buffer: *mut libc::c_void, buffersize: u32) -> libc::c_int;
-    }
-    const PROC_PIDPATHINFO_MAXSIZE: u32 = 4096;
-    let mut buf: Vec<u8> = vec![0; PROC_PIDPATHINFO_MAXSIZE as usize];
-    let n = unsafe {
-        proc_pidpath(
-            pid as libc::c_int,
-            buf.as_mut_ptr() as *mut libc::c_void,
-            PROC_PIDPATHINFO_MAXSIZE,
-        )
-    };
-    if n <= 0 {
-        return None;
-    }
-    buf.truncate(n as usize);
-    String::from_utf8(buf).ok()
-}
-
-#[cfg(target_os = "linux")]
-fn proc_comm_linux(pid: libc::pid_t) -> Option<String> {
-    let path = format!("/proc/{pid}/comm");
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,37 +52,14 @@ mod tests {
     }
 
     #[test]
-    fn auto_first_gets_counter() {
-        // simulate parent_command returning npm
-        let cand = suffix_with_counter("npm", &[]);
-        assert_eq!(cand, "npm-1");
-        let cand2 = suffix_with_counter("npm", &["npm-1".into()]);
-        assert_eq!(cand2, "npm-2");
+    fn no_override_returns_pipe_with_counter() {
+        assert_eq!(resolve(None, &[]), "pipe-1");
+        assert_eq!(resolve(None, &["pipe-1".into()]), "pipe-2");
     }
 
     #[test]
-    fn shell_falls_back_to_pipe() {
-        // resolve should not return a shell; if parent is a shell, it returns pipe-1
-        // we can't fake parent here, but we can check the path: forcing a shell name
-        // via override should still work as override (no shell fallback for explicit).
-        let cand = suffix_with_counter("pipe", &[]);
-        assert_eq!(cand, "pipe-1");
-    }
-
-    #[test]
-    fn sanitize_strips_path_and_lowers() {
-        assert_eq!(sanitize("/usr/bin/npm"), "npm");
-        assert_eq!(sanitize("Go"), "go");
-        assert_eq!(sanitize("/opt/Homebrew/bin/cargo"), "cargo");
-    }
-
-    #[test]
-    fn first_command_words_takes_non_flag_prefix() {
-        assert_eq!(first_command_words("npm run dev --someFlag"), "npm run dev");
-        assert_eq!(first_command_words("cargo run --release"), "cargo run");
-        assert_eq!(first_command_words("/usr/bin/node script.js"), "node script.js");
-        assert_eq!(first_command_words("python -m foo"), "python");
-        assert_eq!(first_command_words("a b c d e"), "a b c");
-        assert_eq!(first_command_words(""), "");
+    fn empty_override_falls_through_to_pipe() {
+        assert_eq!(resolve(Some(""), &[]), "pipe-1");
+        assert_eq!(resolve(Some("   "), &[]), "pipe-1");
     }
 }

@@ -9,7 +9,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::format::Detector;
 use crate::persistence::Store;
 use crate::ring::Ring;
-use crate::source;
 
 const SOCKET_FILE: &str = "daemon.sock";
 
@@ -133,7 +132,7 @@ pub async fn run_forwarder(stream: Stream, name: String) -> std::io::Result<()> 
     let header = ForwarderHeader {
         name,
         pid: std::process::id() as i32,
-        parent_cmd: source::parent_command(),
+        parent_cmd: None,
     };
     let mut header_bytes = serde_json::to_vec(&header).map_err(|e| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, format!("encode header: {e}"))
