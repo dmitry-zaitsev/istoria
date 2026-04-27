@@ -77,7 +77,11 @@ release-mac:
         echo "::warning:: spctl assess failed — notarization may not have stapled"
     mkdir -p dist
     ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
-    tar -czf "dist/${ARTIFACT}" -C "$BUNDLE_DIR" istoria.app
+    # Wrap in parent dir so brew strips the wrapper, not the .app.
+    STAGE="$(mktemp -d)"
+    mkdir "$STAGE/istoria-${VERSION}"
+    cp -R "$BUNDLE_DIR/istoria.app" "$STAGE/istoria-${VERSION}/"
+    tar -czf "dist/${ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
     (cd dist && shasum -a 256 "$ARTIFACT" | tee "${ARTIFACT}.sha256")
     echo "✓ dist/${ARTIFACT}"
 
