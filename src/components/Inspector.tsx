@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { addClause, removeClause } from "../lib/facets";
 import { focusFilterInput } from "../lib/filterFocus";
+import { highlight, type HighlightTerm } from "../lib/highlight";
 import type { Level, LogEvent } from "../lib/ipc";
 import { isError, parse } from "../lib/query";
 import { pinnedFromAst } from "../lib/facets";
@@ -14,6 +15,7 @@ interface InspectorProps {
   events: LogEvent[];
   onSelect: (id: number) => void;
   onClose: () => void;
+  highlightTerms: HighlightTerm[];
 }
 
 type Tab = "json" | "stack" | "related" | "raw";
@@ -26,7 +28,13 @@ const CORR_KEYS = [
   "session_id",
 ];
 
-export function Inspector({ event, events, onSelect, onClose }: InspectorProps) {
+export function Inspector({
+  event,
+  events,
+  onSelect,
+  onClose,
+  highlightTerms,
+}: InspectorProps) {
   const height = useStore((s) => s.inspectorHeight);
   const setHeight = useStore((s) => s.setInspectorHeight);
   const filter = useStore((s) => s.filter);
@@ -164,11 +172,14 @@ export function Inspector({ event, events, onSelect, onClose }: InspectorProps) 
       <div className="inspector-body">
         {tab === "json" && (
           <div className="json">
-            <div className="msg-headline">{event.msg || event.raw}</div>
+            <div className="msg-headline">
+              {highlight(event.msg || event.raw, highlightTerms)}
+            </div>
             <JsonView
               value={fields}
               onFilter={onAddFilter}
               onKeyFilter={onAddKeyFilter}
+              highlightTerms={highlightTerms}
             />
           </div>
         )}
@@ -203,7 +214,9 @@ export function Inspector({ event, events, onSelect, onClose }: InspectorProps) 
                       {levelClass(e.level)}
                     </span>
                     <span className="src">{e.source}</span>
-                    <span className="msg">{e.msg || e.raw}</span>
+                    <span className="msg">
+                      {highlight(e.msg || e.raw, highlightTerms)}
+                    </span>
                   </div>
                 ))}
               </>

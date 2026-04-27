@@ -1,7 +1,10 @@
+import { highlight, type HighlightTerm } from "../lib/highlight";
+
 interface JsonViewProps {
   value: unknown;
   onFilter?: (path: string, value: unknown) => void;
   onKeyFilter?: (path: string) => void;
+  highlightTerms?: HighlightTerm[];
 }
 
 const TS_KEYS = new Set([
@@ -15,7 +18,12 @@ const TS_KEYS = new Set([
 ]);
 const TS_MS_FLOOR = 1_000_000_000_000; // 2001-09-09 — anything above this is plausibly Unix-ms.
 
-export function JsonView({ value, onFilter, onKeyFilter }: JsonViewProps) {
+export function JsonView({
+  value,
+  onFilter,
+  onKeyFilter,
+  highlightTerms,
+}: JsonViewProps) {
   return (
     <>
       <Node
@@ -24,6 +32,7 @@ export function JsonView({ value, onFilter, onKeyFilter }: JsonViewProps) {
         path=""
         onFilter={onFilter}
         onKeyFilter={onKeyFilter}
+        highlightTerms={highlightTerms}
       />
     </>
   );
@@ -36,14 +45,27 @@ interface NodeProps {
   path: string;
   onFilter?: (path: string, value: unknown) => void;
   onKeyFilter?: (path: string) => void;
+  highlightTerms?: HighlightTerm[];
 }
 
-function Node({ value, indent, keyName, path, onFilter, onKeyFilter }: NodeProps) {
+function Node({
+  value,
+  indent,
+  keyName,
+  path,
+  onFilter,
+  onKeyFilter,
+  highlightTerms,
+}: NodeProps) {
   if (value === null) return <span className="p">null</span>;
   if (typeof value === "string")
     return (
       <Filterable path={path} value={value} onFilter={onFilter}>
-        <span className="s">"{escape(value)}"</span>
+        <span className="s">
+          "{highlightTerms && highlightTerms.length > 0
+            ? highlight(escape(value), highlightTerms)
+            : escape(value)}"
+        </span>
       </Filterable>
     );
   if (typeof value === "number") {
@@ -67,6 +89,7 @@ function Node({ value, indent, keyName, path, onFilter, onKeyFilter }: NodeProps
         path={path}
         onFilter={onFilter}
         onKeyFilter={onKeyFilter}
+        highlightTerms={highlightTerms}
       />
     );
   if (typeof value === "object")
@@ -77,6 +100,7 @@ function Node({ value, indent, keyName, path, onFilter, onKeyFilter }: NodeProps
         path={path}
         onFilter={onFilter}
         onKeyFilter={onKeyFilter}
+        highlightTerms={highlightTerms}
       />
     );
   return <span>{String(value)}</span>;
@@ -144,12 +168,14 @@ function Obj({
   path,
   onFilter,
   onKeyFilter,
+  highlightTerms,
 }: {
   obj: Record<string, unknown>;
   indent: number;
   path: string;
   onFilter?: (p: string, v: unknown) => void;
   onKeyFilter?: (p: string) => void;
+  highlightTerms?: HighlightTerm[];
 }) {
   const entries = Object.entries(obj);
   if (entries.length === 0) return <span className="p">{"{}"}</span>;
@@ -183,6 +209,7 @@ function Obj({
               path={childPath}
               onFilter={onFilter}
               onKeyFilter={onKeyFilter}
+              highlightTerms={highlightTerms}
             />
             {i < entries.length - 1 && <span className="p">,</span>}
           </div>
@@ -199,12 +226,14 @@ function Arr({
   path,
   onFilter,
   onKeyFilter,
+  highlightTerms,
 }: {
   items: unknown[];
   indent: number;
   path: string;
   onFilter?: (p: string, v: unknown) => void;
   onKeyFilter?: (p: string) => void;
+  highlightTerms?: HighlightTerm[];
 }) {
   if (items.length === 0) return <span className="p">[]</span>;
   return (
@@ -218,6 +247,7 @@ function Arr({
             path={`${path}.${i}`}
             onFilter={onFilter}
             onKeyFilter={onKeyFilter}
+            highlightTerms={highlightTerms}
           />
           {i < items.length - 1 && <span className="p">,</span>}
         </div>
