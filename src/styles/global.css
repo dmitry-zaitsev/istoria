@@ -154,6 +154,20 @@ body,
   min-width: 40px;
   align-self: stretch;
 }
+.tabs-sources {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding-right: 8px;
+}
+.tabs-sources .session-tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  color: var(--muted);
+}
 .tab-menu {
   position: absolute;
   top: 32px;

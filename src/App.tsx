@@ -143,14 +143,16 @@ export default function App() {
     return m;
   }, [tsScopedEvents]);
 
-  const showSource = useMemo(() => {
+  const sources = useMemo(() => {
     const seen = new Set<string>();
-    for (const e of unfilteredEvents) {
-      seen.add(e.source);
-      if (seen.size > 1) return true;
-    }
-    return false;
+    for (const e of unfilteredEvents) seen.add(e.source);
+    return [...seen].sort();
   }, [unfilteredEvents]);
+  const showSource = sources.length > 1;
+  const setSources = useStore((s) => s.setSources);
+  useEffect(() => {
+    setSources(sources);
+  }, [sources, setSources]);
 
   // Bootstrap pins on mount.
   useEffect(() => {
@@ -245,12 +247,13 @@ export default function App() {
     [unfilteredEvents, compiledAlerts],
   );
 
-  // Notification: track last fired time per alert id; on new matching
-  // events for notify-enabled alerts, fire native notification only
-  // if elapsed > debounce_ms AND the istoria window isn't already
-  // focused (no point pinging the user about something they're
-  // already looking at).
+  // Notification: per-alert debounce + suppressed-match counter so a
+  // flood doesn't spam the user. lastFiredRef gates the cooldown;
+  // suppressedRef counts matches that landed during it. On the next
+  // fire we surface the count as "+N more" in the body, then reset.
+  // Skipped entirely when the istoria window is currently focused.
   const lastFiredRef = useRef<Map<string, number>>(new Map());
+  const suppressedRef = useRef<Map<string, number>>(new Map());
   const lastSeenIdRef = useRef<number>(-1);
   useEffect(() => {
     const notifying = alerts.filter((a) => a.notify);
@@ -276,14 +279,28 @@ export default function App() {
           const a = notifying.find((x) => x.id === id);
           if (!a) continue;
           const last = lastFiredRef.current.get(a.id) ?? 0;
-          if (now - last < a.debounce_ms) continue;
+          if (now - last < a.debounce_ms) {
+            // Still in cooldown — accumulate so the next fire can
+            // tell the user "+N more matched while you were away".
+            suppressedRef.current.set(
+              a.id,
+              (suppressedRef.current.get(a.id) ?? 0) + 1,
+            );
+            continue;
+          }
           lastFiredRef.current.set(a.id, now);
-          if (focused) continue;
+          if (focused) {
+            // Don't pile up a phantom "+N more" while the user is
+            // looking at the stream — they can already see them.
+            suppressedRef.current.set(a.id, 0);
+            continue;
+          }
+          const suppressed = suppressedRef.current.get(a.id) ?? 0;
+          suppressedRef.current.set(a.id, 0);
+          const head = (ev.msg || ev.raw).slice(0, 120);
+          const body = suppressed > 0 ? `${head}\n+${suppressed} more` : head;
           try {
-            sendNotification({
-              title: a.name,
-              body: (ev.msg || ev.raw).slice(0, 120),
-            });
+            sendNotification({ title: a.name, body });
           } catch (e) {
             console.warn("sendNotification failed", e);
           }

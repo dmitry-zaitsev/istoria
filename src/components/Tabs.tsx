@@ -11,6 +11,7 @@ import {
   updateView,
   type View,
 } from "../lib/ipc";
+import { toast } from "../lib/toast";
 
 export function Tabs() {
   const views = useStore((s) => s.views);
@@ -19,6 +20,7 @@ export function Tabs() {
   const setActiveId = useStore((s) => s.setActiveViewId);
   const setFilter = useStore((s) => s.setFilter);
   const filter = useStore((s) => s.filter);
+  const sources = useStore((s) => s.sources);
 
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
@@ -49,11 +51,15 @@ export function Tabs() {
   };
 
   const onCreate = async () => {
-    const name = `View ${views.length + 1}`;
-    const created = await createView(name, "");
-    const all = await listViews();
-    setViews(all);
-    onSelect(created);
+    try {
+      const name = `View ${views.length + 1}`;
+      const created = await createView(name, "");
+      const all = await listViews();
+      setViews(all);
+      onSelect(created);
+    } catch (e) {
+      toast(`new view failed: ${String(e)}`);
+    }
   };
 
   const onClose = async (e: React.MouseEvent, v: View) => {
@@ -176,6 +182,15 @@ export function Tabs() {
             .catch(() => {});
         }}
       />
+      {sources.length > 0 && (
+        <div className="tabs-sources" title="Active log sources">
+          {sources.map((s) => (
+            <span key={s} className="session-tag">
+              {s}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -23,6 +23,7 @@ interface Store {
   pinnedIds: Set<number>;
   scrollTargetId: number | null;
   alerts: Alert[];
+  sources: string[];
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -37,6 +38,7 @@ interface Store {
   togglePinLocal: (id: number) => void;
   setScrollTarget: (id: number | null) => void;
   setAlerts: (alerts: Alert[]) => void;
+  setSources: (sources: string[]) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -54,6 +56,7 @@ export const useStore = create<Store>((set) => ({
   pinnedIds: new Set<number>(),
   scrollTargetId: null,
   alerts: [],
+  sources: [],
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) =>
@@ -85,4 +88,5 @@ export const useStore = create<Store>((set) => ({
     }),
   setScrollTarget: (scrollTargetId) => set({ scrollTargetId }),
   setAlerts: (alerts) => set({ alerts }),
+  setSources: (sources) => set({ sources }),
 }));
