@@ -42,7 +42,9 @@ export function AlertsPanel({ open, onClose }: Props) {
   };
 
   const remove = (id: string) => {
-    if (!confirm("Delete this alert?")) return;
+    // window.confirm is blocked in WKWebView so the prompt never
+    // returned and the click silently no-op'd. Just delete; user can
+    // re-create from the filter bar if it was a mistake.
     try {
       deleteAlertLocal(id);
       setAlerts(loadAlerts());
