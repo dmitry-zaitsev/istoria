@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { Alert, LogEvent, View } from "./lib/ipc";
+import type { Alert } from "./lib/alerts";
+import type { LogEvent, View } from "./lib/ipc";
 
 export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;

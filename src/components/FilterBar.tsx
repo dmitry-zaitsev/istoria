@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { hashColor } from "../lib/alerts";
+import { addAlert, hashColor, loadAlerts } from "../lib/alerts";
 import { registerFilterFocus } from "../lib/filterFocus";
-import { createAlert, listAlerts } from "../lib/ipc";
 import { isError, parse, renderValue, tokenize, type Token } from "../lib/query";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
@@ -314,19 +313,19 @@ export function FilterBar({
           onClick={() => {
             const q = value.trim();
             if (!q) return;
-            const color = hashColor(q);
-            createAlert({
-              name: q,
-              query: q,
-              color,
-              notify: true,
-              debounce_ms: 5000,
-            })
-              .then(async () => {
-                setAlerts(await listAlerts());
-                toast("notify on");
-              })
-              .catch((e) => toast(`notify failed: ${String(e)}`));
+            try {
+              addAlert({
+                name: q,
+                query: q,
+                color: hashColor(q),
+                notify: true,
+                debounce_ms: 5000,
+              });
+              setAlerts(loadAlerts());
+              toast("notify on");
+            } catch (e) {
+              toast(`notify failed: ${String(e)}`);
+            }
           }}
         >
           notify

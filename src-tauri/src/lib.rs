@@ -1,4 +1,3 @@
-pub mod alerts;
 pub mod cli;
 pub mod code;
 pub mod event;
@@ -127,10 +126,6 @@ pub fn run(cli: cli::Cli) {
             ipc::pin_event,
             ipc::unpin_event,
             ipc::list_pins,
-            ipc::alerts_list,
-            ipc::alerts_create,
-            ipc::alerts_set_enabled,
-            ipc::alerts_delete,
             ipc::get_code_preview,
             ipc::get_emission_site,
             ipc::list_editors,

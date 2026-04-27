@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
 
 import { useStore } from "../store";
@@ -160,11 +161,21 @@ export function Tabs() {
       >
         +
       </button>
-      {/* Leaf drag-region: putting data-tauri-drag-region on .tabs
-          root would let Tauri's mousedown handler swallow tab clicks
-          via closest()-traversal. Keep it on this empty spacer so
-          buttons/tabs above stay interactive. */}
-      <div className="tabs-drag-fill" data-tauri-drag-region />
+      {/* Leaf drag-region: explicit startDragging() on mousedown is
+          the reliable path — the data-tauri-drag-region attribute
+          alone has been hit-or-miss on this build. Keep the attribute
+          too as a fallback. The handler runs only on the empty fill
+          area so buttons/tabs above stay interactive. */}
+      <div
+        className="tabs-drag-fill"
+        data-tauri-drag-region
+        onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          getCurrentWindow()
+            .startDragging()
+            .catch(() => {});
+        }}
+      />
     </div>
   );
 }

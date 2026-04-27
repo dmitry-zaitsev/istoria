@@ -14,10 +14,9 @@ import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
-import { compileAlerts, matchAlerts } from "./lib/alerts";
+import { compileAlerts, loadAlerts, matchAlerts } from "./lib/alerts";
 import {
   getMeta,
-  listAlerts,
   listPins,
   listViews,
   queryRecent,
@@ -119,7 +118,15 @@ export default function App() {
   );
   const suggestKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
-    return ["msg", "raw", "ts", "pinned", "stack", ...groups.map((g) => g.key)];
+    return [
+      "msg",
+      "raw",
+      "ts",
+      "pinned",
+      "stack",
+      "hasStackTrace",
+      ...groups.map((g) => g.key),
+    ];
   }, [tsScopedEvents]);
   const suggestValuesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -132,6 +139,7 @@ export default function App() {
     }
     m.set("pinned", ["true", "false"]);
     m.set("stack", ["true", "false"]);
+    m.set("hasStackTrace", ["true", "false"]);
     return m;
   }, [tsScopedEvents]);
 
@@ -157,17 +165,10 @@ export default function App() {
     };
   }, [setPinnedIds]);
 
-  // Bootstrap alerts on mount.
+  // Bootstrap alerts on mount. Synchronous localStorage read — no
+  // DuckDB round trip; alerts are tiny configuration, not log data.
   useEffect(() => {
-    let cancelled = false;
-    listAlerts()
-      .then((all) => {
-        if (!cancelled) setAlerts(all);
-      })
-      .catch((e) => console.warn("listAlerts failed", e));
-    return () => {
-      cancelled = true;
-    };
+    setAlerts(loadAlerts());
   }, [setAlerts]);
 
   // Bootstrap views + active id from DuckDB.
@@ -249,7 +250,7 @@ export default function App() {
   // if elapsed > debounce_ms AND the istoria window isn't already
   // focused (no point pinging the user about something they're
   // already looking at).
-  const lastFiredRef = useRef<Map<number, number>>(new Map());
+  const lastFiredRef = useRef<Map<string, number>>(new Map());
   const lastSeenIdRef = useRef<number>(-1);
   useEffect(() => {
     const notifying = alerts.filter((a) => a.notify);

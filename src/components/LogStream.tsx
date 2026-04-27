@@ -15,7 +15,7 @@ interface LogStreamProps {
   bottomInset: number;
   showSource: boolean;
   highlightTerms: HighlightTerm[];
-  alertMatches: Map<number, number[]>;
+  alertMatches: Map<number, string[]>;
 }
 
 const ROW_PX = 26;

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { deleteAlert, listAlerts, setAlertEnabled } from "../lib/ipc";
+import { deleteAlertLocal, loadAlerts, setAlertEnabledLocal } from "../lib/alerts";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
@@ -32,28 +32,20 @@ export function AlertsPanel({ open, onClose }: Props) {
 
   if (!open) return null;
 
-  const refresh = async () => {
+  const toggle = (id: string, enabled: boolean) => {
     try {
-      setAlerts(await listAlerts());
-    } catch (e) {
-      toast(`Reload failed: ${String(e)}`);
-    }
-  };
-
-  const toggle = async (id: number, enabled: boolean) => {
-    try {
-      await setAlertEnabled(id, enabled);
-      await refresh();
+      setAlertEnabledLocal(id, enabled);
+      setAlerts(loadAlerts());
     } catch (e) {
       toast(`Update failed: ${String(e)}`);
     }
   };
 
-  const remove = async (id: number) => {
+  const remove = (id: string) => {
     if (!confirm("Delete this alert?")) return;
     try {
-      await deleteAlert(id);
-      await refresh();
+      deleteAlertLocal(id);
+      setAlerts(loadAlerts());
       toast("Alert deleted");
     } catch (e) {
       toast(`Delete failed: ${String(e)}`);
@@ -68,7 +60,7 @@ export function AlertsPanel({ open, onClose }: Props) {
       </div>
       {alerts.length === 0 && (
         <div className="alerts-empty">
-          No alerts. Type a filter, then click <b>+ alert</b> to save it.
+          No alerts. Type a filter, then click <b>notify</b> to save it.
         </div>
       )}
       {alerts.map((a) => (
@@ -88,7 +80,7 @@ export function AlertsPanel({ open, onClose }: Props) {
           <button
             type="button"
             className="sort-btn"
-            onClick={() => void toggle(a.id, !a.enabled)}
+            onClick={() => toggle(a.id, !a.enabled)}
             title={a.enabled ? "Deactivate alert" : "Activate alert"}
           >
             {a.enabled ? "on" : "off"}
@@ -96,7 +88,7 @@ export function AlertsPanel({ open, onClose }: Props) {
           <button
             type="button"
             className="sort-btn"
-            onClick={() => void remove(a.id)}
+            onClick={() => remove(a.id)}
             title="Delete alert"
           >
             ×
