@@ -8,7 +8,8 @@ const SHELL_FALLBACKS: &[&str] = &[
 ///
 /// Precedence:
 ///  1. `--name` override (no counter unless `existing` already has it)
-///  2. upstream pipe writer (process whose stdout is our stdin)
+///  2. upstream pipeline command (e.g. `npm run dev` for
+///     `npm run dev | istoria`)
 ///  3. parent process binary name (e.g. `npm`, `go`)
 ///  4. `pipe` for shells / unknowable parents
 ///
@@ -21,7 +22,7 @@ pub fn resolve(name_override: Option<&str>, existing: &[String]) -> String {
             return suffix_if_clash(trimmed, existing);
         }
     }
-    let base = pipe_writer_name()
+    let base = pipeline_sibling_name()
         .or_else(|| {
             parent_command()
                 .map(|s| sanitize(&s))
@@ -58,116 +59,81 @@ fn suffix_with_counter(base: &str, existing: &[String]) -> String {
     unreachable!()
 }
 
-/// Find the upstream pipe writer's command. The OS pipe pair gives a
-/// definitive answer that ppid heuristics can't: istoria's stdin and
-/// the writer's stdout share one kernel object. ppid alone gets fooled
-/// by recipes that fork background processes (e.g. `just dev` running
-/// vite in the background while cargo runs istoria — both children of
-/// the recipe's bash, but vite isn't on the pipe at all).
-fn pipe_writer_name() -> Option<String> {
+/// Find the upstream pipeline-stage command. The shell forks each
+/// pipeline stage as a sibling under itself, but a stage like
+/// `just dev` may bury istoria several processes deep
+/// (just→cargo→istoria). Walking only direct siblings of istoria's
+/// parent misses the actual pipe peer. Instead walk our ancestor
+/// chain; the first ancestor whose own parent has another child
+/// outside our chain is the upstream pipe stage.
+fn pipeline_sibling_name() -> Option<String> {
+    if !cfg!(any(target_os = "macos", target_os = "linux")) {
+        return None;
+    }
     let our_pid = std::process::id() as i32;
-    let writer_pid = pipe_writer_pid(our_pid)?;
-    let cmd = command_for_pid(writer_pid)?;
-    Some(first_command_words(&cmd))
-}
+    let our_ppid = unsafe { libc::getppid() };
+    if our_ppid <= 1 {
+        return None; // orphaned / launchd-rooted: every daemon would match
+    }
 
-#[cfg(target_os = "macos")]
-fn pipe_writer_pid(our_pid: i32) -> Option<i32> {
-    // macOS lsof exposes pipes as two endpoints with cross-references:
-    // each side's NAME is `->PEER_DEV`, and its DEVICE is its own end's
-    // address. Our fd 0 has device R; the writer is the only other
-    // process whose fd has NAME `->R`.
-    use std::process::Command;
-    let our_fd0 = Command::new("lsof")
-        .args(["-p", &our_pid.to_string(), "-d", "0", "-F", "dn"])
+    let out = std::process::Command::new("ps")
+        .args(["-o", "pid=,ppid=,command=", "-A"])
         .output()
         .ok()?;
-    let s = String::from_utf8_lossy(&our_fd0.stdout);
-    let mut device: Option<String> = None;
-    let mut is_pipe = false;
-    for line in s.lines() {
-        if let Some(rest) = line.strip_prefix('d') {
-            device = Some(rest.trim().to_string());
-        } else if let Some(rest) = line.strip_prefix('n') {
-            // pipes show "->0x..." in the name column
-            if rest.trim_start().starts_with("->") {
-                is_pipe = true;
-            }
-        }
-    }
-    if !is_pipe {
-        return None;
-    }
-    let our_dev = device?;
-    let target = format!("->{}", our_dev);
+    let stdout = String::from_utf8_lossy(&out.stdout);
 
-    let all = Command::new("lsof").args(["-F", "pn"]).output().ok()?;
-    let stdout = String::from_utf8_lossy(&all.stdout);
-    let mut current: Option<i32> = None;
+    // (pid, ppid, command) for every visible process. split_whitespace
+    // collapses the variable-width column padding `ps` emits.
+    let mut by_pid: std::collections::HashMap<i32, (i32, String)> =
+        std::collections::HashMap::new();
+    let mut by_ppid: std::collections::HashMap<i32, Vec<(i32, String)>> =
+        std::collections::HashMap::new();
     for line in stdout.lines() {
-        if let Some(rest) = line.strip_prefix('p') {
-            current = rest.parse().ok();
-        } else if let Some(rest) = line.strip_prefix('n') {
-            if rest == target {
-                if let Some(pid) = current {
-                    if pid != our_pid {
-                        return Some(pid);
-                    }
-                }
-            }
+        let mut iter = line.split_whitespace();
+        let pid: i32 = iter.next()?.parse().ok().unwrap_or(0);
+        let ppid: i32 = iter.next()?.parse().ok().unwrap_or(0);
+        let cmd: String = iter.collect::<Vec<_>>().join(" ");
+        if pid <= 0 || cmd.is_empty() {
+            continue;
         }
+        by_pid.insert(pid, (ppid, cmd.clone()));
+        by_ppid.entry(ppid).or_default().push((pid, cmd));
     }
-    None
-}
 
-#[cfg(target_os = "linux")]
-fn pipe_writer_pid(our_pid: i32) -> Option<i32> {
-    // Linux: /proc/<pid>/fd/<n> is a symlink to "pipe:[inode]" for
-    // both ends of the same pipe. Find the other process whose fd
-    // resolves to the same inode.
-    let our_link = std::fs::read_link(format!("/proc/{}/fd/0", our_pid)).ok()?;
-    let target = our_link.to_string_lossy().to_string();
-    if !target.starts_with("pipe:") {
-        return None;
+    // Walk from our PID up through ancestors; the chain bottoms out at
+    // pid 1 / launchd. We never want to consider those a "sibling".
+    let mut chain: Vec<i32> = vec![our_pid];
+    let mut cur = our_pid;
+    while let Some((ppid, _)) = by_pid.get(&cur) {
+        if *ppid <= 1 {
+            break;
+        }
+        chain.push(*ppid);
+        cur = *ppid;
     }
-    let entries = std::fs::read_dir("/proc").ok()?;
-    for entry in entries.flatten() {
-        let Some(name) = entry.file_name().into_string().ok() else {
+
+    // For each link in the chain, see if its parent has another child
+    // that isn't already in our chain. That child is the pipeline peer.
+    for &node_pid in chain.iter().take(chain.len() - 1) {
+        let Some((parent_pid, _)) = by_pid.get(&node_pid) else {
             continue;
         };
-        let Ok(pid) = name.parse::<i32>() else { continue };
-        if pid == our_pid {
+        let Some(children) = by_ppid.get(parent_pid) else {
+            continue;
+        };
+        let mut peers: Vec<&(i32, String)> = children
+            .iter()
+            .filter(|(pid, _)| !chain.contains(pid))
+            .collect();
+        if peers.is_empty() {
             continue;
         }
-        let fd_dir = entry.path().join("fd");
-        let Ok(fds) = std::fs::read_dir(&fd_dir) else { continue };
-        for fd in fds.flatten() {
-            if let Ok(link) = std::fs::read_link(fd.path()) {
-                if link.to_string_lossy() == target {
-                    return Some(pid);
-                }
-            }
-        }
+        // Lowest PID = leftmost stage the shell forked first.
+        peers.sort_by_key(|(pid, _)| *pid);
+        let (_, cmd) = peers[0];
+        return Some(first_command_words(cmd));
     }
     None
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn pipe_writer_pid(_our_pid: i32) -> Option<i32> {
-    None
-}
-
-fn command_for_pid(pid: i32) -> Option<String> {
-    let out = std::process::Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "command="])
-        .output()
-        .ok()?;
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
 }
 
 fn first_command_words(cmd: &str) -> String {
@@ -185,23 +151,16 @@ fn first_command_words(cmd: &str) -> String {
             .unwrap_or("")
             .to_string();
     }
-    // Basename every word that looks like an absolute/relative path
-    // (contains a '/'): "node /path/fake-logs.mjs" → "node fake-logs.mjs".
-    words
-        .iter()
-        .map(|w| {
-            if w.contains('/') {
-                std::path::Path::new(w)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(w)
-                    .to_string()
-            } else {
-                (*w).to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    let first_basename = std::path::Path::new(words[0])
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(words[0])
+        .to_string();
+    let mut out = vec![first_basename];
+    for w in &words[1..] {
+        out.push((*w).to_string());
+    }
+    out.join(" ")
 }
 
 /// Read parent process binary name. macOS uses `proc_pidpath`; Linux
@@ -299,12 +258,6 @@ mod tests {
         assert_eq!(first_command_words("npm run dev --someFlag"), "npm run dev");
         assert_eq!(first_command_words("cargo run --release"), "cargo run");
         assert_eq!(first_command_words("/usr/bin/node script.js"), "node script.js");
-        assert_eq!(
-            first_command_words(
-                "node /Users/me/projects/x/examples/generator/fake-logs.mjs"
-            ),
-            "node fake-logs.mjs"
-        );
         assert_eq!(first_command_words("python -m foo"), "python");
         assert_eq!(first_command_words("a b c d e"), "a b c");
         assert_eq!(first_command_words(""), "");
