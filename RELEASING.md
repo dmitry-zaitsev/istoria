@@ -2,6 +2,8 @@
 
 `istoria` ships via Homebrew (`dmitry-zaitsev/homebrew-tap`) using prebuilt binaries hosted on `dmitry-zaitsev/istoria-releases`. CI in this (private) source repo builds, signs, notarizes, publishes, and bumps the formula on tag push.
 
+Currently macOS Apple Silicon only. Intel and Linux dropped to keep CI simple; revisit if demand arises.
+
 ## One-time setup
 
 ### Repos
@@ -58,6 +60,6 @@ echo "hello world" | istoria
 ## Troubleshooting
 
 - **Version mismatch** in pre-flight: one of the three version fields wasn't bumped.
-- **Notarization timeout**: Tauri retries once; check Apple's status page. Re-run the matrix job.
+- **Notarization timeout**: Tauri retries once; check Apple's status page. Re-run the build job.
 - **Tap push rejected**: PAT lost `repo` scope or expired. Regenerate `GH_RELEASES_PAT`.
 - **`brew install` 404**: release artifacts didn't upload. Check the `publish` job logs and the Releases page on `dmitry-zaitsev/istoria-releases`.

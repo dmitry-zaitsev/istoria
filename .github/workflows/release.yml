@@ -51,25 +51,10 @@ jobs:
 
   build:
     needs: preflight
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            os: macos-14
-            label: aarch64-apple-darwin
-            kind: macos
-          - target: x86_64-apple-darwin
-            os: macos-14
-            label: x86_64-apple-darwin
-            kind: macos
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-            label: x86_64-linux
-            kind: linux
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-14
     env:
       VERSION: ${{ needs.preflight.outputs.version }}
+      TARGET: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v4
 
@@ -83,25 +68,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
-          key: ${{ matrix.target }}
-
-      - name: Linux deps
-        if: matrix.kind == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+          key: aarch64-apple-darwin
 
       - name: Import Apple cert
-        if: matrix.kind == 'macos'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -123,46 +97,26 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | tr -d '"')
           rm "$RUNNER_TEMP/cert.p12"
 
-      - name: Build (macOS, signed + notarized)
-        if: matrix.kind == 'macos'
+      - name: Build (signed + notarized)
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run tauri -- build --target ${{ matrix.target }} --bundles app
+        run: npm run tauri -- build --target $TARGET --bundles app
 
-      - name: Build (Linux, no bundle)
-        if: matrix.kind == 'linux'
-        run: npm run tauri -- build --target ${{ matrix.target }} --no-bundle
-
-      - name: Package macOS
-        if: matrix.kind == 'macos'
+      - name: Package
         run: |
           set -euo pipefail
           mkdir -p dist
-          BUNDLE_DIR="target/${{ matrix.target }}/release/bundle/macos"
-          ARTIFACT="istoria-${VERSION}-${{ matrix.label }}.app.tar.gz"
+          BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
+          ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
           tar -czf "dist/${ARTIFACT}" -C "$BUNDLE_DIR" istoria.app
-          (cd dist && shasum -a 256 "$ARTIFACT" > "SHA256SUMS-${{ matrix.label }}")
-
-      - name: Package Linux
-        if: matrix.kind == 'linux'
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          STAGE="$RUNNER_TEMP/stage"
-          mkdir -p "$STAGE"
-          cp target/${{ matrix.target }}/release/istoria "$STAGE/"
-          [ -f LICENSE ] && cp LICENSE "$STAGE/" || true
-          [ -f README.md ] && cp README.md "$STAGE/" || true
-          ARTIFACT="istoria-${VERSION}-${{ matrix.label }}.tar.gz"
-          tar -czf "dist/${ARTIFACT}" -C "$STAGE" .
-          (cd dist && sha256sum "$ARTIFACT" > "SHA256SUMS-${{ matrix.label }}")
+          (cd dist && shasum -a 256 "$ARTIFACT" > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.label }}
+          name: dist
           path: dist/
           if-no-files-found: error
 
@@ -178,16 +132,8 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          name: dist
           path: dist
-          merge-multiple: true
-
-      - name: Combine checksums
-        run: |
-          set -euo pipefail
-          cd dist
-          cat SHA256SUMS-* > SHA256SUMS
-          rm SHA256SUMS-*
-          ls -la
 
       - name: Create release on dmitry-zaitsev/istoria-releases
         run: |
@@ -205,29 +151,17 @@ jobs:
           set -euo pipefail
           cd dist
           ARM_FILE="istoria-${VERSION}-aarch64-apple-darwin.app.tar.gz"
-          INTEL_FILE="istoria-${VERSION}-x86_64-apple-darwin.app.tar.gz"
-          LINUX_FILE="istoria-${VERSION}-x86_64-linux.tar.gz"
           arm_sha=$(awk -v f="$ARM_FILE" '$2==f {print $1}' SHA256SUMS)
-          intel_sha=$(awk -v f="$INTEL_FILE" '$2==f {print $1}' SHA256SUMS)
-          linux_sha=$(awk -v f="$LINUX_FILE" '$2==f {print $1}' SHA256SUMS)
-          for s in "$arm_sha" "$intel_sha" "$linux_sha"; do
-            if [ -z "$s" ]; then echo "::error::missing sha in SHA256SUMS"; cat SHA256SUMS; exit 1; fi
-          done
-          {
-            echo "arm_sha=$arm_sha"
-            echo "intel_sha=$intel_sha"
-            echo "linux_sha=$linux_sha"
-          } >> "$GITHUB_OUTPUT"
+          if [ -z "$arm_sha" ]; then echo "::error::missing sha in SHA256SUMS"; cat SHA256SUMS; exit 1; fi
+          echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
 
       - name: Render formula
         env:
           ARM_SHA: ${{ steps.formula.outputs.arm_sha }}
-          INTEL_SHA: ${{ steps.formula.outputs.intel_sha }}
-          LINUX_SHA: ${{ steps.formula.outputs.linux_sha }}
         run: |
           set -euo pipefail
-          export VERSION ARM_SHA INTEL_SHA LINUX_SHA
-          envsubst '${VERSION} ${ARM_SHA} ${INTEL_SHA} ${LINUX_SHA}' \
+          export VERSION ARM_SHA
+          envsubst '${VERSION} ${ARM_SHA}' \
             < .github/release-assets/Formula.istoria.rb.tmpl \
             > /tmp/istoria.rb
           echo "--- rendered formula ---"
