@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::code::{self, CodeLine, EmissionSite};
 use crate::event::Event;
 use crate::query::{self, Ast};
 use crate::state::AppState;
@@ -103,6 +104,55 @@ pub async fn meta_set(
 ) -> Result<(), String> {
     let store = store_or_err(&state)?;
     views::set_meta(store, &key, &value).map_err(|e| e.to_string())
+}
+
+fn project_root_or_err(state: &AppState) -> Result<&std::path::Path, String> {
+    state
+        .project_root
+        .as_deref()
+        .ok_or_else(|| "project root unavailable".to_string())
+}
+
+#[tauri::command]
+pub async fn get_code_preview(
+    state: tauri::State<'_, AppState>,
+    path: String,
+    line: u32,
+    context: u32,
+) -> Result<Vec<CodeLine>, String> {
+    let root = project_root_or_err(&state)?;
+    code::read_slice(root, &path, line, context)
+}
+
+#[tauri::command]
+pub async fn get_emission_site(
+    state: tauri::State<'_, AppState>,
+    msg: String,
+) -> Result<Option<EmissionSite>, String> {
+    let root = project_root_or_err(&state)?;
+    let cache = std::sync::Arc::clone(&state.code_cache);
+    let Some((path, line)) = code::find_emission_site(root, &cache, &msg)? else {
+        return Ok(None);
+    };
+    let preview = code::read_slice(
+        root,
+        path.to_str().unwrap_or_default(),
+        line,
+        2,
+    )
+    .unwrap_or_default();
+    let is_local = code::is_local_change(root, &cache, &path, line);
+    let rel_path = path
+        .strip_prefix(root)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+    Ok(Some(EmissionSite {
+        path: path.to_string_lossy().into_owned(),
+        rel_path,
+        line,
+        preview,
+        is_local,
+    }))
 }
 
 #[tauri::command]

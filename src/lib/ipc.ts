@@ -73,3 +73,30 @@ export async function setMeta(key: string, value: string): Promise<void> {
 export async function clearSession(): Promise<void> {
   return invoke("clear_session");
 }
+
+export interface CodeLine {
+  line: number;
+  text: string;
+}
+
+export interface EmissionSite {
+  path: string;
+  rel_path: string;
+  line: number;
+  preview: CodeLine[];
+  is_local: boolean;
+}
+
+export async function getCodePreview(
+  path: string,
+  line: number,
+  context: number,
+): Promise<CodeLine[]> {
+  return invoke<CodeLine[]>("get_code_preview", { path, line, context });
+}
+
+export async function getEmissionSite(
+  msg: string,
+): Promise<EmissionSite | null> {
+  return invoke<EmissionSite | null>("get_emission_site", { msg });
+}
