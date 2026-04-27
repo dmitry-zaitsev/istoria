@@ -3,7 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { addClause, removeClause } from "../lib/facets";
 import { focusFilterInput } from "../lib/filterFocus";
 import { highlight, type HighlightTerm } from "../lib/highlight";
-import type { Level, LogEvent } from "../lib/ipc";
+import {
+  getCodePreview,
+  getEmissionSite,
+  type CodeLine,
+  type EmissionSite,
+  type Level,
+  type LogEvent,
+} from "../lib/ipc";
 import { isError, parse } from "../lib/query";
 import { pinnedFromAst } from "../lib/facets";
 import { toast } from "../lib/toast";
@@ -18,7 +25,7 @@ interface InspectorProps {
   highlightTerms: HighlightTerm[];
 }
 
-type Tab = "json" | "stack" | "related" | "raw";
+type Tab = "json" | "stack" | "related" | "code" | "raw";
 
 const CORR_KEYS = [
   "request_id",
@@ -142,6 +149,9 @@ export function Inspector({
             <span className="ct">{related.events.length}</span>
           )}
         </TabButton>
+        <TabButton active={tab === "code"} onClick={() => setTab("code")}>
+          Code
+        </TabButton>
         <TabButton active={tab === "raw"} onClick={() => setTab("raw")}>
           Raw
         </TabButton>
@@ -223,11 +233,86 @@ export function Inspector({
             )}
           </div>
         )}
+        {tab === "code" && <CodeTab event={event} />}
         {tab === "raw" && (
           <pre className="raw">{event.raw}</pre>
         )}
       </div>
     </aside>
+  );
+}
+
+function CodeTab({ event }: { event: LogEvent }) {
+  const [site, setSite] = useState<EmissionSite | null | "loading">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    setSite("loading");
+    const msg = event.msg || event.raw;
+    getEmissionSite(msg)
+      .then((s) => {
+        if (!cancelled) setSite(s);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          console.warn("getEmissionSite failed", e);
+          setSite(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [event.id, event.msg, event.raw]);
+
+  if (site === "loading") {
+    return <div className="empty-tab">Searching project for emission site…</div>;
+  }
+  if (!site) {
+    return (
+      <div className="empty-tab">
+        Source not found. Either the message wasn't grep-able in the project tree, or this log came from a dependency.
+      </div>
+    );
+  }
+  return (
+    <div className="code-tab">
+      <div className="code-h">
+        <span className="code-path">
+          {site.rel_path}
+          <span className="code-line-no">:{site.line}</span>
+        </span>
+        {site.is_local && (
+          <span className="code-local-badge" title="Commit not on default branch">
+            local change
+          </span>
+        )}
+      </div>
+      <CodePreview preview={site.preview} highlightLine={site.line} />
+    </div>
+  );
+}
+
+function CodePreview({
+  preview,
+  highlightLine,
+}: {
+  preview: CodeLine[];
+  highlightLine: number;
+}) {
+  if (preview.length === 0) {
+    return <div className="empty-tab">No preview available.</div>;
+  }
+  return (
+    <pre className="code-preview">
+      {preview.map((ln) => (
+        <div
+          key={ln.line}
+          className={`code-row${ln.line === highlightLine ? " hit" : ""}`}
+        >
+          <span className="code-row-no">{ln.line}</span>
+          <span className="code-row-text">{ln.text}</span>
+        </div>
+      ))}
+    </pre>
   );
 }
 
@@ -267,26 +352,60 @@ function parseFrame(raw: string): ParsedFrame {
 
 function StackFrame({ frame, index }: { frame: string; index: number }) {
   const p = parseFrame(frame);
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<CodeLine[] | null | "loading">(null);
+  const canExpand = p.file != null && p.line != null;
+
+  useEffect(() => {
+    if (!open || preview != null) return;
+    if (p.file == null || p.line == null) return;
+    setPreview("loading");
+    getCodePreview(p.file, p.line, 2)
+      .then((rows) => setPreview(rows))
+      .catch((e) => {
+        console.warn("getCodePreview failed", e);
+        setPreview([]);
+      });
+  }, [open, p.file, p.line, preview]);
+
   return (
     <div className="frame">
-      <span className="frame-idx">#{index}</span>
-      {p.fn && <span className="frame-fn">{p.fn}</span>}
-      {p.file && (
-        <span className="frame-loc">
-          <span className="frame-file">{p.file}</span>
-          {p.line != null && (
-            <>
-              <span className="frame-sep">:</span>
-              <span className="frame-line">{p.line}</span>
-              {p.col != null && (
-                <>
-                  <span className="frame-sep">:</span>
-                  <span className="frame-col">{p.col}</span>
-                </>
-              )}
-            </>
+      <div
+        className={`frame-h${canExpand ? " clickable" : ""}`}
+        onClick={() => canExpand && setOpen((o) => !o)}
+      >
+        <span className="frame-idx">#{index}</span>
+        {p.fn && <span className="frame-fn">{p.fn}</span>}
+        {p.file && (
+          <span className="frame-loc">
+            <span className="frame-file">{p.file}</span>
+            {p.line != null && (
+              <>
+                <span className="frame-sep">:</span>
+                <span className="frame-line">{p.line}</span>
+                {p.col != null && (
+                  <>
+                    <span className="frame-sep">:</span>
+                    <span className="frame-col">{p.col}</span>
+                  </>
+                )}
+              </>
+            )}
+          </span>
+        )}
+        {canExpand && (
+          <span className="frame-chevron">{open ? "▾" : "▸"}</span>
+        )}
+      </div>
+      {open && p.line != null && (
+        <div className="frame-preview">
+          {preview === "loading" && (
+            <div className="empty-tab small">Loading…</div>
           )}
-        </span>
+          {Array.isArray(preview) && (
+            <CodePreview preview={preview} highlightLine={p.line} />
+          )}
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 pub mod alerts;
 pub mod cli;
+pub mod code;
 pub mod event;
 pub mod format;
 pub mod http;
@@ -102,9 +103,17 @@ pub fn run(cli: cli::Cli) {
 
     let ring_for_emit = Arc::clone(&ring);
 
+    let project_root = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.canonicalize().ok());
+    if let Some(p) = project_root.as_ref() {
+        tracing::info!(path = %p.display(), "project root captured");
+    }
+    let code_cache = Arc::new(code::CodeCache::new());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .manage(AppState { ring, store })
+        .manage(AppState { ring, store, project_root, code_cache })
         .invoke_handler(tauri::generate_handler![
             ipc::query_recent,
             ipc::query_parse,
@@ -122,6 +131,8 @@ pub fn run(cli: cli::Cli) {
             ipc::alerts_create,
             ipc::alerts_update,
             ipc::alerts_delete,
+            ipc::get_code_preview,
+            ipc::get_emission_site,
             ipc::clear_session,
         ])
         .setup(move |app| {
