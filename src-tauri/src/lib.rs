@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod event;
 pub mod format;
+pub mod http;
 pub mod ingest;
 pub mod ipc;
 pub mod persistence;
@@ -89,6 +90,12 @@ pub fn run(cli: cli::Cli) {
         } else {
             tracing::warn!("could not bind socket — multi-pipe forwarders disabled");
         }
+    });
+
+    let ring_for_http = Arc::clone(&ring);
+    let store_for_http = store.clone();
+    tauri::async_runtime::spawn(async move {
+        http::run_server(ring_for_http, store_for_http).await;
     });
 
     let ring_for_emit = Arc::clone(&ring);

@@ -810,7 +810,7 @@ kbd {
 
 .logrow {
   display: grid;
-  grid-template-columns: 92px 64px 56px 1fr;
+  grid-template-columns: 92px 64px 1fr auto;
   gap: 12px;
   padding: 4px 14px;
   border-bottom: 1px solid var(--line-soft);
@@ -847,6 +847,7 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 .logrow.lvl-err  { background: linear-gradient(90deg, var(--err-bg) 0%, transparent 80%); }
 .logrow.lvl-err  .msg { color: var(--err-fg); }

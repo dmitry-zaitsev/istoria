@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { Level, LogEvent } from "../lib/ipc";
+import { colorForSource } from "../lib/sourceColors";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
 
@@ -218,12 +219,20 @@ export function LogStream({
                   {cls}
                 </span>
               </span>
-              {showSource && (
-                <span className="src" title={ev.source}>
-                  {ev.source}
-                </span>
-              )}
               <span className="msg">{ev.msg || ev.raw}</span>
+              {showSource &&
+                (() => {
+                  const c = colorForSource(ev.source);
+                  return (
+                    <span
+                      className="src"
+                      title={ev.source}
+                      style={{ background: c.bg, color: c.fg }}
+                    >
+                      {ev.source}
+                    </span>
+                  );
+                })()}
             </div>
           );
         })}

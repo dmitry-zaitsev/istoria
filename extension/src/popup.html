@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>istoria</title>
+    <style>
+      :root {
+        --surface:     #ffffff;
+        --surface-2:   #fafbfc;
+        --ink:         #0f172a;
+        --ink-2:       #1f2937;
+        --muted:       #64748b;
+        --muted-2:     #94a3b8;
+        --line-soft:   #eef1f5;
+        --brand:       #4ea8e0;
+        --ok-fg:       #0f7a4a;
+        --warn-fg:     #a65d12;
+        --ui:          "Inter", -apple-system, system-ui, sans-serif;
+        --mono:        "JetBrains Mono", ui-monospace, Menlo, monospace;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--surface);
+        color: var(--ink);
+        font-family: var(--ui);
+        font-size: 13px;
+        -webkit-font-smoothing: antialiased;
+      }
+      body { width: 280px; }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px 10px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .title {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .title .brand {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+      }
+      .title .sub {
+        font-size: 10.5px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted-2);
+        box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.15);
+      }
+      .dot.live {
+        background: var(--ok-fg);
+        box-shadow: 0 0 0 3px rgba(15, 122, 74, 0.15);
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      .dot.warn {
+        background: var(--warn-fg);
+        box-shadow: 0 0 0 3px rgba(166, 93, 18, 0.15);
+      }
+      @keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 3px rgba(15, 122, 74, 0.15); }
+        50%      { box-shadow: 0 0 0 5px rgba(15, 122, 74, 0.05); }
+      }
+
+      .status {
+        padding: 12px 14px;
+        font-size: 13px;
+        color: var(--ink-2);
+        background: var(--surface-2);
+      }
+      .status .hint {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 3px;
+        font-family: var(--mono);
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="title">
+        <span class="brand">istoria</span>
+        <span class="sub">browser logs</span>
+      </div>
+      <span id="dot" class="dot"></span>
+    </header>
+
+    <div class="status">
+      <span id="statusText">Loading…</span>
+      <span id="statusHint" class="hint"></span>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

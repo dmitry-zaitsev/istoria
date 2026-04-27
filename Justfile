@@ -29,6 +29,23 @@ dev:
 fakeLogs *args:
     @node examples/generator/fake-logs.mjs {{args}}
 
+# Build the Chrome extension and stage it into ~/.istoria/extension
+# for `chrome://extensions` → Load unpacked. Also drops a versioned
+# zip into dist/ for Web Store upload.
+extension:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd extension
+    if [ ! -d node_modules ]; then
+        npm install --silent
+    fi
+    npm run build
+    DEST="${HOME}/.istoria/extension"
+    mkdir -p "$DEST"
+    rsync -a --delete --exclude='.DS_Store' dist/ "$DEST/"
+    echo "✓ ${DEST}"
+    echo "  chrome://extensions → Developer mode → Load unpacked → ${DEST}"
+
 # Re-render src-tauri/icons/source.svg into all per-platform icon
 # artifacts. Touches build.rs so cargo picks up the new bytes on
 # next build (macOS LaunchServices may still need an app reinstall).
