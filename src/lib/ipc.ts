@@ -144,3 +144,7 @@ export async function getEmissionSite(
 ): Promise<EmissionSite | null> {
   return invoke<EmissionSite | null>("get_emission_site", { msg });
 }
+
+export async function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}

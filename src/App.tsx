@@ -1,4 +1,5 @@
 import { sendNotification } from "@tauri-apps/plugin-notification";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Chrome } from "./components/Chrome";
@@ -244,7 +245,9 @@ export default function App() {
 
   // Notification: track last fired time per alert id; on new matching
   // events for notify-enabled alerts, fire native notification only
-  // if elapsed > debounce_ms.
+  // if elapsed > debounce_ms AND the istoria window isn't already
+  // focused (no point pinging the user about something they're
+  // already looking at).
   const lastFiredRef = useRef<Map<number, number>>(new Map());
   const lastSeenIdRef = useRef<number>(-1);
   useEffect(() => {
@@ -257,25 +260,34 @@ export default function App() {
     }
     const now = Date.now();
     const newEvents = unfilteredEvents.filter((e) => e.id > lastSeenIdRef.current);
-    for (const ev of newEvents) {
-      const ids = alertMatches.get(ev.id);
-      if (!ids) continue;
-      for (const id of ids) {
-        const a = notifying.find((x) => x.id === id);
-        if (!a) continue;
-        const last = lastFiredRef.current.get(a.id) ?? 0;
-        if (now - last < a.debounce_ms) continue;
-        lastFiredRef.current.set(a.id, now);
-        try {
-          sendNotification({
-            title: a.name,
-            body: (ev.msg || ev.raw).slice(0, 120),
-          });
-        } catch (e) {
-          console.warn("sendNotification failed", e);
+    void (async () => {
+      let focused = false;
+      try {
+        focused = await getCurrentWindow().isFocused();
+      } catch {
+        // running outside Tauri (e.g. vite preview) — assume not focused
+      }
+      for (const ev of newEvents) {
+        const ids = alertMatches.get(ev.id);
+        if (!ids) continue;
+        for (const id of ids) {
+          const a = notifying.find((x) => x.id === id);
+          if (!a) continue;
+          const last = lastFiredRef.current.get(a.id) ?? 0;
+          if (now - last < a.debounce_ms) continue;
+          lastFiredRef.current.set(a.id, now);
+          if (focused) continue;
+          try {
+            sendNotification({
+              title: a.name,
+              body: (ev.msg || ev.raw).slice(0, 120),
+            });
+          } catch (e) {
+            console.warn("sendNotification failed", e);
+          }
         }
       }
-    }
+    })();
     if (unfilteredEvents.length > 0) {
       lastSeenIdRef.current = unfilteredEvents[unfilteredEvents.length - 1]!.id;
     }
@@ -314,11 +326,6 @@ export default function App() {
     <div className="win">
       <Palette />
       <Toast />
-      {/* Always-on drag handle: titleBarStyle: "Overlay" hides the
-          native bar, so we need a dedicated draggable strip at the
-          top edge that doesn't depend on the tabs row having empty
-          space. */}
-      <div className="drag-strip" data-tauri-drag-region />
       <Chrome />
       <Tabs />
       <FilterBar

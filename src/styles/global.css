@@ -33,14 +33,28 @@ body,
   display: flex;
   flex-direction: column;
 }
-/* Always-on drag region at top edge of window. Sits above the tabs
-   row so the user can grab the window even when tabs fill the row. */
-.drag-strip {
-  height: 6px;
-  -webkit-app-region: drag;
+/* Always-on macOS titlebar strip. data-tauri-drag-region marks every
+   non-interactive surface as draggable. Height matches macOS native
+   title bar (28px). Padding-left keeps content clear of the
+   traffic-light overlay. */
+.titlebar {
+  height: 28px;
   flex-shrink: 0;
-  background: transparent;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(180deg, #fbfcfd 0%, #f1f4f8 100%);
+  border-bottom: 1px solid var(--line);
 }
+.titlebar-traffic-spacer { width: 80px; height: 100%; flex-shrink: 0; }
+.titlebar-center {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.titlebar-right { width: 80px; height: 100%; flex-shrink: 0; }
 .win-titlebar {
   height: 28px;
   display: grid;
@@ -104,13 +118,11 @@ body,
   display: flex;
   align-items: stretch;
   gap: 0;
-  padding: 0 8px 0 80px; /* leave room for macOS traffic-light overlay */
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
   height: 36px;
-  -webkit-app-region: drag;
 }
-.tabs > * { -webkit-app-region: no-drag; }
 .tab {
   position: relative;
   display: inline-flex;
@@ -159,11 +171,6 @@ body,
   cursor: default;
 }
 .tab-add:hover { color: var(--ink); background: var(--hover); }
-.tab-drag-fill {
-  flex: 1;
-  align-self: stretch;
-  -webkit-app-region: drag;
-}
 .tab-menu {
   position: absolute;
   top: 32px;
@@ -1352,50 +1359,27 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .logrow.sel.alert-blue,
 .logrow.sel.alert-violet { background: var(--brand-50); }
 
-.alert-create-wrap { position: relative; display: flex; align-items: center; }
-.alert-create-popover {
+/* "+ notify" button overlays the right edge of the filter input
+   without pushing the input width. Single click creates an alert with
+   notify=true and a hash-derived color. */
+.notify-btn {
   position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 6px;
-  width: 300px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.14);
-  padding: 12px;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.alert-create-popover label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  font-family: var(--ui);
   font-size: 11px;
-  color: var(--muted);
-}
-.alert-create-popover label.alert-row-inline {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-.alert-create-popover input[type="text"] {
-  font: inherit;
-  font-family: var(--mono);
-  font-size: 12px;
-  padding: 6px 8px;
+  padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--surface);
-  color: var(--ink);
-  outline: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  line-height: 1.2;
 }
-.alert-create-popover input[type="text"]:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-100);
-}
+.notify-btn:hover { background: var(--brand-50); border-color: var(--brand); color: var(--brand-700); }
+.filter-bar .query-input { padding-right: 88px; }
 
 .alerts-panel {
   position: absolute;
@@ -1527,3 +1511,48 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   color: var(--muted);
   font-size: 11px;
 }
+
+.open-in-ide { position: relative; margin-left: auto; }
+.open-in-ide-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.10);
+  z-index: 50;
+  min-width: 130px;
+  padding: 4px 0;
+}
+.open-in-ide-item {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: default;
+}
+.open-in-ide-item:hover { background: var(--hover); color: var(--ink); }
+
+/* Minimal highlight.js theme — picks up the project's existing color
+   tokens so it doesn't fight the rest of the UI. Atom One Light-ish,
+   tuned to read against var(--surface-2). */
+.hljs { color: var(--ink); }
+.code-row-text .hljs-keyword,
+.code-row-text .hljs-built_in,
+.code-row-text .hljs-type { color: #af00db; }
+.code-row-text .hljs-string,
+.code-row-text .hljs-regexp { color: #032f62; }
+.code-row-text .hljs-number,
+.code-row-text .hljs-literal { color: #005cc5; }
+.code-row-text .hljs-comment,
+.code-row-text .hljs-meta { color: var(--muted-2); font-style: italic; }
+.code-row-text .hljs-title,
+.code-row-text .hljs-function .hljs-title,
+.code-row-text .hljs-name,
+.code-row-text .hljs-attr { color: #6f42c1; }
+.code-row-text .hljs-variable,
+.code-row-text .hljs-params { color: var(--ink); }
+.code-row-text .hljs-symbol,
+.code-row-text .hljs-bullet,
+.code-row-text .hljs-link { color: #d73a49; }
+.code-row-text .hljs-tag { color: #22863a; }

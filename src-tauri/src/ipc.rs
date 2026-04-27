@@ -221,6 +221,29 @@ pub async fn alerts_delete(
 }
 
 #[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    // Whitelist allowed schemes so a malicious payload (e.g. via a
+    // crafted log message that the user clicks through) can't trigger
+    // arbitrary file:// or javascript: opens.
+    let allowed = ["vscode://", "cursor://", "zed://", "idea://"];
+    if !allowed.iter().any(|p| url.starts_with(p)) {
+        return Err(format!("scheme not allowed: {url}"));
+    }
+    let cmd = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "start"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(cmd)
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.ring.clear();
     if let Some(store) = state.store.as_deref() {

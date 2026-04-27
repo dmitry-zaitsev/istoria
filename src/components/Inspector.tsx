@@ -6,11 +6,13 @@ import { highlight, type HighlightTerm } from "../lib/highlight";
 import {
   getCodePreview,
   getEmissionSite,
+  openUrl,
   type CodeLine,
   type EmissionSite,
   type Level,
   type LogEvent,
 } from "../lib/ipc";
+import { highlightLine, languageForPath } from "../lib/syntax";
 import { isError, parse } from "../lib/query";
 import { pinnedFromAst } from "../lib/facets";
 import { toast } from "../lib/toast";
@@ -301,31 +303,90 @@ function CodeTab({ site }: { site: EmissionSite | null | "loading" }) {
             local change
           </span>
         )}
+        <OpenInIde absPath={site.path} line={site.line} />
       </div>
-      <CodePreview preview={site.preview} highlightLine={site.line} />
+      <CodePreview
+        preview={site.preview}
+        highlightLine={site.line}
+        path={site.rel_path}
+      />
+    </div>
+  );
+}
+
+function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const opts: { label: string; build: (p: string, l: number) => string }[] = [
+    { label: "VSCode", build: (p, l) => `vscode://file/${p}:${l}` },
+    { label: "Cursor", build: (p, l) => `cursor://file/${p}:${l}` },
+    { label: "Zed", build: (p, l) => `zed://${p}:${l}` },
+    { label: "JetBrains", build: (p, l) => `idea://open?file=${encodeURIComponent(p)}&line=${l}` },
+  ];
+  const launch = (url: string) => {
+    setOpen(false);
+    openUrl(url).catch((e) => toast(`open failed: ${String(e)}`));
+  };
+  return (
+    <div className="open-in-ide" ref={ref}>
+      <button
+        type="button"
+        className="sort-btn"
+        onClick={() => setOpen((x) => !x)}
+        title="Open file in editor"
+      >
+        open in…
+      </button>
+      {open && (
+        <div className="open-in-ide-menu">
+          {opts.map((o) => (
+            <div
+              key={o.label}
+              className="open-in-ide-item"
+              onClick={() => launch(o.build(absPath, line))}
+            >
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function CodePreview({
   preview,
-  highlightLine,
+  highlightLine: hitLine,
+  path,
 }: {
   preview: CodeLine[];
   highlightLine: number;
+  path?: string;
 }) {
   if (preview.length === 0) {
     return <div className="empty-tab">No preview available.</div>;
   }
+  const lang = path ? languageForPath(path) : null;
   return (
-    <pre className="code-preview">
+    <pre className="code-preview hljs">
       {preview.map((ln) => (
         <div
           key={ln.line}
-          className={`code-row${ln.line === highlightLine ? " hit" : ""}`}
+          className={`code-row${ln.line === hitLine ? " hit" : ""}`}
         >
           <span className="code-row-no">{ln.line}</span>
-          <span className="code-row-text">{ln.text}</span>
+          <span
+            className="code-row-text"
+            dangerouslySetInnerHTML={{ __html: highlightLine(ln.text, lang) }}
+          />
         </div>
       ))}
     </pre>
@@ -419,7 +480,7 @@ function StackFrame({ frame, index }: { frame: string; index: number }) {
             <div className="empty-tab small">Loading…</div>
           )}
           {Array.isArray(preview) && (
-            <CodePreview preview={preview} highlightLine={p.line} />
+            <CodePreview preview={preview} highlightLine={p.line} path={p.file} />
           )}
         </div>
       )}

@@ -160,7 +160,6 @@ export function Tabs() {
       >
         +
       </button>
-      <div className="tab-drag-fill" data-tauri-drag-region />
     </div>
   );
 }

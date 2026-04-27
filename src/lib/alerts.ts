@@ -4,6 +4,19 @@ import { evalAst, isError, parse, resolveAst, type Ast } from "./query";
 export const ALERT_COLORS = ["red", "orange", "blue", "violet"] as const;
 export type AlertColor = (typeof ALERT_COLORS)[number];
 
+/// Deterministic FNV-1a → palette index. Same query string always
+/// hashes to the same color so users mentally associate a color with
+/// a saved query. Cheap, no deps.
+export function hashColor(seed: string): AlertColor {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  const idx = Math.abs(h) % ALERT_COLORS.length;
+  return ALERT_COLORS[idx]!;
+}
+
 export interface CompiledAlert {
   alert: Alert;
   ast: Ast | null;
