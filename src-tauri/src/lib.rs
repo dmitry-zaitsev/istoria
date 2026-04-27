@@ -129,7 +129,7 @@ pub fn run(cli: cli::Cli) {
             ipc::list_pins,
             ipc::alerts_list,
             ipc::alerts_create,
-            ipc::alerts_update,
+            ipc::alerts_set_enabled,
             ipc::alerts_delete,
             ipc::get_code_preview,
             ipc::get_emission_site,

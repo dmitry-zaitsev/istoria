@@ -202,18 +202,13 @@ pub async fn alerts_create(
 }
 
 #[tauri::command]
-pub async fn alerts_update(
+pub async fn alerts_set_enabled(
     state: tauri::State<'_, AppState>,
     id: i64,
-    name: String,
-    query: String,
-    color: String,
-    notify: bool,
-    debounce_ms: i64,
+    enabled: bool,
 ) -> Result<(), String> {
     let store = store_or_err(&state)?;
-    alerts::update(store, id, name, query, color, notify, debounce_ms)
-        .map_err(|e| e.to_string())
+    alerts::set_enabled(store, id, enabled).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

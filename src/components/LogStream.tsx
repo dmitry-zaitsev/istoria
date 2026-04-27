@@ -142,15 +142,28 @@ export function LogStream({
       });
   };
 
-  // Scroll to a requested event id (from PinsPanel etc.). Cleared after.
-  useLayoutEffect(() => {
+  // Scroll to a requested event id (from PinsPanel etc.). Defers one
+  // frame so the inspector's bottom inset is in the DOM first; then
+  // nudges scrollTop up by half the inset since the virtualizer
+  // centers on the parent's clientHeight, not the visible area above
+  // the inspector overlay.
+  useEffect(() => {
     if (scrollTargetId == null) return;
     const idx = events.findIndex((e) => e.id === scrollTargetId);
-    if (idx >= 0) {
-      virtualizer.scrollToIndex(idx, { align: "center" });
+    if (idx < 0) {
+      setScrollTarget(null);
+      return;
     }
-    setScrollTarget(null);
-  }, [scrollTargetId, events, virtualizer, setScrollTarget]);
+    const raf = requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(idx, { align: "center" });
+      const el = parentRef.current;
+      if (el && bottomInset > 0) {
+        el.scrollTop += bottomInset / 2;
+      }
+      setScrollTarget(null);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [scrollTargetId, events, virtualizer, setScrollTarget, bottomInset]);
 
 
   useEffect(() => {

@@ -395,14 +395,21 @@ function wildcardToRegex(glob: string): RegExp {
   return new RegExp(pattern, "i");
 }
 
+/// Per-evaluation context for keys that need state outside the event
+/// (e.g. `pinned` reads the user's pin set, not a field on the row).
+export interface EvalCtx {
+  pinnedIds?: Set<number>;
+}
+
 /// Walk a path like `user.id` against an event's `fields` JSON.
-function lookup(ev: LogEvent, key: string): unknown {
+function lookup(ev: LogEvent, key: string, ctx?: EvalCtx): unknown {
   if (key === "level") return ev.level;
   if (key === "source") return ev.source;
   if (key === "msg") return ev.msg;
   if (key === "raw") return ev.raw;
   if (key === "ts" || key === "timestamp") return ev.ts;
   if (key === "id") return ev.id;
+  if (key === "pinned") return ctx?.pinnedIds?.has(ev.id) ?? false;
   let cur: unknown = ev.fields;
   for (const part of key.split(".")) {
     if (cur && typeof cur === "object") {
@@ -412,13 +419,13 @@ function lookup(ev: LogEvent, key: string): unknown {
   return cur;
 }
 
-export function evalAst(ast: Ast, ev: LogEvent): boolean {
+export function evalAst(ast: Ast, ev: LogEvent, ctx?: EvalCtx): boolean {
   switch (ast.kind) {
     case "free":
       if (!ast.term) return true;
       return ev.msg.toLowerCase().includes(ast.term.toLowerCase());
     case "key_exact": {
-      const v = lookup(ev, ast.key);
+      const v = lookup(ev, ast.key, ctx);
       // Wildcards: `*` anywhere in the value switches to glob match
       // (anchored), so `source:*` matches any present value and
       // `path:/api*` matches a prefix.
@@ -435,7 +442,7 @@ export function evalAst(ast: Ast, ev: LogEvent): boolean {
       return String(v) === ast.value;
     }
     case "key_cmp": {
-      const v = Number(lookup(ev, ast.key));
+      const v = Number(lookup(ev, ast.key, ctx));
       if (Number.isNaN(v)) return false;
       switch (ast.op) {
         case "lt":
@@ -449,7 +456,7 @@ export function evalAst(ast: Ast, ev: LogEvent): boolean {
       }
     }
     case "key_regex": {
-      const v = String(lookup(ev, ast.key) ?? "");
+      const v = String(lookup(ev, ast.key, ctx) ?? "");
       try {
         return new RegExp(ast.pattern).test(v);
       } catch {
@@ -460,11 +467,11 @@ export function evalAst(ast: Ast, ev: LogEvent): boolean {
       // Should be replaced by resolveAst before eval. Be safe.
       return false;
     case "and":
-      return evalAst(ast.left, ev) && evalAst(ast.right, ev);
+      return evalAst(ast.left, ev, ctx) && evalAst(ast.right, ev, ctx);
     case "or":
-      return evalAst(ast.left, ev) || evalAst(ast.right, ev);
+      return evalAst(ast.left, ev, ctx) || evalAst(ast.right, ev, ctx);
     case "not":
-      return !evalAst(ast.expr, ev);
+      return !evalAst(ast.expr, ev, ctx);
   }
 }
 

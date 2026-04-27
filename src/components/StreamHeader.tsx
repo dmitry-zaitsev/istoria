@@ -4,6 +4,7 @@ import { clearSession, setMeta, type LogEvent } from "../lib/ipc";
 import { fireSessionCleared } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
 import { useStore, type SortKey } from "../store";
+import { AlertsPanel } from "./AlertsPanel";
 import { PinsPanel } from "./PinsPanel";
 
 interface StreamHeaderProps {
@@ -29,8 +30,10 @@ export function StreamHeader({
   const events = useStore((s) => s.events);
   const selectedIds = useStore((s) => s.selectedIds);
   const pinnedIds = useStore((s) => s.pinnedIds);
+  const alerts = useStore((s) => s.alerts);
   const [open, setOpen] = useState(false);
   const [pinsOpen, setPinsOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -75,6 +78,17 @@ export function StreamHeader({
           open={pinsOpen}
           onClose={() => setPinsOpen(false)}
         />
+        {alerts.length > 0 && (
+          <button
+            type="button"
+            className="sort-btn"
+            onClick={() => setAlertsOpen((x) => !x)}
+            title="Show alerts"
+          >
+            ⚑ {alerts.length}
+          </button>
+        )}
+        <AlertsPanel open={alertsOpen} onClose={() => setAlertsOpen(false)} />
         {selectedIds.length > 0 && (
           <button
             type="button"

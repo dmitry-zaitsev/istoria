@@ -10,10 +10,12 @@ export interface CompiledAlert {
 }
 
 export function compileAlerts(alerts: Alert[]): CompiledAlert[] {
-  return alerts.map((alert) => {
-    const parsed = parse(alert.query);
-    return { alert, ast: isError(parsed) ? null : parsed };
-  });
+  return alerts
+    .filter((a) => a.enabled)
+    .map((alert) => {
+      const parsed = parse(alert.query);
+      return { alert, ast: isError(parsed) ? null : parsed };
+    });
 }
 
 /// Returns Map<event.id, alertId[]> — first match wins for color, but

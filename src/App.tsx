@@ -1,7 +1,6 @@
 import { sendNotification } from "@tauri-apps/plugin-notification";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { AlertsModal } from "./components/AlertsModal";
 import { Chrome } from "./components/Chrome";
 import { FilterBar } from "./components/FilterBar";
 import { Inspector } from "./components/Inspector";
@@ -27,7 +26,6 @@ import {
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
-import { onAlertsModalOpen } from "./lib/alertsBus";
 import { useStore, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
@@ -47,22 +45,23 @@ export default function App() {
   const sort = useStore((s) => s.sort);
   const setSort = useStore((s) => s.setSort);
   const setPinnedIds = useStore((s) => s.setPinnedIds);
+  const pinnedIds = useStore((s) => s.pinnedIds);
+  const setScrollTarget = useStore((s) => s.setScrollTarget);
   const alerts = useStore((s) => s.alerts);
   const setAlerts = useStore((s) => s.setAlerts);
 
+  // When inspector opens (selectedId transitions null → non-null), scroll
+  // the row into view above the inspector overlay so it's not occluded.
+  const prevSelectedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedId != null && prevSelectedRef.current == null) {
+      setScrollTarget(selectedId);
+    }
+    prevSelectedRef.current = selectedId;
+  }, [selectedId, setScrollTarget]);
+
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
-  const [alertsOpen, setAlertsOpen] = useState(false);
-  const [alertsInitialQuery, setAlertsInitialQuery] = useState<string | null>(null);
-
-  useEffect(
-    () =>
-      onAlertsModalOpen((q) => {
-        setAlertsInitialQuery(q);
-        setAlertsOpen(true);
-      }),
-    [],
-  );
 
   // Wipe local state the moment the user clears the session, even if
   // we're paused or mid-throttle. Backend wipe runs in parallel.
@@ -119,7 +118,7 @@ export default function App() {
   );
   const suggestKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
-    return ["msg", "raw", "ts", ...groups.map((g) => g.key)];
+    return ["msg", "raw", "ts", "pinned", ...groups.map((g) => g.key)];
   }, [tsScopedEvents]);
   const suggestValuesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -130,6 +129,7 @@ export default function App() {
         g.values.slice(0, 50).map((v) => v.value),
       );
     }
+    m.set("pinned", ["true", "false"]);
     return m;
   }, [tsScopedEvents]);
 
@@ -288,9 +288,10 @@ export default function App() {
     // Resolve aggregation functions (\`percentile(N)\`) against the
     // current event set before walking the AST per row.
     const resolved = resolveAst(parsed as Ast, sourceEvents);
-    const filtered = sourceEvents.filter((ev) => evalAst(resolved, ev));
+    const ctx = { pinnedIds };
+    const filtered = sourceEvents.filter((ev) => evalAst(resolved, ev, ctx));
     return applySort(filtered, sort);
-  }, [sourceEvents, parsed, filterValid, sort]);
+  }, [sourceEvents, parsed, filterValid, sort, pinnedIds]);
 
   useEffect(() => {
     setEvents(displayedEvents);
@@ -365,14 +366,6 @@ export default function App() {
         total={unfilteredCount}
         filtered={events.length}
         filterActive={filterActive}
-      />
-      <AlertsModal
-        open={alertsOpen}
-        onClose={() => {
-          setAlertsOpen(false);
-          setAlertsInitialQuery(null);
-        }}
-        initialQuery={alertsInitialQuery ?? undefined}
       />
     </div>
   );

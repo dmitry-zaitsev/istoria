@@ -1,3 +1,13 @@
+{"level":"info","source":"istoria","msg":"project root captured","path":"/Users/me/projects/istoria"}
+{"level":"info","source":"istoria","msg":"forwarder attached to existing istoria","name":"api"}
+{"level":"warn","source":"istoria","msg":"could not seed default view","error":"duckdb: no such table"}
+{"level":"warn","source":"istoria","msg":"DuckDB store unavailable; running in-memory only","error":"permission denied"}
+{"level":"warn","source":"istoria","msg":"could not bind socket — multi-pipe forwarders disabled"}
+{"level":"info","source":"istoria","msg":"stdin closed","events":12483,"dropped":0,"format":"json"}
+{"level":"warn","source":"istoria","msg":"stdin read error","error":"broken pipe"}
+{"level":"warn","source":"istoria","msg":"duckdb append failed","error":"unique constraint","count":1000}
+{"level":"warn","source":"istoria","msg":"forwarder ended with error","error":"connection reset"}
+{"level":"warn","source":"istoria","msg":"accept failed","error":"too many open files"}
 {"level":"info","source":"web","msg":"GET /api/users","method":"GET","path":"/api/users","status_code":200,"dur_ms":24,"user":{"id":42},"request_id":"req_8sj2","trace_id":"t_a1b2c3"}
 {"level":"debug","source":"web","msg":"cache hit users:list","key":"users:list:page=1","ttl":120,"request_id":"req_8sj2","trace_id":"t_a1b2c3"}
 {"level":"info","source":"api","msg":"POST /sessions","method":"POST","path":"/sessions","status_code":201,"dur_ms":88,"user":{"id":1009},"request_id":"req_pmt1","trace_id":"t_pmt"}
@@ -28,23 +38,3 @@
 {"level":"debug","source":"job","msg":"tick scheduler.run","loop":5,"queued":2}
 {"level":"info","source":"api","msg":"POST /sessions","method":"POST","path":"/sessions","status_code":201,"dur_ms":76,"user":{"id":88}}
 {"level":"info","source":"web","msg":"GET /api/users/88","method":"GET","path":"/api/users/88","status_code":200,"dur_ms":7,"user":{"id":88}}
-{"level":"error","source":"api","msg":"validation failed: title required","method":"POST","path":"/api/posts","status_code":400,"dur_ms":4,"user":{"id":42},"request_id":"req_v22"}
-{"level":"info","source":"api","msg":"DELETE /api/sessions/abc123","method":"DELETE","path":"/api/sessions/abc123","status_code":204,"dur_ms":12,"user":{"id":42}}
-{"level":"debug","source":"api","msg":"auth.revoke","session":"abc123","user":{"id":42}}
-{"level":"warn","source":"job","msg":"queue depth high","queues":{"emails":320,"images":88}}
-{"level":"info","source":"web","msg":"GET /api/posts","method":"GET","path":"/api/posts","status_code":200,"dur_ms":22,"user":{"id":42}}
-{"level":"info","source":"api","msg":"PATCH /api/users/42","method":"PATCH","path":"/api/users/42","status_code":200,"dur_ms":19,"user":{"id":42},"request_id":"req_u42"}
-{"level":"debug","source":"db","msg":"query plan: index scan on users_pk","rows":1,"plan":"index_scan"}
-{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":10,"user":{"id":207}}
-{"level":"warn","source":"api","msg":"slow request","method":"POST","path":"/api/uploads","status_code":201,"dur_ms":1842,"file_bytes":13002342}
-{"level":"info","source":"api","msg":"POST /api/uploads","method":"POST","path":"/api/uploads","status_code":201,"dur_ms":1842,"user":{"id":42}}
-{"level":"info","source":"job","msg":"job thumbnail.generate done","job":"thumbnail.generate","dur_ms":89}
-{"level":"debug","source":"api","msg":"metrics flush 1m","customData":{"fieldA":{"rows":[{"req":4012,"err":42,"p99_ms":312}]}}}
-{"level":"info","source":"web","msg":"GET /api/users/me","method":"GET","path":"/api/users/me","status_code":200,"dur_ms":4,"user":{"id":42}}
-{"level":"info","source":"web","msg":"GET /api/feed","method":"GET","path":"/api/feed","status_code":200,"dur_ms":12,"user":{"id":42}}
-{"level":"error","source":"api","msg":"unauthorized","method":"GET","path":"/api/admin","status_code":401,"dur_ms":3,"user":{"id":207},"request_id":"req_z9"}
-{"level":"info","source":"web","msg":"GET /api/users/1009","method":"GET","path":"/api/users/1009","status_code":200,"dur_ms":8,"user":{"id":1009}}
-{"level":"warn","source":"api","msg":"forbidden — role mismatch","method":"DELETE","path":"/api/posts/77","status_code":403,"dur_ms":2,"user":{"id":88}}
-[14:02:36.804] INFO  web    GET /api/feed 200 in 11ms
-[14:02:36.910] DEBUG db     replica catching up — lag 1.1s
-[14:02:37.022] WARN  api    deprecation: /v1/users will be removed 2026-08-01

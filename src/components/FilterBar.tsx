@@ -4,6 +4,7 @@ import { registerFilterFocus } from "../lib/filterFocus";
 import { isError, parse, renderValue, tokenize, type Token } from "../lib/query";
 import { toast } from "../lib/toast";
 import { useStore } from "../store";
+import { AlertCreatePopover } from "./AlertCreate";
 
 interface FilterBarProps {
   value: string;
@@ -29,6 +30,7 @@ export function FilterBar({
   const [draft, setDraft] = useState("");
   const [trailing, setTrailing] = useState("");
   const [allSelected, setAllSelected] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
   const editRef = useRef<HTMLInputElement | null>(null);
   const trailingRef = useRef<HTMLInputElement | null>(null);
 
@@ -303,6 +305,24 @@ export function FilterBar({
           </div>
         )}
       </div>
+      {!error && usefulTokens.length > 0 && (
+        <div className="alert-create-wrap">
+          <button
+            type="button"
+            className="sort-btn"
+            onClick={() => setAlertOpen((x) => !x)}
+            title="Save current filter as an alert"
+          >
+            + alert
+          </button>
+          {alertOpen && (
+            <AlertCreatePopover
+              query={value}
+              onClose={() => setAlertOpen(false)}
+            />
+          )}
+        </div>
+      )}
       {error && (
         <span className="filter-err">parse error: {error.message}</span>
       )}

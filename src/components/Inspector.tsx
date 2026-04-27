@@ -52,6 +52,31 @@ export function Inspector({
   const stackFrames = useMemo(() => extractStack(event), [event]);
   const related = useMemo(() => findRelated(event, events), [event, events]);
 
+  // Pre-fetch emission site so the Code tab can be disabled with a
+  // tooltip when there's no match in the project tree. Re-fetched per
+  // event; cached server-side by msg.
+  const [emissionSite, setEmissionSite] = useState<
+    EmissionSite | null | "loading"
+  >("loading");
+  useEffect(() => {
+    let cancelled = false;
+    setEmissionSite("loading");
+    const msg = event.msg || event.raw;
+    getEmissionSite(msg)
+      .then((s) => {
+        if (!cancelled) setEmissionSite(s);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          console.warn("getEmissionSite failed", e);
+          setEmissionSite(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [event.id, event.msg, event.raw]);
+
   const onAddFilter = (path: string, value: unknown) => {
     if (typeof value === "object" || value == null) return;
     const v = String(value);
@@ -149,7 +174,16 @@ export function Inspector({
             <span className="ct">{related.events.length}</span>
           )}
         </TabButton>
-        <TabButton active={tab === "code"} onClick={() => setTab("code")}>
+        <TabButton
+          active={tab === "code"}
+          onClick={() => setTab("code")}
+          disabled={emissionSite === null}
+          title={
+            emissionSite === null
+              ? "Source not found in project — message could not be located in any source file"
+              : undefined
+          }
+        >
           Code
         </TabButton>
         <TabButton active={tab === "raw"} onClick={() => setTab("raw")}>
@@ -233,7 +267,7 @@ export function Inspector({
             )}
           </div>
         )}
-        {tab === "code" && <CodeTab event={event} />}
+        {tab === "code" && <CodeTab site={emissionSite} />}
         {tab === "raw" && (
           <pre className="raw">{event.raw}</pre>
         )}
@@ -242,34 +276,16 @@ export function Inspector({
   );
 }
 
-function CodeTab({ event }: { event: LogEvent }) {
-  const [site, setSite] = useState<EmissionSite | null | "loading">("loading");
-  useEffect(() => {
-    let cancelled = false;
-    setSite("loading");
-    const msg = event.msg || event.raw;
-    getEmissionSite(msg)
-      .then((s) => {
-        if (!cancelled) setSite(s);
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          console.warn("getEmissionSite failed", e);
-          setSite(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [event.id, event.msg, event.raw]);
-
+function CodeTab({ site }: { site: EmissionSite | null | "loading" }) {
   if (site === "loading") {
     return <div className="empty-tab">Searching project for emission site…</div>;
   }
   if (!site) {
+    // Tab is disabled when site is null, but if a saved tab state lands
+    // here defensively render the same explanation text.
     return (
       <div className="empty-tab">
-        Source not found. Either the message wasn't grep-able in the project tree, or this log came from a dependency.
+        Source not found in project.
       </div>
     );
   }
@@ -415,11 +431,13 @@ function TabButton({
   active,
   onClick,
   disabled,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
   disabled?: boolean;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -427,6 +445,7 @@ function TabButton({
       className={`inspector-tab${active ? " active" : ""}`}
       type="button"
       disabled={disabled}
+      title={title}
       onClick={onClick}
     >
       {children}

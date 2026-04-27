@@ -10,7 +10,7 @@ use crate::event::{Event, Level};
 
 pub const DB_DIR_NAME: &str = "istoria";
 pub const DB_FILE_NAME: &str = "istoria.db";
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 pub const FLUSH_INTERVAL_MS: u64 = 250;
 pub const FLUSH_BATCH: usize = 1_000;
 
@@ -181,6 +181,12 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
                 created_at  TIMESTAMP NOT NULL DEFAULT now()
             );
             "#,
+        )?;
+    }
+
+    if stored < 5 {
+        conn.execute_batch(
+            "ALTER TABLE alerts ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE;",
         )?;
     }
     conn.execute(
