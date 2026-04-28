@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::code::CodeCache;
 use crate::persistence::Store;
 use crate::ring::Ring;
+use crate::source;
 
 pub struct AppState {
     pub ring: Arc<Ring>,
@@ -13,4 +14,5 @@ pub struct AppState {
     /// CWD couldn't be resolved.
     pub project_root: Option<PathBuf>,
     pub code_cache: Arc<CodeCache>,
+    pub source_registry: Arc<source::Registry>,
 }

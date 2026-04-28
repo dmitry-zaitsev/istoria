@@ -44,9 +44,8 @@ pub fn run(cli: cli::Cli) {
             .expect("tokio rt");
         let connect = rt.block_on(socket::try_connect(&socket_path));
         if let Some(stream) = connect {
-            let name = source::resolve(cli.name.as_deref(), &[]);
-            tracing::info!(name = %name, "forwarder attached to existing istoria");
-            let res = rt.block_on(socket::run_forwarder(stream, name));
+            tracing::info!("forwarder attaching to existing istoria");
+            let res = rt.block_on(socket::run_forwarder(stream, cli.name.clone()));
             if let Err(e) = res {
                 tracing::warn!(error = %e, "forwarder ended with error");
             }
@@ -55,7 +54,8 @@ pub fn run(cli: cli::Cli) {
     }
 
     let ring = Arc::new(Ring::from_env());
-    let source_name = source::resolve(cli.name.as_deref(), &[]);
+    let registry = Arc::new(source::Registry::new());
+    let source_name = registry.allocate(cli.name.as_deref());
 
     let store = match Store::open_default(cli.clear) {
         Ok(s) => Some(Arc::new(s)),
@@ -78,10 +78,17 @@ pub fn run(cli: cli::Cli) {
 
     let ring_for_socket = Arc::clone(&ring);
     let store_for_socket = store.clone();
+    let registry_for_socket = Arc::clone(&registry);
     let socket_path_for_owner = socket_path.clone();
     tauri::async_runtime::spawn(async move {
         if let Some(listener) = socket::try_bind(&socket_path_for_owner) {
-            socket::run_owner_listener(listener, ring_for_socket, store_for_socket).await;
+            socket::run_owner_listener(
+                listener,
+                ring_for_socket,
+                store_for_socket,
+                registry_for_socket,
+            )
+            .await;
         } else {
             tracing::warn!("could not bind socket — multi-pipe forwarders disabled");
         }
@@ -105,7 +112,13 @@ pub fn run(cli: cli::Cli) {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .manage(AppState { ring, store, project_root, code_cache })
+        .manage(AppState {
+            ring,
+            store,
+            project_root,
+            code_cache,
+            source_registry: registry,
+        })
         .invoke_handler(tauri::generate_handler![
             ipc::query_recent,
             ipc::query_parse,
