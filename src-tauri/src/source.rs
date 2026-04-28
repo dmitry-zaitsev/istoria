@@ -1,3 +1,5 @@
+use parking_lot::Mutex;
+
 /// Resolve the source name for this istoria invocation.
 ///
 /// Two paths only:
@@ -36,6 +38,40 @@ fn suffix_with_counter(base: &str, existing: &[String]) -> String {
     unreachable!()
 }
 
+/// Owner-side registry of source names allocated this session. Each
+/// new pipe (stdin or forwarder) calls `allocate` so `pipe-N` counters
+/// keep incrementing instead of every forwarder picking `pipe-1`.
+///
+/// Names are kept for the whole session — even after a forwarder
+/// disconnects, its events still live in the ring under that name, so
+/// reusing it would conflate streams. `reset` is for `clear_session`.
+pub struct Registry {
+    inner: Mutex<Vec<String>>,
+}
+
+impl Registry {
+    pub fn new() -> Self {
+        Self { inner: Mutex::new(Vec::new()) }
+    }
+
+    pub fn allocate(&self, name_override: Option<&str>) -> String {
+        let mut g = self.inner.lock();
+        let name = resolve(name_override, &g);
+        g.push(name.clone());
+        name
+    }
+
+    pub fn reset(&self) {
+        self.inner.lock().clear();
+    }
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,5 +97,31 @@ mod tests {
     fn empty_override_falls_through_to_pipe() {
         assert_eq!(resolve(Some(""), &[]), "pipe-1");
         assert_eq!(resolve(Some("   "), &[]), "pipe-1");
+    }
+
+    #[test]
+    fn registry_allocates_distinct_pipes() {
+        let r = Registry::new();
+        assert_eq!(r.allocate(None), "pipe-1");
+        assert_eq!(r.allocate(None), "pipe-2");
+        assert_eq!(r.allocate(None), "pipe-3");
+    }
+
+    #[test]
+    fn registry_mixes_overrides_and_pipes() {
+        let r = Registry::new();
+        assert_eq!(r.allocate(Some("api")), "api");
+        assert_eq!(r.allocate(None), "pipe-1");
+        assert_eq!(r.allocate(Some("api")), "api-1");
+        assert_eq!(r.allocate(None), "pipe-2");
+    }
+
+    #[test]
+    fn registry_reset_restarts_counter() {
+        let r = Registry::new();
+        r.allocate(None);
+        r.allocate(None);
+        r.reset();
+        assert_eq!(r.allocate(None), "pipe-1");
     }
 }

@@ -147,6 +147,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.ring.clear();
+    state.source_registry.reset();
     if let Some(store) = state.store.as_deref() {
         store.clear_session().map_err(|e| e.to_string())?;
     }

@@ -9,15 +9,18 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use crate::format::Detector;
 use crate::persistence::Store;
 use crate::ring::Ring;
+use crate::source;
 
 const SOCKET_FILE: &str = "daemon.sock";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ForwarderHeader {
-    pub name: String,
-    pub pid: i32,
+    /// Optional `--name` from the forwarder. The owner resolves this
+    /// against the live registry — sending the already-resolved name
+    /// would mean every forwarder picks `pipe-1` independently.
     #[serde(default)]
-    pub parent_cmd: Option<String>,
+    pub name_override: Option<String>,
+    pub pid: i32,
 }
 
 pub fn socket_path() -> PathBuf {
@@ -64,14 +67,16 @@ pub async fn run_owner_listener(
     listener: Listener,
     ring: Arc<Ring>,
     store: Option<Arc<Store>>,
+    registry: Arc<source::Registry>,
 ) {
     loop {
         match listener.accept().await {
             Ok(stream) => {
                 let ring = Arc::clone(&ring);
                 let store = store.clone();
+                let registry = Arc::clone(&registry);
                 tokio::spawn(async move {
-                    if let Err(e) = handle_forwarder(stream, ring, store).await {
+                    if let Err(e) = handle_forwarder(stream, ring, store, registry).await {
                         tracing::warn!(error = %e, "forwarder ended with error");
                     }
                 });
@@ -88,6 +93,7 @@ async fn handle_forwarder(
     stream: Stream,
     ring: Arc<Ring>,
     store: Option<Arc<Store>>,
+    registry: Arc<source::Registry>,
 ) -> std::io::Result<()> {
     let mut reader = BufReader::with_capacity(64 * 1024, stream);
     let mut header_line = String::new();
@@ -98,7 +104,8 @@ async fn handle_forwarder(
     let header: ForwarderHeader = serde_json::from_str(header_line.trim()).map_err(|e| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad header: {e}"))
     })?;
-    let source_name = header.name;
+    let source_name = registry.allocate(header.name_override.as_deref());
+    tracing::info!(name = %source_name, pid = header.pid, "forwarder attached");
 
     let mut detector = Detector::new();
     let mut line = String::new();
@@ -127,12 +134,11 @@ async fn handle_forwarder(
 
 /// Forwarder mode: connect to owner, send header, pipe stdin → owner.
 /// Returns Ok on graceful EOF.
-pub async fn run_forwarder(stream: Stream, name: String) -> std::io::Result<()> {
+pub async fn run_forwarder(stream: Stream, name_override: Option<String>) -> std::io::Result<()> {
     let mut writer = stream;
     let header = ForwarderHeader {
-        name,
+        name_override,
         pid: std::process::id() as i32,
-        parent_cmd: None,
     };
     let mut header_bytes = serde_json::to_vec(&header).map_err(|e| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, format!("encode header: {e}"))
