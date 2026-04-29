@@ -1,6 +1,33 @@
 default:
     @just --list
 
+# Bootstrap a fresh worktree by APFS-cloning node_modules from a
+# sibling worktree whose package-lock.json hash matches. Falls back
+# to `npm ci`. Conductor invokes this on workspace creation.
+bootstrap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    clone() {
+        local sub="$1" lock="${1}package-lock.json"
+        [ -f "$lock" ] || return 0
+        [ -d "${sub}node_modules" ] && return 0
+        local h
+        h="$(shasum -a 256 "$lock" | cut -d" " -f1)"
+        for d in ../*/; do
+            [ "$(basename "$d")" = "$(basename "$PWD")" ] && continue
+            [ -f "${d}${lock}" ] && [ -d "${d}${sub}node_modules" ] || continue
+            if [ "$(shasum -a 256 "${d}${lock}" | cut -d" " -f1)" = "$h" ]; then
+                echo "[bootstrap] cloning ${sub}node_modules from ${d}"
+                cp -Rc "${d}${sub}node_modules" "${sub}node_modules"
+                return 0
+            fi
+        done
+        echo "[bootstrap] no matching sibling — npm ci in ${sub:-.}"
+        (cd "${sub:-.}" && npm ci)
+    }
+    clone ""
+    clone "extension/"
+
 # Run the app in dev mode.
 # - tty stdin: normal `tauri dev` with hot-reload of both rust + vite.
 # - piped stdin (e.g. `cat log | just dev`): run vite + `cargo run`
