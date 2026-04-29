@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-version = "1.1.0"
+version = "1.2.1"
 license = "MIT"
 authors = ["Dmitry Zaytsev"]
 repository = "https://github.com/dmitry-zaitsev/istoria"
