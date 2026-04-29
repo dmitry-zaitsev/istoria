@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { addClause, removeClause } from "../lib/facets";
+import { addClause, addNotClause, removeClause } from "../lib/facets";
 import { focusFilterInput } from "../lib/filterFocus";
 import { highlight, type HighlightTerm } from "../lib/highlight";
 import {
@@ -15,7 +15,7 @@ import {
   type LogEvent,
 } from "../lib/ipc";
 import { highlightLine, languageForPath } from "../lib/syntax";
-import { isError, parse } from "../lib/query";
+import { isError, parse, renderValue } from "../lib/query";
 import { pinnedFromAst } from "../lib/facets";
 import { toast } from "../lib/toast";
 import { INSPECTOR_MAX, INSPECTOR_MIN, useStore } from "../store";
@@ -103,6 +103,19 @@ export function Inspector({
     setFilter(next);
     focusFilterInput();
     toast(`Type a value for ${path}`);
+  };
+
+  const onExcludeFilter = (path: string, value: unknown) => {
+    if (typeof value === "object" || value == null) return;
+    const v = String(value);
+    const clause = `${path}:${renderValue(v)}`;
+    setFilter(addNotClause(filter, clause));
+    toast(`Excluded ${path}:${v}`);
+  };
+
+  const onExcludeKeyFilter = (path: string) => {
+    setFilter(addNotClause(filter, `${path}:*`));
+    toast(`Excluded ${path}`);
   };
 
   useEffect(() => {
@@ -227,6 +240,8 @@ export function Inspector({
               value={fields}
               onFilter={onAddFilter}
               onKeyFilter={onAddKeyFilter}
+              onExclude={onExcludeFilter}
+              onExcludeKey={onExcludeKeyFilter}
               highlightTerms={highlightTerms}
             />
           </div>

@@ -1,9 +1,13 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+
 import { highlight, type HighlightTerm } from "../lib/highlight";
 
 interface JsonViewProps {
   value: unknown;
   onFilter?: (path: string, value: unknown) => void;
   onKeyFilter?: (path: string) => void;
+  onExclude?: (path: string, value: unknown) => void;
+  onExcludeKey?: (path: string) => void;
   highlightTerms?: HighlightTerm[];
 }
 
@@ -18,22 +22,55 @@ const TS_KEYS = new Set([
 ]);
 const TS_MS_FLOOR = 1_000_000_000_000; // 2001-09-09 — anything above this is plausibly Unix-ms.
 
+type PopoverState =
+  | {
+      kind: "value";
+      path: string;
+      value: unknown;
+      anchor: DOMRect;
+    }
+  | {
+      kind: "key";
+      path: string;
+      anchor: DOMRect;
+    };
+
+interface OpenPopover {
+  (state: PopoverState): void;
+}
+
 export function JsonView({
   value,
   onFilter,
   onKeyFilter,
+  onExclude,
+  onExcludeKey,
   highlightTerms,
 }: JsonViewProps) {
+  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const closePopover = () => setPopover(null);
+
   return (
     <>
       <Node
         value={value}
         indent={0}
         path=""
-        onFilter={onFilter}
-        onKeyFilter={onKeyFilter}
+        openPopover={onFilter || onKeyFilter ? setPopover : undefined}
+        canFilterValue={!!onFilter}
+        canFilterKey={!!onKeyFilter}
         highlightTerms={highlightTerms}
       />
+      {popover && (
+        <ValuePopover
+          state={popover}
+          onClose={closePopover}
+          onFilter={onFilter}
+          onKeyFilter={onKeyFilter}
+          onExclude={onExclude}
+          onExcludeKey={onExcludeKey}
+        />
+      )}
     </>
   );
 }
@@ -43,8 +80,9 @@ interface NodeProps {
   indent: number;
   keyName?: string;
   path: string;
-  onFilter?: (path: string, value: unknown) => void;
-  onKeyFilter?: (path: string) => void;
+  openPopover?: OpenPopover;
+  canFilterValue: boolean;
+  canFilterKey: boolean;
   highlightTerms?: HighlightTerm[];
 }
 
@@ -53,14 +91,20 @@ function Node({
   indent,
   keyName,
   path,
-  onFilter,
-  onKeyFilter,
+  openPopover,
+  canFilterValue,
+  canFilterKey,
   highlightTerms,
 }: NodeProps) {
   if (value === null) return <span className="p">null</span>;
   if (typeof value === "string")
     return (
-      <Filterable path={path} value={value} onFilter={onFilter}>
+      <Filterable
+        path={path}
+        value={value}
+        openPopover={openPopover}
+        canFilter={canFilterValue}
+      >
         <span className="s">
           "{highlightTerms && highlightTerms.length > 0
             ? highlight(escape(value), highlightTerms)
@@ -70,14 +114,24 @@ function Node({
     );
   if (typeof value === "number") {
     return (
-      <Filterable path={path} value={value} onFilter={onFilter}>
+      <Filterable
+        path={path}
+        value={value}
+        openPopover={openPopover}
+        canFilter={canFilterValue}
+      >
         <NumberNode value={value} keyName={keyName} />
       </Filterable>
     );
   }
   if (typeof value === "boolean")
     return (
-      <Filterable path={path} value={value} onFilter={onFilter}>
+      <Filterable
+        path={path}
+        value={value}
+        openPopover={openPopover}
+        canFilter={canFilterValue}
+      >
         <span className="b">{String(value)}</span>
       </Filterable>
     );
@@ -87,8 +141,9 @@ function Node({
         items={value}
         indent={indent}
         path={path}
-        onFilter={onFilter}
-        onKeyFilter={onKeyFilter}
+        openPopover={openPopover}
+        canFilterValue={canFilterValue}
+        canFilterKey={canFilterKey}
         highlightTerms={highlightTerms}
       />
     );
@@ -98,8 +153,9 @@ function Node({
         obj={value as Record<string, unknown>}
         indent={indent}
         path={path}
-        onFilter={onFilter}
-        onKeyFilter={onKeyFilter}
+        openPopover={openPopover}
+        canFilterValue={canFilterValue}
+        canFilterKey={canFilterKey}
         highlightTerms={highlightTerms}
       />
     );
@@ -109,22 +165,29 @@ function Node({
 function Filterable({
   path,
   value,
-  onFilter,
+  openPopover,
+  canFilter,
   children,
 }: {
   path: string;
   value: unknown;
-  onFilter?: (p: string, v: unknown) => void;
+  openPopover?: OpenPopover;
+  canFilter: boolean;
   children: React.ReactNode;
 }) {
-  if (!onFilter || !path) return <>{children}</>;
+  if (!canFilter || !openPopover || !path) return <>{children}</>;
   return (
     <span
       className="filterable"
-      title={`Click to filter by ${path}`}
+      title={`Click for options on ${path}`}
       onClick={(e) => {
         e.stopPropagation();
-        onFilter(path, value);
+        openPopover({
+          kind: "value",
+          path,
+          value,
+          anchor: e.currentTarget.getBoundingClientRect(),
+        });
       }}
     >
       {children}
@@ -166,15 +229,17 @@ function Obj({
   obj,
   indent,
   path,
-  onFilter,
-  onKeyFilter,
+  openPopover,
+  canFilterValue,
+  canFilterKey,
   highlightTerms,
 }: {
   obj: Record<string, unknown>;
   indent: number;
   path: string;
-  onFilter?: (p: string, v: unknown) => void;
-  onKeyFilter?: (p: string) => void;
+  openPopover?: OpenPopover;
+  canFilterValue: boolean;
+  canFilterKey: boolean;
   highlightTerms?: HighlightTerm[];
 }) {
   const entries = Object.entries(obj);
@@ -184,16 +249,20 @@ function Obj({
       <span className="p">{"{"}</span>
       {entries.map(([k, v], i) => {
         const childPath = path ? `${path}.${k}` : k;
-        const keyClickable = onKeyFilter != null;
+        const keyClickable = canFilterKey && openPopover != null;
         return (
           <div key={k} className="row indent">
             {keyClickable ? (
               <span
                 className="k filterable filterable-key"
-                title={`Click to filter by ${childPath}`}
+                title={`Click for options on ${childPath}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onKeyFilter!(childPath);
+                  openPopover!({
+                    kind: "key",
+                    path: childPath,
+                    anchor: e.currentTarget.getBoundingClientRect(),
+                  });
                 }}
               >
                 "{k}"
@@ -207,8 +276,9 @@ function Obj({
               indent={indent + 1}
               keyName={k}
               path={childPath}
-              onFilter={onFilter}
-              onKeyFilter={onKeyFilter}
+              openPopover={openPopover}
+              canFilterValue={canFilterValue}
+              canFilterKey={canFilterKey}
               highlightTerms={highlightTerms}
             />
             {i < entries.length - 1 && <span className="p">,</span>}
@@ -224,15 +294,17 @@ function Arr({
   items,
   indent,
   path,
-  onFilter,
-  onKeyFilter,
+  openPopover,
+  canFilterValue,
+  canFilterKey,
   highlightTerms,
 }: {
   items: unknown[];
   indent: number;
   path: string;
-  onFilter?: (p: string, v: unknown) => void;
-  onKeyFilter?: (p: string) => void;
+  openPopover?: OpenPopover;
+  canFilterValue: boolean;
+  canFilterKey: boolean;
   highlightTerms?: HighlightTerm[];
 }) {
   if (items.length === 0) return <span className="p">[]</span>;
@@ -245,8 +317,9 @@ function Arr({
             value={v}
             indent={indent + 1}
             path={`${path}.${i}`}
-            onFilter={onFilter}
-            onKeyFilter={onKeyFilter}
+            openPopover={openPopover}
+            canFilterValue={canFilterValue}
+            canFilterKey={canFilterKey}
             highlightTerms={highlightTerms}
           />
           {i < items.length - 1 && <span className="p">,</span>}
@@ -255,6 +328,155 @@ function Arr({
       <span className="p">{"]"}</span>
     </>
   );
+}
+
+function ValuePopover({
+  state,
+  onClose,
+  onFilter,
+  onKeyFilter,
+  onExclude,
+  onExcludeKey,
+}: {
+  state: PopoverState;
+  onClose: () => void;
+  onFilter?: (path: string, value: unknown) => void;
+  onKeyFilter?: (path: string) => void;
+  onExclude?: (path: string, value: unknown) => void;
+  onExcludeKey?: (path: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({
+    top: state.anchor.bottom + 4,
+    left: state.anchor.left,
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pad = 8;
+    let top = state.anchor.bottom + 4;
+    let left = state.anchor.left;
+    if (left + rect.width > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - rect.width - pad);
+    }
+    if (top + rect.height > window.innerHeight - pad) {
+      // Flip above the anchor.
+      top = Math.max(pad, state.anchor.top - rect.height - 4);
+    }
+    setPos({ top, left });
+  }, [state.anchor]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        onClose();
+      }
+    };
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("mousedown", onDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("mousedown", onDown, true);
+    };
+  }, [onClose]);
+
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+  };
+
+  const items: { label: string; onClick: () => void; danger?: boolean }[] = [];
+  const display =
+    state.kind === "value"
+      ? formatValuePreview(state.value)
+      : state.path;
+
+  if (state.kind === "value") {
+    if (onFilter) {
+      items.push({
+        label: "Filter by value",
+        onClick: () => onFilter(state.path, state.value),
+      });
+    }
+    if (onExclude) {
+      items.push({
+        label: "Exclude value",
+        onClick: () => onExclude(state.path, state.value),
+      });
+    }
+    items.push({
+      label: "Copy value",
+      onClick: () => copy(stringifyValue(state.value)),
+    });
+    items.push({
+      label: "Copy key path",
+      onClick: () => copy(state.path),
+    });
+  } else {
+    if (onKeyFilter) {
+      items.push({
+        label: "Filter by key",
+        onClick: () => onKeyFilter(state.path),
+      });
+    }
+    if (onExcludeKey) {
+      items.push({
+        label: "Exclude key",
+        onClick: () => onExcludeKey(state.path),
+      });
+    }
+    items.push({
+      label: "Copy key path",
+      onClick: () => copy(state.path),
+    });
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="json-popover"
+      role="menu"
+      style={{ top: pos.top, left: pos.left }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="json-popover-header" title={display}>
+        <span className="json-popover-path">{state.path}</span>
+        {state.kind === "value" && (
+          <span className="json-popover-value">{display}</span>
+        )}
+      </div>
+      {items.map((it, i) => (
+        <button
+          key={i}
+          type="button"
+          className={`json-popover-item${it.danger ? " danger" : ""}`}
+          role="menuitem"
+          onClick={() => {
+            it.onClick();
+            onClose();
+          }}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function stringifyValue(v: unknown): string {
+  if (typeof v === "string") return v;
+  return String(v);
+}
+
+function formatValuePreview(v: unknown): string {
+  const s = stringifyValue(v);
+  if (s.length > 80) return s.slice(0, 77) + "…";
+  return s;
 }
 
 function escape(s: string): string {

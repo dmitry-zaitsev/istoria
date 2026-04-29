@@ -211,6 +211,12 @@ export function addClause(query: string, key: string, value: string): string {
   return `${query.trim()} AND ${clause}`;
 }
 
+/// Append a `NOT clause` to a query string, AND-joined.
+export function addNotClause(query: string, clause: string): string {
+  if (!query.trim()) return `NOT ${clause}`;
+  return `${query.trim()} AND NOT ${clause}`;
+}
+
 /// Remove a `key:value` clause from a query string. We work
 /// textually since round-tripping through AST loses NOT/OR nuance.
 export function removeClause(query: string, key: string, value: string): string {
