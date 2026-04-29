@@ -41,9 +41,6 @@ export function StatusBar({
         <span>
           <kbd>⌘F</kbd> filter
         </span>
-        <span>
-          <kbd>⌘K</kbd> palette
-        </span>
       </span>
     </div>
   );

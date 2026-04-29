@@ -16,7 +16,6 @@ import { Tabs } from "./components/Tabs";
 import { Facets } from "./components/Facets";
 import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
-import { Palette } from "./components/Palette";
 import { Toast } from "./components/Toast";
 import {
   compileAlerts,
@@ -398,7 +397,6 @@ export default function App() {
 
   return (
     <div className="win">
-      <Palette />
       <Toast />
       <Chrome />
       <Tabs />
