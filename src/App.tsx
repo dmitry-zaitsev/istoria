@@ -34,6 +34,11 @@ import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
 import { toast } from "./lib/toast";
+import {
+  applyAll,
+  compileRules,
+  loadTransformers,
+} from "./lib/transformers";
 import { loadActiveViewId, loadViews } from "./lib/views";
 import { useStore, type SortKey } from "./store";
 
@@ -57,6 +62,8 @@ export default function App() {
   const setScrollTarget = useStore((s) => s.setScrollTarget);
   const alerts = useStore((s) => s.alerts);
   const setAlerts = useStore((s) => s.setAlerts);
+  const transformers = useStore((s) => s.transformers);
+  const setTransformers = useStore((s) => s.setTransformers);
 
   // When inspector opens (selectedId transitions null → non-null), scroll
   // the row into view above the inspector overlay so it's not occluded.
@@ -69,14 +76,25 @@ export default function App() {
   }, [selectedId, setScrollTarget]);
 
   const [unfilteredCount, setUnfilteredCount] = useState(0);
-  const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
+  const [canonicalEvents, setCanonicalEvents] = useState<LogEvent[]>([]);
+  const compiledTransformers = useMemo(
+    () => compileRules(transformers),
+    [transformers],
+  );
+  // Derived: canonical events with user transformer rules applied.
+  // Downstream (filter, alerts, facets, inspector) sees the transformed
+  // shape; the original `raw` is preserved on every row for the raw tab.
+  const unfilteredEvents = useMemo(
+    () => applyAll(canonicalEvents, compiledTransformers),
+    [canonicalEvents, compiledTransformers],
+  );
 
   // Wipe local state the moment the user clears the session, even if
   // we're paused or mid-throttle. Backend wipe runs in parallel.
   useEffect(
     () =>
       onSessionCleared(() => {
-        setUnfilteredEvents([]);
+        setCanonicalEvents([]);
         setUnfilteredCount(0);
         setPausedSrc(null);
         setPaused(false);
@@ -181,6 +199,10 @@ export default function App() {
     setAlerts(loadAlerts());
   }, [setAlerts]);
 
+  useEffect(() => {
+    setTransformers(loadTransformers());
+  }, [setTransformers]);
+
   // Bootstrap views + active id from localStorage. Synchronous —
   // no DuckDB round trip, so it can't be wedged by a broken store.
   useEffect(() => {
@@ -202,7 +224,7 @@ export default function App() {
         const all = await queryRecent(QUERY_LIMIT);
         if (cancelled) return;
         const ordered = all.slice().reverse() as LogEvent[];
-        setUnfilteredEvents(ordered);
+        setCanonicalEvents(ordered);
         setUnfilteredCount(ordered.length);
       } catch (e) {
         console.warn("queryRecent failed", e);
