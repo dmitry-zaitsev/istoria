@@ -176,6 +176,8 @@ export function LogStream({
         resume();
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "c" && !inField) {
+        // Defer to native copy when user has a text selection.
+        if (window.getSelection()?.toString()) return;
         if (selectedIds.length === 0) return;
         const picked = events.filter((ev) => selectedSet.has(ev.id));
         const txt = picked.map((ev) => JSON.stringify(ev)).join("\n");
