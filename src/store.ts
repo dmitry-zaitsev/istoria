@@ -7,6 +7,35 @@ export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
 export const INSPECTOR_DEFAULT = 320;
 
+export type ColKey = "ts" | "lvl" | "src";
+export type ColumnWidths = Record<ColKey, number>;
+
+export const COL_MIN: Record<ColKey, number> = { ts: 60, lvl: 44, src: 50 };
+export const COL_MAX: Record<ColKey, number> = { ts: 240, lvl: 140, src: 400 };
+export const COL_DEFAULTS: ColumnWidths = { ts: 92, lvl: 64, src: 80 };
+
+const COLS_KEY = "cols.v1";
+
+function loadInitialCols(): ColumnWidths {
+  try {
+    const raw = localStorage.getItem(COLS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<ColumnWidths>;
+      const out: ColumnWidths = { ...COL_DEFAULTS };
+      for (const k of ["ts", "lvl", "src"] as const) {
+        const v = parsed[k];
+        if (typeof v === "number" && Number.isFinite(v)) {
+          out[k] = Math.min(COL_MAX[k], Math.max(COL_MIN[k], v));
+        }
+      }
+      return out;
+    }
+  } catch {
+    // ignore
+  }
+  return { ...COL_DEFAULTS };
+}
+
 export type SortKey = "newest-bottom" | "newest-top";
 
 const SORT_KEY = "sort.v1";
@@ -37,6 +66,7 @@ interface Store {
   scrollTargetId: number | null;
   alerts: Alert[];
   sources: string[];
+  columnWidths: ColumnWidths;
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -52,6 +82,7 @@ interface Store {
   setScrollTarget: (id: number | null) => void;
   setAlerts: (alerts: Alert[]) => void;
   setSources: (sources: string[]) => void;
+  setColumnWidth: (col: ColKey, w: number) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -70,6 +101,7 @@ export const useStore = create<Store>((set) => ({
   scrollTargetId: null,
   alerts: [],
   sources: [],
+  columnWidths: loadInitialCols(),
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) =>
@@ -109,4 +141,15 @@ export const useStore = create<Store>((set) => ({
   setScrollTarget: (scrollTargetId) => set({ scrollTargetId }),
   setAlerts: (alerts) => set({ alerts }),
   setSources: (sources) => set({ sources }),
+  setColumnWidth: (col, w) =>
+    set((s) => {
+      const clamped = Math.min(COL_MAX[col], Math.max(COL_MIN[col], w));
+      const next = { ...s.columnWidths, [col]: clamped };
+      try {
+        localStorage.setItem(COLS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return { columnWidths: next };
+    }),
 }));

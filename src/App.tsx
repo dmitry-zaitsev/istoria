@@ -7,6 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Chrome } from "./components/Chrome";
+import { ColumnHeader } from "./components/ColumnHeader";
 import { FilterBar } from "./components/FilterBar";
 import { Inspector } from "./components/Inspector";
 import { LogStream } from "./components/LogStream";
@@ -380,6 +381,12 @@ export default function App() {
 
   const filterActive = filter.trim().length > 0;
   const bottomInset = selected ? inspectorH : 0;
+  const columnWidths = useStore((s) => s.columnWidths);
+  const colVars = {
+    "--col-ts": `${columnWidths.ts}px`,
+    "--col-lvl": `${columnWidths.lvl}px`,
+    "--col-src": `${columnWidths.src}px`,
+  } as React.CSSProperties;
 
   return (
     <div className="win">
@@ -403,13 +410,14 @@ export default function App() {
           filter={filter}
           onFilterChange={setFilter}
         />
-        <div className="stream-col">
+        <div className="stream-col" style={colVars}>
           <StreamHeader
             total={unfilteredCount}
             filtered={events.length}
             filterActive={filterActive}
             unfilteredEvents={unfilteredEvents}
           />
+          <ColumnHeader showSource={showSource} />
           <LogStream
             events={events}
             selectedId={selectedId}
