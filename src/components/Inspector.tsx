@@ -65,8 +65,11 @@ export function Inspector({
   useEffect(() => {
     let cancelled = false;
     setEmissionSite("loading");
-    const msg = event.msg || event.raw;
-    getEmissionSite(msg)
+    if (!event.msg) {
+      setEmissionSite(null);
+      return;
+    }
+    getEmissionSite(event.msg)
       .then((s) => {
         if (!cancelled) setEmissionSite(s);
       })
@@ -79,7 +82,7 @@ export function Inspector({
     return () => {
       cancelled = true;
     };
-  }, [event.id, event.msg, event.raw]);
+  }, [event.id, event.msg]);
 
   const onAddFilter = (path: string, value: unknown) => {
     if (typeof value === "object" || value == null) return;
