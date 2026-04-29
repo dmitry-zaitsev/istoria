@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { Alert } from "./lib/alerts";
 import type { LogEvent } from "./lib/ipc";
-import type { TransformerRule } from "./lib/transformers";
 import type { View } from "./lib/views";
 
 export const INSPECTOR_MIN = 100;
@@ -37,7 +36,6 @@ interface Store {
   pinnedIds: Set<number>;
   scrollTargetId: number | null;
   alerts: Alert[];
-  transformers: TransformerRule[];
   sources: string[];
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
@@ -53,7 +51,6 @@ interface Store {
   togglePinLocal: (id: number) => void;
   setScrollTarget: (id: number | null) => void;
   setAlerts: (alerts: Alert[]) => void;
-  setTransformers: (rules: TransformerRule[]) => void;
   setSources: (sources: string[]) => void;
 }
 
@@ -72,7 +69,6 @@ export const useStore = create<Store>((set) => ({
   pinnedIds: new Set<number>(),
   scrollTargetId: null,
   alerts: [],
-  transformers: [],
   sources: [],
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
@@ -112,6 +108,5 @@ export const useStore = create<Store>((set) => ({
     }),
   setScrollTarget: (scrollTargetId) => set({ scrollTargetId }),
   setAlerts: (alerts) => set({ alerts }),
-  setTransformers: (transformers) => set({ transformers }),
   setSources: (sources) => set({ sources }),
 }));

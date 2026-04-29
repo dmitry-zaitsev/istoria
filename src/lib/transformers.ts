@@ -1,238 +1,174 @@
 import type { Level, LogEvent } from "./ipc";
 
-export type TransformerEngine = "regex";
-
 export interface TransformerOutput {
   source?: string;
   level?: string;
   msg?: string;
   fields?: Record<string, string>;
-  /// Template that resolves to a JSON object literal. The object is
-  /// parsed and its keys spread onto the event's fields. Use this for
-  /// embedded structured payloads (e.g. trailing `{...}` blobs) so
-  /// each key shows up as a top-level field instead of a nested blob.
+  /// Template that resolves to a JSON object literal. Parsed and its
+  /// keys spread onto the event's fields. For embedded structured
+  /// payloads (e.g. trailing `{...}` blobs) so each key is a top-level
+  /// field instead of a nested blob.
   merge_fields?: string;
 }
 
 export interface TransformerRule {
   id: string;
   name: string;
-  engine: TransformerEngine;
-  enabled: boolean;
   order: number;
-  seeded?: boolean;
   pattern: string;
   flags?: string;
   output: TransformerOutput;
-  created_at: number;
 }
 
-const STORAGE_KEY = "transformers.v1";
-// Bump the marker version when seed rules' patterns/outputs change so
-// existing seeded rules in localStorage get refreshed from code on
-// next load. User-added rules (seeded !== true) are never touched.
-const SEED_MARKER_KEY = "transformers.seeded.v2";
-
-export const MAX_TRANSFORMERS = 50;
-
-const SEED_RULES: TransformerRule[] = [
+export const BUILTIN_TRANSFORMERS: TransformerRule[] = [
+  // === Format-specific structured loggers (specific → fall through) ===
   {
-    id: "seed-turbo",
+    id: "k8s-klog",
+    name: "Kubernetes klog",
+    order: 5,
+    // I0114 10:30:45.123456    1 file.go:123] message
+    pattern:
+      "^(?<lvl>[IWEF])(?<mmdd>\\d{4})\\s+(?<time>\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+(?<thread>\\d+)\\s+(?<file>\\S+)\\]\\s+(?<body>.*)$",
+    output: {
+      level: "${lvl}",
+      msg: "${body}",
+      fields: { file: "${file}", thread: "${thread}" },
+    },
+  },
+  {
+    id: "java-log4j",
+    name: "Java log4j/logback",
+    order: 6,
+    // 2024-01-15 10:30:45,123 INFO  [main] com.example.Foo - message
+    pattern:
+      "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}[.,]\\d+)\\s+(?<lvl>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL)\\s+\\[(?<thread>[^\\]]+)\\]\\s+(?<logger>\\S+)\\s+-\\s+(?<body>.*)$",
+    output: {
+      level: "${lvl}",
+      msg: "${body}",
+      source: "${logger}",
+      fields: { thread: "${thread}" },
+    },
+  },
+  {
+    id: "python-logging",
+    name: "Python logging",
+    order: 7,
+    // 2024-01-15 10:30:45,123 - module.name - INFO - message
+    pattern:
+      "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}[.,]\\d+)\\s+-\\s+(?<logger>\\S+)\\s+-\\s+(?<lvl>DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\\s+-\\s+(?<body>.*)$",
+    output: {
+      level: "${lvl}",
+      msg: "${body}",
+      source: "${logger}",
+    },
+  },
+  {
+    id: "android-logcat",
+    name: "Android logcat",
+    order: 8,
+    // D/TAG    ( 1234): message
+    pattern:
+      "^(?<lvl>[VDIWEF])/(?<tag>[^\\s\\(]+)\\s*\\(\\s*(?<pid>\\d+)\\):\\s*(?<body>.*)$",
+    output: {
+      level: "${lvl}",
+      msg: "${body}",
+      fields: { tag: "${tag}", pid: "${pid}" },
+    },
+  },
+  {
+    id: "ios-nslog",
+    name: "iOS NSLog/os_log",
+    order: 9,
+    // 2024-01-15 10:30:45.123 MyApp[1234:5678] message
+    pattern:
+      "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+(?<proc>\\S+)\\[(?<pid>\\d+):(?<tid>[0-9a-fx]+)\\]\\s+(?<body>.*)$",
+    output: {
+      source: "${proc}",
+      msg: "${body}",
+      fields: { pid: "${pid}", tid: "${tid}" },
+    },
+  },
+  {
+    id: "rust-tracing",
+    name: "Rust env_logger/tracing",
+    order: 11,
+    // [2024-01-15T10:30:45Z INFO module::path] message
+    pattern:
+      "^\\[(?<timestamp>\\S+)\\s+(?<lvl>TRACE|DEBUG|INFO|WARN|ERROR)\\s+(?<module>\\S+)\\]\\s+(?<body>.*)$",
+    output: {
+      level: "${lvl}",
+      msg: "${body}",
+      source: "${module}",
+    },
+  },
+  {
+    id: "syslog-rfc3164",
+    name: "syslog (RFC3164)",
+    order: 12,
+    // <14>Jan 15 10:30:45 host program[123]: message
+    pattern:
+      "^<(?<pri>\\d+)>(?<timestamp>\\w{3}\\s+\\d+\\s+\\d+:\\d+:\\d+)\\s+(?<host>\\S+)\\s+(?<prog>[^\\[\\s:]+)(?:\\[(?<pid>\\d+)\\])?:\\s+(?<body>.*)$",
+    output: {
+      source: "${prog}",
+      msg: "${body}",
+      fields: { host: "${host}", pid: "${pid}" },
+    },
+  },
+  {
+    id: "docker-cri",
+    name: "Docker/CRI",
+    order: 13,
+    // 2024-01-15T10:30:45.123Z stdout F message
+    pattern:
+      "^(?<timestamp>\\S+)\\s+(?<stream>stdout|stderr)\\s+[FP]\\s+(?<body>.*)$",
+    output: {
+      msg: "${body}",
+      fields: { stream: "${stream}" },
+    },
+  },
+
+  // === Existing prefix-stripping rules (compose with above) ===
+  {
+    id: "turbo",
     name: "Turbo prefix",
-    engine: "regex",
-    enabled: true,
-    order: 10,
-    seeded: true,
+    order: 14,
     pattern: "^(?<pkg>@?[\\w./-]+):(?<script>[\\w-]+):\\s?(?<body>.*)$",
-    flags: "",
     output: {
       source: "${pkg}",
       msg: "${body}",
       fields: { script: "${script}" },
     },
-    created_at: 0,
   },
   {
-    id: "seed-level-prefix",
-    name: "Level prefix",
-    engine: "regex",
-    enabled: true,
-    order: 20,
-    seeded: true,
-    pattern: "^(?<lvl>INFO|WARN|ERROR|DEBUG|TRACE):\\s+(?<body>.*)$",
-    flags: "",
-    output: { level: "${lvl}", msg: "${body}" },
-    created_at: 0,
-  },
-  {
-    id: "seed-bracket-tag",
-    name: "Bracket tag",
-    engine: "regex",
-    enabled: true,
-    order: 30,
-    seeded: true,
-    pattern: "^\\[(?<tag>[^\\]]+)\\]\\s+(?<body>.*)$",
-    flags: "",
-    output: { msg: "${body}", fields: { tag: "${tag}" } },
-    created_at: 0,
-  },
-  {
-    id: "seed-trailing-json",
-    name: "Trailing JSON",
-    engine: "regex",
-    enabled: true,
-    order: 40,
-    seeded: true,
-    pattern: "^(?<body>.*?)\\s+(?<json>\\{.*\\})\\s*$",
-    flags: "",
-    output: { msg: "${body}", merge_fields: "${json}" },
-    created_at: 0,
-  },
-  {
-    id: "seed-nodemon",
+    id: "nodemon",
     name: "Nodemon",
-    engine: "regex",
-    enabled: true,
-    order: 25,
-    seeded: true,
+    order: 15,
     pattern: "^\\[nodemon\\]\\s+(?<body>.*)$",
-    flags: "",
     output: { msg: "${body}", fields: { tag: "nodemon" } },
-    created_at: 0,
+  },
+  {
+    id: "level-prefix",
+    name: "Level prefix",
+    order: 20,
+    pattern: "^(?<lvl>INFO|WARN|ERROR|DEBUG|TRACE):\\s+(?<body>.*)$",
+    output: { level: "${lvl}", msg: "${body}" },
+  },
+  {
+    id: "bracket-tag",
+    name: "Bracket tag",
+    order: 30,
+    pattern: "^\\[(?<tag>[^\\]]+)\\]\\s+(?<body>.*)$",
+    output: { msg: "${body}", fields: { tag: "${tag}" } },
+  },
+  {
+    id: "trailing-json",
+    name: "Trailing JSON",
+    order: 40,
+    pattern: "^(?<body>.*?)\\s+(?<json>\\{.*\\})\\s*$",
+    output: { msg: "${body}", merge_fields: "${json}" },
   },
 ];
-
-function isValidRule(x: unknown): x is TransformerRule {
-  if (x == null || typeof x !== "object") return false;
-  const r = x as Partial<TransformerRule>;
-  return (
-    typeof r.id === "string" &&
-    typeof r.name === "string" &&
-    typeof r.pattern === "string" &&
-    r.output != null &&
-    typeof r.output === "object"
-  );
-}
-
-function coerceRule(r: TransformerRule): TransformerRule {
-  return {
-    id: r.id,
-    name: r.name,
-    engine: r.engine === "regex" ? "regex" : "regex",
-    enabled: r.enabled !== false,
-    order: typeof r.order === "number" ? r.order : 100,
-    seeded: r.seeded === true || undefined,
-    pattern: r.pattern,
-    flags: typeof r.flags === "string" ? r.flags : "",
-    output: {
-      source: typeof r.output.source === "string" ? r.output.source : undefined,
-      level: typeof r.output.level === "string" ? r.output.level : undefined,
-      msg: typeof r.output.msg === "string" ? r.output.msg : undefined,
-      fields:
-        r.output.fields && typeof r.output.fields === "object"
-          ? Object.fromEntries(
-              Object.entries(r.output.fields).filter(
-                ([, v]) => typeof v === "string",
-              ),
-            )
-          : undefined,
-      merge_fields:
-        typeof r.output.merge_fields === "string"
-          ? r.output.merge_fields
-          : undefined,
-    },
-    created_at:
-      typeof r.created_at === "number" ? r.created_at : Date.now(),
-  };
-}
-
-function readRaw(): TransformerRule[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidRule).map(coerceRule);
-  } catch {
-    return [];
-  }
-}
-
-function writeRaw(rules: TransformerRule[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
-  } catch (e) {
-    console.warn("transformers persist failed", e);
-  }
-}
-
-export function loadTransformers(): TransformerRule[] {
-  let rules = readRaw();
-  if (!localStorage.getItem(SEED_MARKER_KEY)) {
-    // Refresh: any existing seeded rule gets replaced with the latest
-    // SEED_RULES definition (preserving enabled + order + created_at
-    // so user toggles and reorderings survive). Missing seed rules
-    // get added. User-added rules (seeded !== true) untouched.
-    const seedById = new Map(SEED_RULES.map((s) => [s.id, s]));
-    rules = rules.map((r) => {
-      if (!r.seeded) return r;
-      const latest = seedById.get(r.id);
-      if (!latest) return r;
-      return {
-        ...latest,
-        enabled: r.enabled,
-        order: r.order,
-        created_at: r.created_at,
-      };
-    });
-    const present = new Set(rules.map((r) => r.id));
-    const fresh = SEED_RULES.filter((s) => !present.has(s.id)).map((r) => ({
-      ...r,
-      created_at: Date.now(),
-    }));
-    rules = [...rules, ...fresh].sort((a, b) => a.order - b.order);
-    writeRaw(rules);
-    try {
-      localStorage.setItem(SEED_MARKER_KEY, "1");
-    } catch {
-      // ignore
-    }
-  }
-  return rules.slice().sort((a, b) => a.order - b.order);
-}
-
-export function saveTransformers(rules: TransformerRule[]): void {
-  writeRaw(rules.slice().sort((a, b) => a.order - b.order));
-}
-
-export function newRuleId(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-export function emptyRule(order: number): TransformerRule {
-  return {
-    id: newRuleId(),
-    name: "New rule",
-    engine: "regex",
-    enabled: true,
-    order,
-    pattern: "",
-    flags: "",
-    output: {},
-    created_at: Date.now(),
-  };
-}
-
-export function resetBuiltins(current: TransformerRule[]): TransformerRule[] {
-  const userOnly = current.filter((r) => !r.seeded);
-  const fresh = SEED_RULES.map((r) => ({ ...r, created_at: Date.now() }));
-  const next = [...userOnly, ...fresh].sort((a, b) => a.order - b.order);
-  writeRaw(next);
-  return next;
-}
 
 export interface CompiledRule {
   rule: TransformerRule;
@@ -242,7 +178,6 @@ export interface CompiledRule {
 
 export function compileRules(rules: TransformerRule[]): CompiledRule[] {
   return rules
-    .filter((r) => r.enabled)
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((rule) => {
@@ -255,13 +190,9 @@ export function compileRules(rules: TransformerRule[]): CompiledRule[] {
     });
 }
 
-export function compileSingle(rule: TransformerRule): CompiledRule {
-  try {
-    return { rule, re: new RegExp(rule.pattern, rule.flags ?? "") };
-  } catch (e) {
-    return { rule, re: null, error: (e as Error).message };
-  }
-}
+export const COMPILED_BUILTINS: CompiledRule[] = compileRules(
+  BUILTIN_TRANSFORMERS,
+);
 
 const LEVELS: ReadonlySet<Level> = new Set([
   "error",
@@ -276,17 +207,24 @@ function normalizeLevel(s: string): Level | null {
   if (LEVELS.has(lc as Level)) return lc as Level;
   switch (lc) {
     case "err":
+    case "e":
+    case "f":
     case "fatal":
     case "panic":
     case "crit":
     case "critical":
       return "error";
+    case "w":
     case "warning":
       return "warn";
+    case "i":
     case "notice":
       return "info";
+    case "d":
     case "dbg":
       return "debug";
+    case "v":
+      return "trace";
     default:
       return null;
   }
