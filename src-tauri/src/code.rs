@@ -269,17 +269,118 @@ pub fn read_slice(
     Ok(out)
 }
 
+const MIN_NEEDLE_CHARS: usize = 8;
+
+/// Strip dynamic tokens (digits, paths, hex IDs, URLs) from `msg` and
+/// return the longest contiguous run of static tokens. Source code holds
+/// the format string, not the rendered message — matching the static
+/// portion of the rendered text gives the best chance of a literal hit
+/// in the source. Returns None if nothing static is long enough.
+pub fn extract_needle(msg: &str) -> Option<String> {
+    let mut best: Option<&str> = None;
+    let mut run_start: Option<usize> = None;
+    let mut idx = 0;
+    while idx < msg.len() {
+        let rest = &msg[idx..];
+        let ws_len = rest
+            .char_indices()
+            .find(|(_, c)| !c.is_whitespace())
+            .map(|(i, _)| i)
+            .unwrap_or(rest.len());
+        idx += ws_len;
+        if idx >= msg.len() {
+            break;
+        }
+        let rest = &msg[idx..];
+        let tok_len = rest
+            .char_indices()
+            .find(|(_, c)| c.is_whitespace())
+            .map(|(i, _)| i)
+            .unwrap_or(rest.len());
+        let tok_start = idx;
+        let tok_end = idx + tok_len;
+        let tok = &msg[tok_start..tok_end];
+        if is_dynamic_token(tok) {
+            run_start = None;
+        } else {
+            let start = *run_start.get_or_insert(tok_start);
+            let run = &msg[start..tok_end];
+            if best.map(|b| run.len() > b.len()).unwrap_or(true) {
+                best = Some(run);
+            }
+        }
+        idx = tok_end;
+    }
+    let needle = best?.trim_matches(|c: char| !c.is_alphanumeric());
+    if needle.len() < MIN_NEEDLE_CHARS {
+        return None;
+    }
+    Some(needle.to_string())
+}
+
+fn is_dynamic_token(tok: &str) -> bool {
+    if tok.is_empty() {
+        return true;
+    }
+    if tok.chars().any(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    if tok.contains('/') || tok.contains('\\') {
+        return true;
+    }
+    if tok.contains("://") {
+        return true;
+    }
+    // Long all-hex token (UUID without dashes, sha, etc.)
+    if tok.len() >= 8 && tok.chars().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    false
+}
+
+/// True if `needle` appears inside a `"..."`, `'...'`, or `` `...` ``
+/// string literal on `line`. Anchoring matches to string literals filters
+/// out hits in comments, identifiers, and unrelated prose, which is where
+/// most false positives came from.
+pub fn line_has_needle_in_string(line: &str, needle: &str) -> bool {
+    if !line.contains(needle) {
+        return false;
+    }
+    for delim in ['"', '\'', '`'] {
+        let mut chars = line.char_indices();
+        let mut start: Option<usize> = None;
+        while let Some((i, c)) = chars.next() {
+            if c == '\\' {
+                chars.next();
+                continue;
+            }
+            if c == delim {
+                if let Some(s) = start {
+                    let inner = &line[s + c.len_utf8()..i];
+                    if inner.contains(needle) {
+                        return true;
+                    }
+                    start = None;
+                } else {
+                    start = Some(i);
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Best-effort scan for the file:line where `msg` was emitted. Walks
 /// the project tree (skipping vendor/build dirs), reads each candidate
-/// file up to a size limit, and returns the first literal match.
+/// file up to a size limit, and returns the first match where the
+/// static portion of the message appears inside a string literal.
 /// Cached by msg.
 pub fn find_emission_site(
     project_root: &Path,
     cache: &CodeCache,
     msg: &str,
 ) -> Result<Option<(PathBuf, u32)>, String> {
-    if msg.trim().is_empty() || msg.len() < 8 {
-        // Too short to grep usefully — likely false-positive city.
+    if msg.trim().is_empty() {
         return Ok(None);
     }
     {
@@ -288,8 +389,16 @@ pub fn find_emission_site(
             return Ok(hit.clone());
         }
     }
+    let Some(needle) = extract_needle(msg) else {
+        cache
+            .emission
+            .lock()
+            .unwrap()
+            .insert(msg.to_string(), None);
+        return Ok(None);
+    };
     let mut budget = SCAN_DIR_BUDGET;
-    let result = scan_dir(project_root, msg, &mut budget);
+    let result = scan_dir(project_root, &needle, &mut budget);
     cache
         .emission
         .lock()
@@ -358,7 +467,7 @@ fn grep_first(path: &Path, needle: &str) -> Option<u32> {
     let r = BufReader::new(f);
     for (idx, ln) in r.lines().enumerate() {
         let s = ln.ok()?;
-        if s.contains(needle) {
+        if line_has_needle_in_string(&s, needle) {
             return Some(idx as u32 + 1);
         }
     }
@@ -455,5 +564,62 @@ mod tests {
         let tmp = std::env::temp_dir().canonicalize().unwrap();
         let err = resolve_inside(&tmp, "../../etc/passwd");
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn extract_needle_strips_dynamic_tokens() {
+        // "user 42 signed in to dashboard" → drop "42", longest static
+        // run is "signed in to dashboard".
+        let n = extract_needle("user 42 signed in to dashboard").unwrap();
+        assert_eq!(n, "signed in to dashboard");
+    }
+
+    #[test]
+    fn extract_needle_handles_paths_and_hex() {
+        // Path and 8-hex SHA both treated as dynamic.
+        let n = extract_needle("loaded module from /usr/lib/foo deadbeef").unwrap();
+        assert_eq!(n, "loaded module from");
+    }
+
+    #[test]
+    fn extract_needle_returns_none_when_too_short() {
+        // Each static run is < MIN_NEEDLE_CHARS (8 chars).
+        assert!(extract_needle("user 1 ok").is_none());
+        assert!(extract_needle("ok").is_none());
+    }
+
+    #[test]
+    fn extract_needle_uses_full_msg_when_all_static() {
+        let n = extract_needle("connection refused").unwrap();
+        assert_eq!(n, "connection refused");
+    }
+
+    #[test]
+    fn line_has_needle_in_string_matches_quoted() {
+        assert!(line_has_needle_in_string(
+            r#"log.info("connection refused")"#,
+            "connection refused",
+        ));
+        assert!(line_has_needle_in_string(
+            r#"println!('connection refused');"#,
+            "connection refused",
+        ));
+        assert!(line_has_needle_in_string(
+            "tracing::info!(`connection refused`)",
+            "connection refused",
+        ));
+    }
+
+    #[test]
+    fn line_has_needle_in_string_rejects_comment_and_ident() {
+        // Outside a string literal — must not count.
+        assert!(!line_has_needle_in_string(
+            "// connection refused — handled by retry loop",
+            "connection refused",
+        ));
+        assert!(!line_has_needle_in_string(
+            "fn connection_refused_handler() {}",
+            "connection_refused",
+        ));
     }
 }
