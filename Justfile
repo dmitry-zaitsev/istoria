@@ -3,7 +3,9 @@ default:
 
 # Bootstrap a fresh worktree by APFS-cloning node_modules from a
 # sibling worktree whose package-lock.json hash matches. Falls back
-# to `npm ci`. Conductor invokes this on workspace creation.
+# to `npm ci`. Also clones the Rust target/ dir when Cargo.lock
+# matches, so Tauri doesn't rebuild from scratch in every worktree.
+# Conductor invokes this on workspace creation.
 bootstrap:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -25,8 +27,25 @@ bootstrap:
         echo "[bootstrap] no matching sibling — npm ci in ${sub:-.}"
         (cd "${sub:-.}" && npm ci)
     }
+    clone_target() {
+        [ -f Cargo.lock ] || return 0
+        [ -d target ] && return 0
+        local h
+        h="$(shasum -a 256 Cargo.lock | cut -d" " -f1)"
+        for d in ../*/; do
+            [ "$(basename "$d")" = "$(basename "$PWD")" ] && continue
+            [ -f "${d}Cargo.lock" ] && [ -d "${d}target" ] || continue
+            if [ "$(shasum -a 256 "${d}Cargo.lock" | cut -d" " -f1)" = "$h" ]; then
+                echo "[bootstrap] cloning target/ from ${d}"
+                cp -Rc "${d}target" target
+                return 0
+            fi
+        done
+        echo "[bootstrap] no matching sibling for target/ — cold build on first cargo run"
+    }
     clone ""
     clone "extension/"
+    clone_target
 
 # Run the app in dev mode.
 # - tty stdin: normal `tauri dev` with hot-reload of both rust + vite.
