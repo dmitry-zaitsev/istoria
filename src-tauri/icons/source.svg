@@ -1,21 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3aa3da"/>
-      <stop offset="1" stop-color="#1a5f8b"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B6FB0"/>
+      <stop offset="1" stop-color="#0B355A"/>
     </linearGradient>
+    <linearGradient id="topHL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="barShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <clipPath id="clip">
+      <rect x="100" y="100" width="824" height="824" rx="185" ry="185"/>
+    </clipPath>
   </defs>
-  <!-- macOS-style rounded square -->
-  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
-  <!-- Subtle inner highlight on top edge -->
-  <rect x="0" y="0" width="1024" height="220" rx="220" ry="220" fill="white" opacity="0.07"/>
 
-  <!-- Three log-line bars, vertically centered, decreasing length;
-       wider gaps so each bar reads independently. -->
-  <g fill="white">
-    <rect x="200" y="320" width="624" height="64" rx="32"/>
-    <rect x="200" y="480" width="468" height="64" rx="32" opacity="0.85"/>
-    <rect x="200" y="640" width="540" height="64" rx="32" opacity="0.7"/>
+  <g clip-path="url(#clip)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="340" fill="url(#topHL)"/>
+  </g>
+
+  <g fill="#F6F1E6">
+    <rect x="265" y="404" width="490" height="44" rx="22"/>
+    <rect x="265" y="504" width="360" height="44" rx="22"/>
+    <rect x="265" y="604" width="434" height="44" rx="22"/>
   </g>
 </svg>
