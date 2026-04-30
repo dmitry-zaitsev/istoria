@@ -101,10 +101,12 @@ function Group({
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const pinnedSet = pinned.get(group.key) ?? new Set<string>();
-  const showSearch = group.values.length > SEARCH_OVERFLOW;
-
-  // Top-level facet search overrides per-group search when active.
-  const effective = valueFilter || search;
+  // Hide the per-group "filter values…" input while the top-level
+  // facet search is engaged — one filter at a time keeps the mental
+  // model simple. Stale per-group `search` state is ignored too.
+  const showSearch = group.values.length > SEARCH_OVERFLOW && !valueFilter;
+  const effectiveSearch = showSearch ? search : "";
+  const effective = valueFilter || effectiveSearch;
   const matched = effective
     ? group.values.filter((v) =>
         v.value.toLowerCase().includes(effective.toLowerCase()),
@@ -120,7 +122,7 @@ function Group({
   let kept = 0;
   for (const v of matched) {
     const isPinned = pinnedSet.has(v.value);
-    if (isPinned || showAll || search || kept < VISIBLE_CAP) {
+    if (isPinned || showAll || effectiveSearch || kept < VISIBLE_CAP) {
       cappedSet.add(v.value);
       if (!isPinned) kept++;
     }
@@ -150,7 +152,7 @@ function Group({
           onClick={() => onToggle(group.key, v.value)}
         />
       ))}
-      {overflow > 0 && !search && (
+      {overflow > 0 && !effectiveSearch && (
         <div
           className="facet-more"
           role="button"
