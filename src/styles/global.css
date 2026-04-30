@@ -149,6 +149,25 @@ body,
   cursor: default;
 }
 .tab-add:hover { color: var(--ink); background: var(--hover); }
+.icon-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: default;
+  padding: 3px 5px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.icon-btn:hover { background: var(--hover); color: var(--ink); }
+.icon-btn.on { background: var(--brand-50); color: var(--brand); }
+.tabs-claude-btn {
+  align-self: center;
+  margin-right: 6px;
+  margin-left: 4px;
+}
 .tabs-drag-fill {
   flex: 1 1 auto;
   min-width: 40px;
@@ -1456,6 +1475,82 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   padding: 1px 4px;
   border-radius: 3px;
 }
+
+/* ── Claude integration dialog ─────────────────────────────────── */
+.claude-dialog {
+  width: 420px;
+  max-width: 92vw;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 48px rgba(15, 23, 42, 0.18);
+  font-family: var(--ui);
+  overflow: hidden;
+}
+.claude-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.claude-dialog-head svg { color: var(--brand); }
+.claude-dialog-body {
+  padding: 4px 16px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.claude-dialog-body p { margin: 0 0 8px; }
+.claude-dialog-body p:last-child { margin-bottom: 0; }
+.claude-dialog-list {
+  margin: 0 0 10px;
+  padding: 0 0 0 18px;
+  list-style: disc;
+}
+.claude-dialog-list li { margin: 0 0 3px; }
+.claude-dialog-muted {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.claude-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.claude-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: default;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.claude-btn.ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border-color: var(--line);
+}
+.claude-btn.ghost:hover { background: var(--hover); }
+.claude-btn.primary {
+  background: var(--brand);
+  color: white;
+}
+.claude-btn.primary:hover { filter: brightness(1.05); }
+.claude-btn.danger {
+  background: var(--err-fg, #c0392b);
+  color: white;
+}
+.claude-btn.danger:hover { filter: brightness(1.05); }
+.claude-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Toast ─────────────────────────────────────────────────────── */
 .toast {

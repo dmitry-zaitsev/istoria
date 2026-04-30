@@ -12,6 +12,7 @@ import {
   type View,
 } from "../lib/views";
 import { toast } from "../lib/toast";
+import { ClaudeButton } from "./ClaudeButton";
 
 export function Tabs() {
   const views = useStore((s) => s.views);
@@ -192,6 +193,7 @@ export function Tabs() {
           ))}
         </div>
       )}
+      <ClaudeButton />
     </div>
   );
 }

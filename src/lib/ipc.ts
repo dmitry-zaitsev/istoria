@@ -87,3 +87,12 @@ export interface EditorEntry {
 export async function listEditors(): Promise<EditorEntry[]> {
   return invoke<EditorEntry[]>("list_editors");
 }
+
+export interface ClaudeStatus {
+  installed: boolean;
+  path: string | null;
+}
+
+export async function claudeStatus(): Promise<ClaudeStatus> {
+  return invoke<ClaudeStatus>("claude_status");
+}

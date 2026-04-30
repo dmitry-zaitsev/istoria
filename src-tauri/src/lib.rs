@@ -1,3 +1,4 @@
+pub mod claude;
 pub mod cli;
 pub mod code;
 pub mod event;
@@ -130,6 +131,7 @@ pub fn run(cli: cli::Cli) {
             ipc::list_editors,
             ipc::open_url,
             ipc::clear_session,
+            claude::claude_status,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

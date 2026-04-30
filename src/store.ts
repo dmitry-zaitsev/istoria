@@ -92,6 +92,7 @@ function loadInitialFieldColumns(): FieldColumn[] {
 export type SortKey = "newest-bottom" | "newest-top";
 
 const SORT_KEY = "sort.v1";
+const CLAUDE_CONNECTED_KEY = "claudeConnected.v1";
 
 function loadInitialSort(): SortKey {
   try {
@@ -101,6 +102,14 @@ function loadInitialSort(): SortKey {
     // ignore
   }
   return "newest-top";
+}
+
+function loadInitialClaudeConnected(): boolean {
+  try {
+    return localStorage.getItem(CLAUDE_CONNECTED_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 interface Store {
@@ -115,6 +124,7 @@ interface Store {
   pausedBaseline: number; // unused since DEE-75 (kept for future)
   newCount: number;
   sort: SortKey;
+  claudeConnected: boolean;
   pinnedIds: Set<number>;
   scrollTargetId: number | null;
   alerts: Alert[];
@@ -132,6 +142,7 @@ interface Store {
   setPaused: (paused: boolean, baseline?: number) => void;
   setNewCount: (n: number) => void;
   setSort: (sort: SortKey) => void;
+  setClaudeConnected: (connected: boolean) => void;
   setPinnedIds: (ids: Set<number>) => void;
   togglePinLocal: (id: number) => void;
   setScrollTarget: (id: number | null) => void;
@@ -156,6 +167,7 @@ export const useStore = create<Store>((set) => ({
   pausedBaseline: 0,
   newCount: 0,
   sort: loadInitialSort(),
+  claudeConnected: loadInitialClaudeConnected(),
   pinnedIds: new Set<number>(),
   scrollTargetId: null,
   alerts: [],
@@ -190,6 +202,14 @@ export const useStore = create<Store>((set) => ({
       // ignore
     }
     set({ sort });
+  },
+  setClaudeConnected: (connected) => {
+    try {
+      localStorage.setItem(CLAUDE_CONNECTED_KEY, connected ? "1" : "0");
+    } catch {
+      // ignore
+    }
+    set({ claudeConnected: connected });
   },
   setPinnedIds: (pinnedIds) => set({ pinnedIds }),
   togglePinLocal: (id) =>
