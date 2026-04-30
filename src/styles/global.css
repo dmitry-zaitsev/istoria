@@ -187,6 +187,11 @@ body,
   background: var(--surface-3);
   color: var(--muted);
 }
+.tabs-sources .session-tag:hover { background: var(--hover); color: var(--ink); }
+.tabs-sources .session-tag.active {
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
 .tab-menu {
   position: absolute;
   top: 32px;

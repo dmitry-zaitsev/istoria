@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef, useState } from "react";
 
 import { useStore } from "../store";
+import { isFacetActive, toggleFacetOr } from "../lib/facets";
 import {
   createViewLocal,
   deleteViewLocal,
@@ -185,12 +186,26 @@ export function Tabs() {
         }}
       />
       {sources.length > 0 && (
-        <div className="tabs-sources" title="Active log sources">
-          {sources.map((s) => (
-            <span key={s} className="session-tag">
-              {s}
-            </span>
-          ))}
+        <div className="tabs-sources">
+          {sources.map((s) => {
+            const active = isFacetActive(filter, "source", s);
+            return (
+              <span
+                key={s}
+                className={`session-tag${active ? " active" : ""}`}
+                role="button"
+                title={
+                  active
+                    ? `Filtering by source: ${s} (click to remove)`
+                    : `Filter by source: ${s}`
+                }
+                style={{ cursor: "pointer" }}
+                onClick={() => setFilter(toggleFacetOr(filter, "source", s))}
+              >
+                {s}
+              </span>
+            );
+          })}
         </div>
       )}
       <ClaudeButton />

@@ -203,6 +203,27 @@ function walk(ast: Ast, out: Map<string, Set<string>>): void {
   }
 }
 
+/// True iff `key:value` is one of the active selections in `query`,
+/// using the same semantics as `toggleFacetOr` — a value counts as
+/// active when it appears as a top-level conjunct or inside a
+/// top-level OR-chain of `key:vN` bindings. NOT clauses are exclusion
+/// and don't count. Use this anywhere the UI needs to highlight a
+/// term as "currently being filtered for".
+export function isFacetActive(
+  query: string,
+  key: string,
+  value: string,
+): boolean {
+  const ast = parse(query);
+  if (isError(ast)) return false;
+  if (ast.kind === "free" && ast.term === "") return false;
+  for (const c of flattenAnd(ast)) {
+    const vals = extractKeyOrValues(c, key);
+    if (vals && vals.includes(value)) return true;
+  }
+  return false;
+}
+
 /// Append a `key:value` clause to a query string. If query is empty
 /// or only whitespace, the clause becomes the whole query.
 export function addClause(query: string, key: string, value: string): string {
