@@ -1,64 +1,17 @@
 default:
     @just --list
 
-# Bootstrap a fresh worktree by APFS-cloning node_modules from a
-# sibling worktree whose package-lock.json hash matches. Falls back
-# to `npm ci`. Also clones the Rust target/ dir when Cargo.lock
-# matches, so Tauri doesn't rebuild from scratch in every worktree.
-# Conductor invokes this on workspace creation.
+# Bootstrap a fresh worktree: install JS deps, leave Rust target/ to
+# build cold on first `cargo run`. No sibling-worktree linking — they
+# get deleted at any time, and absolute paths baked into target/ by
+# tauri-build bind a clone to its source. sccache (rustc-wrapper)
+# absorbs most of the cold-build cost via a global cache outside any
+# worktree. Conductor invokes this on workspace creation.
 bootstrap:
     #!/usr/bin/env bash
     set -euo pipefail
-    clone() {
-        local sub="$1" lock="${1}package-lock.json"
-        [ -f "$lock" ] || return 0
-        [ -d "${sub}node_modules" ] && return 0
-        local h
-        h="$(shasum -a 256 "$lock" | cut -d" " -f1)"
-        for d in ../*/; do
-            [ "$(basename "$d")" = "$(basename "$PWD")" ] && continue
-            [ -f "${d}${lock}" ] && [ -d "${d}${sub}node_modules" ] || continue
-            if [ "$(shasum -a 256 "${d}${lock}" | cut -d" " -f1)" = "$h" ]; then
-                echo "[bootstrap] cloning ${sub}node_modules from ${d}"
-                cp -Rc "${d}${sub}node_modules" "${sub}node_modules"
-                return 0
-            fi
-        done
-        echo "[bootstrap] no matching sibling — npm ci in ${sub:-.}"
-        (cd "${sub:-.}" && npm ci)
-    }
-    clone_target() {
-        [ -f Cargo.lock ] || return 0
-        [ -d target ] && return 0
-        local h
-        h="$(shasum -a 256 Cargo.lock | cut -d" " -f1)"
-        for d in ../*/; do
-            [ "$(basename "$d")" = "$(basename "$PWD")" ] && continue
-            [ -f "${d}Cargo.lock" ] && [ -d "${d}target" ] || continue
-            if [ "$(shasum -a 256 "${d}Cargo.lock" | cut -d" " -f1)" = "$h" ]; then
-                echo "[bootstrap] cloning target/ from ${d}"
-                cp -Rc "${d}target" target
-                # Build scripts (notably tauri-build) write absolute paths
-                # into out/* manifest files. The clone preserves the
-                # source workspace's path, so on first build the consumer
-                # tries to read files under the sibling and fails. Rewrite
-                # the path in any text manifest under build/*/out/.
-                local old new
-                old="$(cd "$d" && pwd -P)"
-                new="$(pwd -P)"
-                if [ "$old" != "$new" ]; then
-                    while IFS= read -r f; do
-                        sed -i '' "s|${old}|${new}|g" "$f"
-                    done < <(grep -rIl "$old" target/debug/build/*/out 2>/dev/null || true)
-                fi
-                return 0
-            fi
-        done
-        echo "[bootstrap] no matching sibling for target/ — cold build on first cargo run"
-    }
-    clone ""
-    clone "extension/"
-    clone_target
+    [ -d node_modules ] || npm ci
+    [ -d extension/node_modules ] || (cd extension && npm ci)
 
 # Run the app in dev mode.
 # - tty stdin: normal `tauri dev` with hot-reload of both rust + vite.
