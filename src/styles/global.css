@@ -837,6 +837,7 @@ kbd {
   font-family: var(--mono);
   font-size: 12px;
 }
+.stream:focus { outline: none; }
 .stream::-webkit-scrollbar { width: 10px; }
 .stream::-webkit-scrollbar-thumb {
   background: var(--line-strong);
