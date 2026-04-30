@@ -91,28 +91,59 @@ export function LogStream({
     scrollToNewest();
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
+  const applyRange = (anchorId: number, endId: number) => {
+    const a = events.findIndex((x) => x.id === anchorId);
+    const b = events.findIndex((x) => x.id === endId);
+    if (a < 0 || b < 0) {
+      onSelect(endId);
+      return;
+    }
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const ids = events.slice(lo, hi + 1).map((x) => x.id);
+    onSelectIds(ids);
+  };
+
+  const dragRef = useRef<{ anchor: number; lastEnd: number } | null>(null);
+
+  const onRowMouseDown = (id: number, e: React.MouseEvent) => {
+    if (!e.shiftKey) return;
+    // Suppress browser text-selection on shift+click and shift+drag;
+    // rows aren't text first, they're targets.
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
+    if (!paused) setPaused(true, events.length);
+    const anchor = selectedId ?? selectedIds[selectedIds.length - 1] ?? id;
+    dragRef.current = { anchor, lastEnd: id };
+    document.body.classList.add("range-dragging");
+    applyRange(anchor, id);
+
+    const onMove = (ev: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const rowEl = target?.closest<HTMLElement>("[data-row-id]");
+      if (!rowEl) return;
+      const rid = Number(rowEl.dataset.rowId);
+      if (!Number.isFinite(rid) || rid === drag.lastEnd) return;
+      drag.lastEnd = rid;
+      applyRange(drag.anchor, rid);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      document.body.classList.remove("range-dragging");
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const onRowClick = (id: number, e: React.MouseEvent) => {
     if (!paused) setPaused(true, events.length);
     if (e.shiftKey) {
-      // Drop any text selection the browser started before our
-      // mousedown intercept could land.
-      window.getSelection()?.removeAllRanges();
-      // Anchor: primary selection if any, else last item in current
-      // multi-set, else just select the clicked row.
-      const anchor =
-        selectedId ?? selectedIds[selectedIds.length - 1] ?? null;
-      if (anchor != null) {
-        const a = events.findIndex((x) => x.id === anchor);
-        const b = events.findIndex((x) => x.id === id);
-        if (a >= 0 && b >= 0) {
-          const lo = Math.min(a, b);
-          const hi = Math.max(a, b);
-          const ids = events.slice(lo, hi + 1).map((x) => x.id);
-          onSelectIds(ids);
-          return;
-        }
-      }
-      onSelect(id);
+      // Range already applied on mousedown / drag; no-op on click so we
+      // don't clobber a drag-extended selection.
       return;
     }
     if (e.metaKey || e.ctrlKey) {
@@ -257,6 +288,7 @@ export function LogStream({
           return (
             <div
               key={ev.id}
+              data-row-id={ev.id}
               className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
                 isPrimary ? " primary" : ""
               }${isPinned ? " pinned" : ""}${alertColor ? ` alert-${alertColor}` : ""}`}
@@ -268,11 +300,7 @@ export function LogStream({
                 transform: `translateY(${vi.start}px)`,
                 height: vi.size,
               }}
-              onMouseDown={(e) => {
-                // Suppress browser text-selection on shift+click range
-                // picks; rows aren't text first, they're targets.
-                if (e.shiftKey) e.preventDefault();
-              }}
+              onMouseDown={(e) => onRowMouseDown(ev.id, e)}
               onClick={(e) => onRowClick(ev.id, e)}
             >
               {visibility.ts && (
