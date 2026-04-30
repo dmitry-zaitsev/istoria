@@ -1,0 +1,10 @@
+[build]
+rustc-wrapper = "sccache"
+
+[target.aarch64-apple-darwin]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=/opt/homebrew/opt/lld/bin/ld64.lld"]
+
+[env]
+CC = "sccache cc"
+CXX = "sccache c++"

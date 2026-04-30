@@ -12,6 +12,8 @@ bootstrap:
     set -euo pipefail
     [ -d node_modules ] || npm ci
     [ -d extension/node_modules ] || (cd extension && npm ci)
+    command -v sccache >/dev/null || brew install sccache
+    [ -x /opt/homebrew/opt/lld/bin/ld64.lld ] || brew install lld
 
 # Run the app in dev mode.
 # - tty stdin: normal `tauri dev` with hot-reload of both rust + vite.

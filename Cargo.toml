@@ -9,9 +9,25 @@ license = "MIT"
 authors = ["Dmitry Zaytsev"]
 repository = "https://github.com/dmitry-zaitsev/istoria"
 
+[profile.dev]
+codegen-units = 256
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+incremental = true
+
 [profile.release]
 codegen-units = 1
 lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# Release-shaped iteration. Use `cargo build --profile release-fast` when
+# you need optimized behavior but not the full ship-tier LTO cost. The
+# ship pipeline (`just release-mac`, CI) keeps using `release` untouched.
+[profile.release-fast]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+opt-level = 2
+strip = false
