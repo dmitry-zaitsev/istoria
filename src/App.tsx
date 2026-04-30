@@ -36,7 +36,7 @@ import { onSessionCleared } from "./lib/sessionBus";
 import { toast } from "./lib/toast";
 import { applyAll, COMPILED_BUILTINS } from "./lib/transformers";
 import { loadActiveViewId, loadViews } from "./lib/views";
-import { useStore, type SortKey } from "./store";
+import { useStore, type ColKey, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
 
@@ -164,7 +164,19 @@ export default function App() {
     for (const e of unfilteredEvents) seen.add(e.source);
     return [...seen].sort();
   }, [unfilteredEvents]);
-  const showSource = sources.length > 1;
+  const columnVisibility = useStore((s) => s.columnVisibility);
+  const fieldColumns = useStore((s) => s.fieldColumns);
+  const effectiveVisibility: Record<ColKey, boolean> = {
+    ts: columnVisibility.ts ?? true,
+    lvl: columnVisibility.lvl ?? true,
+    src: columnVisibility.src ?? (sources.length > 1),
+  };
+  const availableFieldKeys = useMemo(() => {
+    const groups = computeFacets(tsScopedEvents);
+    return groups
+      .map((g) => g.key)
+      .filter((k) => k !== "level" && k !== "source");
+  }, [tsScopedEvents]);
   const setSources = useStore((s) => s.setSources);
   useEffect(() => {
     setSources(sources);
@@ -382,10 +394,14 @@ export default function App() {
   const filterActive = filter.trim().length > 0;
   const bottomInset = selected ? inspectorH : 0;
   const columnWidths = useStore((s) => s.columnWidths);
+  const gridParts: string[] = [];
+  if (effectiveVisibility.ts) gridParts.push(`${columnWidths.ts}px`);
+  if (effectiveVisibility.lvl) gridParts.push(`${columnWidths.lvl}px`);
+  if (effectiveVisibility.src) gridParts.push(`${columnWidths.src}px`);
+  for (const fc of fieldColumns) gridParts.push(`${fc.width}px`);
+  gridParts.push("1fr", "auto");
   const colVars = {
-    "--col-ts": `${columnWidths.ts}px`,
-    "--col-lvl": `${columnWidths.lvl}px`,
-    "--col-src": `${columnWidths.src}px`,
+    "--stream-cols": gridParts.join(" "),
   } as React.CSSProperties;
 
   return (
@@ -417,7 +433,11 @@ export default function App() {
             filterActive={filterActive}
             unfilteredEvents={unfilteredEvents}
           />
-          <ColumnHeader showSource={showSource} />
+          <ColumnHeader
+            visibility={effectiveVisibility}
+            fieldColumns={fieldColumns}
+            availableFieldKeys={availableFieldKeys}
+          />
           <LogStream
             events={events}
             selectedId={selectedId}
@@ -425,7 +445,8 @@ export default function App() {
             onSelect={setSelected}
             onSelectIds={setSelectedIds}
             bottomInset={bottomInset}
-            showSource={showSource}
+            visibility={effectiveVisibility}
+            fieldColumns={fieldColumns}
             highlightTerms={highlightTerms}
             alertMatches={alertMatches}
           />

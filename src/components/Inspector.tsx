@@ -121,6 +121,16 @@ export function Inspector({
     toast(`Excluded ${path}`);
   };
 
+  const fieldColumns = useStore((s) => s.fieldColumns);
+  const toggleFieldColumn = useStore((s) => s.toggleFieldColumn);
+  const onToggleColumn = (path: string) => {
+    const exists = fieldColumns.some((c) => c.path === path);
+    toggleFieldColumn(path);
+    toast(exists ? `Hid column ${path}` : `Added column ${path}`);
+  };
+  const isColumn = (path: string) =>
+    fieldColumns.some((c) => c.path === path);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -245,6 +255,8 @@ export function Inspector({
               onKeyFilter={onAddKeyFilter}
               onExclude={onExcludeFilter}
               onExcludeKey={onExcludeKeyFilter}
+              onToggleColumn={onToggleColumn}
+              isColumn={isColumn}
               highlightTerms={highlightTerms}
             />
           </div>

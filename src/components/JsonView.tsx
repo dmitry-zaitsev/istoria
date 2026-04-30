@@ -8,6 +8,8 @@ interface JsonViewProps {
   onKeyFilter?: (path: string) => void;
   onExclude?: (path: string, value: unknown) => void;
   onExcludeKey?: (path: string) => void;
+  onToggleColumn?: (path: string) => void;
+  isColumn?: (path: string) => boolean;
   highlightTerms?: HighlightTerm[];
 }
 
@@ -45,10 +47,13 @@ export function JsonView({
   onKeyFilter,
   onExclude,
   onExcludeKey,
+  onToggleColumn,
+  isColumn,
   highlightTerms,
 }: JsonViewProps) {
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const closePopover = () => setPopover(null);
+  const canOpen = !!onFilter || !!onKeyFilter || !!onToggleColumn;
 
   return (
     <>
@@ -56,9 +61,9 @@ export function JsonView({
         value={value}
         indent={0}
         path=""
-        openPopover={onFilter || onKeyFilter ? setPopover : undefined}
-        canFilterValue={!!onFilter}
-        canFilterKey={!!onKeyFilter}
+        openPopover={canOpen ? setPopover : undefined}
+        canFilterValue={!!onFilter || !!onToggleColumn}
+        canFilterKey={!!onKeyFilter || !!onToggleColumn}
         highlightTerms={highlightTerms}
       />
       {popover && (
@@ -69,6 +74,8 @@ export function JsonView({
           onKeyFilter={onKeyFilter}
           onExclude={onExclude}
           onExcludeKey={onExcludeKey}
+          onToggleColumn={onToggleColumn}
+          isColumn={isColumn}
         />
       )}
     </>
@@ -337,6 +344,8 @@ function ValuePopover({
   onKeyFilter,
   onExclude,
   onExcludeKey,
+  onToggleColumn,
+  isColumn,
 }: {
   state: PopoverState;
   onClose: () => void;
@@ -344,6 +353,8 @@ function ValuePopover({
   onKeyFilter?: (path: string) => void;
   onExclude?: (path: string, value: unknown) => void;
   onExcludeKey?: (path: string) => void;
+  onToggleColumn?: (path: string) => void;
+  isColumn?: (path: string) => boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number }>({
@@ -396,6 +407,13 @@ function ValuePopover({
       ? formatValuePreview(state.value)
       : state.path;
 
+  const columnLabel =
+    onToggleColumn != null
+      ? isColumn?.(state.path)
+        ? "Hide column"
+        : "Show as column"
+      : null;
+
   if (state.kind === "value") {
     if (onFilter) {
       items.push({
@@ -407,6 +425,12 @@ function ValuePopover({
       items.push({
         label: "Exclude value",
         onClick: () => onExclude(state.path, state.value),
+      });
+    }
+    if (columnLabel) {
+      items.push({
+        label: columnLabel,
+        onClick: () => onToggleColumn!(state.path),
       });
     }
     items.push({
@@ -428,6 +452,12 @@ function ValuePopover({
       items.push({
         label: "Exclude key",
         onClick: () => onExcludeKey(state.path),
+      });
+    }
+    if (columnLabel) {
+      items.push({
+        label: columnLabel,
+        onClick: () => onToggleColumn!(state.path),
       });
     }
     items.push({

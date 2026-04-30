@@ -9,12 +9,23 @@ export const INSPECTOR_DEFAULT = 320;
 
 export type ColKey = "ts" | "lvl" | "src";
 export type ColumnWidths = Record<ColKey, number>;
+export type ColumnVisibility = Partial<Record<ColKey, boolean>>;
+export interface FieldColumn {
+  path: string;
+  width: number;
+}
 
 export const COL_MIN: Record<ColKey, number> = { ts: 60, lvl: 44, src: 50 };
 export const COL_MAX: Record<ColKey, number> = { ts: 240, lvl: 140, src: 400 };
 export const COL_DEFAULTS: ColumnWidths = { ts: 92, lvl: 64, src: 80 };
 
+export const FIELD_COL_MIN = 40;
+export const FIELD_COL_MAX = 600;
+export const FIELD_COL_DEFAULT = 120;
+
 const COLS_KEY = "cols.v1";
+const COLS_VIS_KEY = "cols.vis.v1";
+const COLS_FIELDS_KEY = "cols.fields.v1";
 
 function loadInitialCols(): ColumnWidths {
   try {
@@ -34,6 +45,48 @@ function loadInitialCols(): ColumnWidths {
     // ignore
   }
   return { ...COL_DEFAULTS };
+}
+
+function loadInitialVisibility(): ColumnVisibility {
+  try {
+    const raw = localStorage.getItem(COLS_VIS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as ColumnVisibility;
+    const out: ColumnVisibility = {};
+    for (const k of ["ts", "lvl", "src"] as const) {
+      const v = parsed[k];
+      if (typeof v === "boolean") out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function loadInitialFieldColumns(): FieldColumn[] {
+  try {
+    const raw = localStorage.getItem(COLS_FIELDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const out: FieldColumn[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const path = (item as { path?: unknown }).path;
+      const width = (item as { width?: unknown }).width;
+      if (typeof path !== "string" || !path || seen.has(path)) continue;
+      seen.add(path);
+      const w =
+        typeof width === "number" && Number.isFinite(width)
+          ? Math.min(FIELD_COL_MAX, Math.max(FIELD_COL_MIN, width))
+          : FIELD_COL_DEFAULT;
+      out.push({ path, width: w });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 export type SortKey = "newest-bottom" | "newest-top";
@@ -67,6 +120,8 @@ interface Store {
   alerts: Alert[];
   sources: string[];
   columnWidths: ColumnWidths;
+  columnVisibility: ColumnVisibility;
+  fieldColumns: FieldColumn[];
   setEvents: (events: LogEvent[]) => void;
   setFilter: (filter: string) => void;
   setSelected: (id: number | null) => void;
@@ -83,6 +138,10 @@ interface Store {
   setAlerts: (alerts: Alert[]) => void;
   setSources: (sources: string[]) => void;
   setColumnWidth: (col: ColKey, w: number) => void;
+  setColumnVisible: (col: ColKey, visible: boolean) => void;
+  resetColumnVisibility: (col: ColKey) => void;
+  toggleFieldColumn: (path: string) => void;
+  setFieldColumnWidth: (path: string, w: number) => void;
 }
 
 export const useStore = create<Store>((set) => ({
@@ -102,6 +161,8 @@ export const useStore = create<Store>((set) => ({
   alerts: [],
   sources: [],
   columnWidths: loadInitialCols(),
+  columnVisibility: loadInitialVisibility(),
+  fieldColumns: loadInitialFieldColumns(),
   setEvents: (events) => set({ events }),
   setFilter: (filter) => set({ filter }),
   setSelected: (selectedId) =>
@@ -151,5 +212,53 @@ export const useStore = create<Store>((set) => ({
         // ignore
       }
       return { columnWidths: next };
+    }),
+  setColumnVisible: (col, visible) =>
+    set((s) => {
+      const next: ColumnVisibility = { ...s.columnVisibility, [col]: visible };
+      try {
+        localStorage.setItem(COLS_VIS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return { columnVisibility: next };
+    }),
+  resetColumnVisibility: (col) =>
+    set((s) => {
+      const next: ColumnVisibility = { ...s.columnVisibility };
+      delete next[col];
+      try {
+        localStorage.setItem(COLS_VIS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return { columnVisibility: next };
+    }),
+  toggleFieldColumn: (path) =>
+    set((s) => {
+      const i = s.fieldColumns.findIndex((c) => c.path === path);
+      const next =
+        i >= 0
+          ? s.fieldColumns.filter((_, j) => j !== i)
+          : [...s.fieldColumns, { path, width: FIELD_COL_DEFAULT }];
+      try {
+        localStorage.setItem(COLS_FIELDS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return { fieldColumns: next };
+    }),
+  setFieldColumnWidth: (path, w) =>
+    set((s) => {
+      const clamped = Math.min(FIELD_COL_MAX, Math.max(FIELD_COL_MIN, w));
+      const next = s.fieldColumns.map((c) =>
+        c.path === path ? { ...c, width: clamped } : c,
+      );
+      try {
+        localStorage.setItem(COLS_FIELDS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return { fieldColumns: next };
     }),
 }));

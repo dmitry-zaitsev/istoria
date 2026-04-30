@@ -38,6 +38,19 @@ bootstrap:
             if [ "$(shasum -a 256 "${d}Cargo.lock" | cut -d" " -f1)" = "$h" ]; then
                 echo "[bootstrap] cloning target/ from ${d}"
                 cp -Rc "${d}target" target
+                # Build scripts (notably tauri-build) write absolute paths
+                # into out/* manifest files. The clone preserves the
+                # source workspace's path, so on first build the consumer
+                # tries to read files under the sibling and fails. Rewrite
+                # the path in any text manifest under build/*/out/.
+                local old new
+                old="$(cd "$d" && pwd -P)"
+                new="$(pwd -P)"
+                if [ "$old" != "$new" ]; then
+                    while IFS= read -r f; do
+                        sed -i '' "s|${old}|${new}|g" "$f"
+                    done < <(grep -rIl "$old" target/debug/build/*/out 2>/dev/null || true)
+                fi
                 return 0
             fi
         done

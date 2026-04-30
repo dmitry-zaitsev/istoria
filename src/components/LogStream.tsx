@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { highlight, type HighlightTerm } from "../lib/highlight";
 import { pinEvent, unpinEvent, type Level, type LogEvent } from "../lib/ipc";
 import { toast } from "../lib/toast";
-import { useStore } from "../store";
+import { useStore, type ColKey, type FieldColumn } from "../store";
 
 interface LogStreamProps {
   events: LogEvent[];
@@ -13,7 +13,8 @@ interface LogStreamProps {
   onSelect: (id: number | null) => void;
   onSelectIds: (ids: number[]) => void;
   bottomInset: number;
-  showSource: boolean;
+  visibility: Record<ColKey, boolean>;
+  fieldColumns: FieldColumn[];
   highlightTerms: HighlightTerm[];
   alertMatches: Map<number, string[]>;
 }
@@ -31,7 +32,8 @@ export function LogStream({
   onSelect,
   onSelectIds,
   bottomInset,
-  showSource,
+  visibility,
+  fieldColumns,
   highlightTerms,
   alertMatches,
 }: LogStreamProps) {
@@ -257,7 +259,7 @@ export function LogStream({
               key={ev.id}
               className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
                 isPrimary ? " primary" : ""
-              }${isPinned ? " pinned" : ""}${alertColor ? ` alert-${alertColor}` : ""}${showSource ? "" : " no-src"}`}
+              }${isPinned ? " pinned" : ""}${alertColor ? ` alert-${alertColor}` : ""}`}
               style={{
                 position: "absolute",
                 top: 0,
@@ -273,17 +275,35 @@ export function LogStream({
               }}
               onClick={(e) => onRowClick(ev.id, e)}
             >
-              <span className="ts">{formatTs(ev.ts)}</span>
-              <span>
-                <span className={`lvl ${cls}`} style={{ display: "block" }}>
-                  {cls}
+              {visibility.ts && (
+                <span className="ts">{formatTs(ev.ts)}</span>
+              )}
+              {visibility.lvl && (
+                <span>
+                  <span className={`lvl ${cls}`} style={{ display: "block" }}>
+                    {cls}
+                  </span>
                 </span>
-              </span>
-              {showSource && (
+              )}
+              {visibility.src && (
                 <span className="src" title={ev.source}>
                   {ev.source}
                 </span>
               )}
+              {fieldColumns.map((fc) => {
+                const v = getValueAtPath(ev.fields, fc.path);
+                const empty = v === undefined || v === null;
+                const text = empty ? "—" : formatFieldValue(v);
+                return (
+                  <span
+                    key={fc.path}
+                    className={`field-cell${empty ? " empty" : ""}`}
+                    title={empty ? "" : text}
+                  >
+                    {text}
+                  </span>
+                );
+              })}
               <span className="msg">
                 {highlight(ev.msg || ev.raw, highlightTerms)}
               </span>
@@ -320,6 +340,31 @@ function formatTs(unixMs: number): string {
   const ss = String(d.getSeconds()).padStart(2, "0");
   const ms = String(d.getMilliseconds()).padStart(3, "0");
   return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+function getValueAtPath(root: unknown, path: string): unknown {
+  if (root == null || typeof root !== "object") return undefined;
+  let cur: unknown = root;
+  for (const part of path.split(".")) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+function formatFieldValue(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return `[${v.length}]`;
+  if (typeof v === "object") {
+    try {
+      const s = JSON.stringify(v);
+      return s.length > 80 ? s.slice(0, 77) + "…" : s;
+    } catch {
+      return "[object]";
+    }
+  }
+  return String(v);
 }
 
 function levelClass(level: Level): "err" | "warn" | "info" | "dbg" {
