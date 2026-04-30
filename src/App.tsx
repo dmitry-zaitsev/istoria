@@ -109,7 +109,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
   const sourceEvents = pausedSrc ?? unfilteredEvents;
-  const newCount = pausedSrc ? unfilteredEvents.length - pausedSrc.length : 0;
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
@@ -380,6 +379,27 @@ export default function App() {
   useEffect(() => {
     setEvents(displayedEvents);
   }, [displayedEvents, setEvents]);
+
+  // Filter-aware: only count new events that would actually appear in
+  // the displayed list once the user resumes. Otherwise the pill lies
+  // about new matches when the active filter excludes the new arrivals.
+  const newCount = useMemo(() => {
+    if (!pausedSrc) return 0;
+    const cutoff =
+      pausedSrc.length > 0 ? pausedSrc[pausedSrc.length - 1]!.id : -Infinity;
+    if (!filterValid) {
+      let n = 0;
+      for (const ev of unfilteredEvents) if (ev.id > cutoff) n++;
+      return n;
+    }
+    const resolved = resolveAst(parsed as Ast, unfilteredEvents);
+    const ctx = { pinnedIds };
+    let n = 0;
+    for (const ev of unfilteredEvents) {
+      if (ev.id > cutoff && evalAst(resolved, ev, ctx)) n++;
+    }
+    return n;
+  }, [pausedSrc, unfilteredEvents, filterValid, parsed, pinnedIds]);
 
   const setNewCount = useStore((s) => s.setNewCount);
   useEffect(() => {
