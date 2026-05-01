@@ -49,6 +49,24 @@ export function Tabs() {
     if (renaming != null) renameRef.current?.focus();
   }, [renaming]);
 
+  useEffect(() => {
+    if (menuFor == null) return;
+    const onDocDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest(".tab-menu")) return;
+      setMenuFor(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuFor(null);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuFor]);
+
   const onSelect = (v: View) => {
     setActiveId(v.id);
     setFilter(v.query);
@@ -135,15 +153,17 @@ export function Tabs() {
             )}
             {menuFor === v.id && (
               <div className="tab-menu" onClick={(e) => e.stopPropagation()}>
-                <div
-                  className="tab-menu-item"
-                  onClick={() => {
-                    setRenaming(v.id);
-                    setMenuFor(null);
-                  }}
-                >
-                  Rename
-                </div>
+                {v.id !== 1 && (
+                  <div
+                    className="tab-menu-item"
+                    onClick={() => {
+                      setRenaming(v.id);
+                      setMenuFor(null);
+                    }}
+                  >
+                    Rename
+                  </div>
+                )}
                 <div className="tab-menu-item" onClick={() => onDuplicate(v)}>
                   Duplicate
                 </div>
