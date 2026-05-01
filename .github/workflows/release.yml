@@ -88,6 +88,9 @@ jobs:
           workspaces: . -> target
           key: aarch64-apple-darwin
 
+      - name: Install sccache + lld
+        run: brew install sccache lld
+
       - name: Import Apple cert
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
