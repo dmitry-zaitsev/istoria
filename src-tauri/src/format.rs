@@ -119,19 +119,33 @@ fn event_from_plain(id: u64, source: &str, branch: &str, raw: String) -> Event {
     // Keyword first; ANSI color is the fallback signal so that an
     // explicit `INFO` line stays Info even if a timestamp prefix is
     // colored. Only when no keyword matches does the color drive
-    // the verdict (red→Error, yellow→Warn).
+    // the verdict (red→Error, yellow→Warn). Run keyword detection on
+    // the *full* stripped text so a head like "INFO: ..." followed by
+    // an indented "    error: ..." block can still be promoted.
     let level = infer_level_keyword(&stripped)
         .or_else(|| detect_ansi_level(&raw))
         .unwrap_or(Level::Info);
+    // `msg` is the row-level summary; coalesced groups carry the
+    // continuation text in `raw` and the Inspector's Raw tab. Keep
+    // `msg` to the first line so the stream view doesn't render a
+    // half-frame of stack trace.
+    let msg = first_line(&stripped);
     Event {
         id,
         ts: now_unix_ms(),
         source: source.to_string(),
         branch: branch.to_string(),
         level,
-        msg: stripped,
+        msg,
         raw,
         fields: None,
+    }
+}
+
+fn first_line(s: &str) -> String {
+    match s.find('\n') {
+        Some(i) => s[..i].trim_end_matches('\r').to_string(),
+        None => s.to_string(),
     }
 }
 
@@ -514,6 +528,19 @@ mod tests {
             "main",
             r#"{"msg":"Exception in thread main"}"#.to_string(),
         );
+        assert_eq!(ev.level, Level::Error);
+    }
+
+    #[test]
+    fn plain_multiline_msg_is_first_line() {
+        let mut d = Detector::new();
+        let raw = "INFO: task running\n    Exception: boom\n    at foo".to_string();
+        let ev = d.parse(1, "src", "main", raw);
+        // First line drives the row-level msg; continuations live in raw.
+        assert_eq!(ev.msg, "INFO: task running");
+        assert!(ev.raw.contains("Exception"));
+        // Level is inferred from full stripped text — `Exception`
+        // upgrades the head-level `INFO` to Error.
         assert_eq!(ev.level, Level::Error);
     }
 

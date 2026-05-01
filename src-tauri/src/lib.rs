@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod cli;
+pub mod coalesce;
 pub mod code;
 pub mod event;
 pub mod format;
@@ -15,6 +16,7 @@ pub mod ring;
 pub mod socket;
 pub mod source;
 pub mod state;
+pub mod transformers;
 pub mod update;
 
 use std::io::IsTerminal;

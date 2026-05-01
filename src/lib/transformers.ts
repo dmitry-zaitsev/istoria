@@ -1,4 +1,5 @@
 import type { Level, LogEvent } from "./ipc";
+import rulesJson from "../../transformer_rules.json";
 
 export interface TransformerOutput {
   source?: string;
@@ -21,154 +22,10 @@ export interface TransformerRule {
   output: TransformerOutput;
 }
 
-export const BUILTIN_TRANSFORMERS: TransformerRule[] = [
-  // === Format-specific structured loggers (specific → fall through) ===
-  {
-    id: "k8s-klog",
-    name: "Kubernetes klog",
-    order: 5,
-    // I0114 10:30:45.123456    1 file.go:123] message
-    pattern:
-      "^(?<lvl>[IWEF])(?<mmdd>\\d{4})\\s+(?<time>\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+(?<thread>\\d+)\\s+(?<file>\\S+)\\]\\s+(?<body>.*)$",
-    output: {
-      level: "${lvl}",
-      msg: "${body}",
-      fields: { file: "${file}", thread: "${thread}" },
-    },
-  },
-  {
-    id: "java-log4j",
-    name: "Java log4j/logback",
-    order: 6,
-    // 2024-01-15 10:30:45,123 INFO  [main] com.example.Foo - message
-    pattern:
-      "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}[.,]\\d+)\\s+(?<lvl>TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL)\\s+\\[(?<thread>[^\\]]+)\\]\\s+(?<logger>\\S+)\\s+-\\s+(?<body>.*)$",
-    output: {
-      level: "${lvl}",
-      msg: "${body}",
-      source: "${logger}",
-      fields: { thread: "${thread}" },
-    },
-  },
-  {
-    id: "python-logging",
-    name: "Python logging",
-    order: 7,
-    // 2024-01-15 10:30:45,123 - module.name - INFO - message
-    pattern:
-      "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}[.,]\\d+)\\s+-\\s+(?<logger>\\S+)\\s+-\\s+(?<lvl>DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\\s+-\\s+(?<body>.*)$",
-    output: {
-      level: "${lvl}",
-      msg: "${body}",
-      source: "${logger}",
-    },
-  },
-  {
-    id: "android-logcat",
-    name: "Android logcat",
-    order: 8,
-    // D/TAG    ( 1234): message
-    pattern:
-      "^(?<lvl>[VDIWEF])/(?<tag>[^\\s\\(]+)\\s*\\(\\s*(?<pid>\\d+)\\):\\s*(?<body>.*)$",
-    output: {
-      level: "${lvl}",
-      msg: "${body}",
-      fields: { tag: "${tag}", pid: "${pid}" },
-    },
-  },
-  {
-    id: "ios-nslog",
-    name: "iOS NSLog/os_log",
-    order: 9,
-    // 2024-01-15 10:30:45.123 MyApp[1234:5678] message
-    pattern:
-      "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+(?<proc>\\S+)\\[(?<pid>\\d+):(?<tid>[0-9a-fx]+)\\]\\s+(?<body>.*)$",
-    output: {
-      source: "${proc}",
-      msg: "${body}",
-      fields: { pid: "${pid}", tid: "${tid}" },
-    },
-  },
-  {
-    id: "rust-tracing",
-    name: "Rust env_logger/tracing",
-    order: 11,
-    // [2024-01-15T10:30:45Z INFO module::path] message
-    pattern:
-      "^\\[(?<timestamp>\\S+)\\s+(?<lvl>TRACE|DEBUG|INFO|WARN|ERROR)\\s+(?<module>\\S+)\\]\\s+(?<body>.*)$",
-    output: {
-      level: "${lvl}",
-      msg: "${body}",
-      source: "${module}",
-    },
-  },
-  {
-    id: "syslog-rfc3164",
-    name: "syslog (RFC3164)",
-    order: 12,
-    // <14>Jan 15 10:30:45 host program[123]: message
-    pattern:
-      "^<(?<pri>\\d+)>(?<timestamp>\\w{3}\\s+\\d+\\s+\\d+:\\d+:\\d+)\\s+(?<host>\\S+)\\s+(?<prog>[^\\[\\s:]+)(?:\\[(?<pid>\\d+)\\])?:\\s+(?<body>.*)$",
-    output: {
-      source: "${prog}",
-      msg: "${body}",
-      fields: { host: "${host}", pid: "${pid}" },
-    },
-  },
-  {
-    id: "docker-cri",
-    name: "Docker/CRI",
-    order: 13,
-    // 2024-01-15T10:30:45.123Z stdout F message
-    pattern:
-      "^(?<timestamp>\\S+)\\s+(?<stream>stdout|stderr)\\s+[FP]\\s+(?<body>.*)$",
-    output: {
-      msg: "${body}",
-      fields: { stream: "${stream}" },
-    },
-  },
-
-  // === Existing prefix-stripping rules (compose with above) ===
-  {
-    id: "turbo",
-    name: "Turbo prefix",
-    order: 14,
-    pattern: "^(?<pkg>@?[\\w./-]+):(?<script>[\\w-]+):\\s?(?<body>.*)$",
-    output: {
-      source: "${pkg}",
-      msg: "${body}",
-      fields: { script: "${script}" },
-    },
-  },
-  {
-    id: "nodemon",
-    name: "Nodemon",
-    order: 15,
-    pattern: "^\\[nodemon\\]\\s+(?<body>.*)$",
-    output: { msg: "${body}", fields: { tag: "nodemon" } },
-  },
-  {
-    id: "level-prefix",
-    name: "Level prefix",
-    order: 20,
-    pattern: "^(?<lvl>INFO|WARN|ERROR|DEBUG|TRACE):\\s+(?<body>.*)$",
-    output: { level: "${lvl}", msg: "${body}" },
-  },
-  {
-    id: "bracket-tag",
-    name: "Bracket tag",
-    order: 30,
-    pattern: "^\\[(?<tag>[^\\]]+)\\]\\s+(?<body>.*)$",
-    output: { msg: "${body}", fields: { tag: "${tag}" } },
-  },
-  {
-    id: "trailing-json",
-    name: "Trailing JSON",
-    order: 40,
-    pattern: "^(?<body>.*?)\\s+(?<json>\\{.*\\})\\s*$",
-    output: { msg: "${body}", merge_fields: "${json}" },
-  },
-];
+// Rules live in transformer_rules.json at the repo root so the Rust
+// coalescer can read the same spec. See transformer_rules.README.md.
+export const BUILTIN_TRANSFORMERS: TransformerRule[] =
+  rulesJson as TransformerRule[];
 
 export interface CompiledRule {
   rule: TransformerRule;

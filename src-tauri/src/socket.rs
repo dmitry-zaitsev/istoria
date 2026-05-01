@@ -5,7 +5,10 @@ use interprocess::local_socket::tokio::{prelude::*, Listener, Stream};
 use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::time::timeout;
 
+use crate::coalesce::Coalescer;
+use crate::event::Event;
 use crate::format::Detector;
 use crate::persistence::Store;
 use crate::ring::Ring;
@@ -114,28 +117,54 @@ async fn handle_forwarder(
     tracing::info!(name = %source_name, branch = %branch, pid = header.pid, "forwarder attached");
 
     let mut detector = Detector::new();
-    let mut line = String::new();
+    let mut coalescer = Coalescer::new();
+    let mut lines = reader.lines();
     loop {
-        line.clear();
-        let n = reader.read_line(&mut line).await?;
-        if n == 0 {
-            break;
+        let read = if coalescer.has_pending() {
+            match timeout(coalescer.idle(), lines.next_line()).await {
+                Ok(r) => r,
+                Err(_) => {
+                    if let Some(ev) = coalescer.flush() {
+                        emit(&ring, &store, ev);
+                    }
+                    continue;
+                }
+            }
+        } else {
+            lines.next_line().await
+        };
+
+        match read {
+            Ok(Some(line)) => {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let ev = detector.parse(0, &source_name, &branch, line);
+                if let Some(out) = coalescer.push(ev) {
+                    emit(&ring, &store, out);
+                }
+            }
+            Ok(None) => {
+                if let Some(ev) = coalescer.flush() {
+                    emit(&ring, &store, ev);
+                }
+                break;
+            }
+            Err(e) => return Err(e),
         }
-        let trimmed = line.trim_end_matches(['\n', '\r']).to_string();
-        if trimmed.trim().is_empty() {
-            continue;
-        }
-        let id = ring.next_id();
-        let ev = detector.parse(id, &source_name, &branch, trimmed);
-        if ev.msg.trim().is_empty() && ev.fields.is_none() {
-            continue;
-        }
-        if let Some(s) = store.as_ref() {
-            s.submit(ev.clone());
-        }
-        ring.push(ev);
     }
     Ok(())
+}
+
+fn emit(ring: &Arc<Ring>, store: &Option<Arc<Store>>, mut ev: Event) {
+    if ev.msg.trim().is_empty() && ev.fields.is_none() && ev.raw.trim().is_empty() {
+        return;
+    }
+    ev.id = ring.next_id();
+    if let Some(s) = store.as_ref() {
+        s.submit(ev.clone());
+    }
+    ring.push(ev);
 }
 
 /// Forwarder mode: connect to owner, send header, pipe stdin → owner.
