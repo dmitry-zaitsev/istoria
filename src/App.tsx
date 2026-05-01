@@ -18,6 +18,7 @@ import { Facets } from "./components/Facets";
 import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Toast } from "./components/Toast";
+import { UpdateBanner } from "./components/UpdateBanner";
 import {
   compileAlerts,
   loadAlerts,
@@ -521,6 +522,7 @@ export default function App() {
   return (
     <div className="win">
       <Toast />
+      <UpdateBanner />
       <Chrome />
       <Tabs />
       <FilterBar

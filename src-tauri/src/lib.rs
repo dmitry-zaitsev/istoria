@@ -15,6 +15,7 @@ pub mod ring;
 pub mod socket;
 pub mod source;
 pub mod state;
+pub mod update;
 
 use std::io::IsTerminal;
 use std::process;
@@ -163,6 +164,7 @@ pub fn run(cli: cli::Cli) {
             ipc::analyze_branch_relevance,
             claude::claude_status,
             claude::codex_status,
+            update::check_for_updates,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

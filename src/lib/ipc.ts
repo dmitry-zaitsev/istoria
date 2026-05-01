@@ -111,6 +111,21 @@ export async function openTerminal(command: string): Promise<void> {
   return invoke("open_terminal", { command });
 }
 
+export type InstallMethod = "homebrew" | "other";
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  hasUpdate: boolean;
+  installMethod: InstallMethod;
+  releaseUrl: string;
+  brewFormula: string;
+}
+
+export async function checkForUpdates(): Promise<UpdateInfo> {
+  return invoke<UpdateInfo>("check_for_updates");
+}
+
 export interface BranchState {
   branch: string;
   head_sha: string;

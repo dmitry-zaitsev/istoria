@@ -1720,6 +1720,94 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* ── Update toast ──────────────────────────────────────────────── */
+.update-toast {
+  position: fixed;
+  bottom: 44px;
+  right: 16px;
+  z-index: 1100;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 14px 12px 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 32px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(78, 168, 224, 0.06);
+  font-family: var(--ui);
+  animation: update-toast-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes update-toast-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.update-toast-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--brand-100), var(--brand-50));
+  color: var(--brand-700);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.update-toast-text {
+  min-width: 0;
+  line-height: 1.3;
+}
+.update-toast-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.update-toast-version {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--brand-700);
+  font-weight: 600;
+}
+.update-toast-cta {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  background: var(--brand);
+  border: 1px solid var(--brand-600);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 1px 3px rgba(46, 143, 204, 0.35);
+  transition: background 0.12s ease;
+}
+.update-toast-cta:hover { background: var(--brand-600); }
+.update-toast-cta:active { transform: translateY(0.5px); }
+.update-toast-dismiss {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--muted-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.update-toast-dismiss:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+
 /* ── Status bar ────────────────────────────────────────────────── */
 .status {
   height: 26px;
