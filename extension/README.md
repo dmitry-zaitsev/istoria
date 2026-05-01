@@ -1,32 +1,62 @@
 # istoria browser logs (Chrome extension)
 
-Chrome MV3 extension that streams console + network events from the active tab into the local istoria desktop app via its HTTP ingest endpoint.
+Chrome MV3 extension that streams console + network events from every tab
+into the local istoria desktop app via its HTTP ingest endpoint at
+`http://127.0.0.1:9787/ingest`.
 
 ## Install (dev)
 
-1. Run istoria once so the daemon writes its token + port:
-   - Token: `~/Library/Application Support/istoria/http.token`
-   - Port: `~/Library/Application Support/istoria/http.port` (default `9787`)
-2. Visit `chrome://extensions`, toggle **Developer mode** (top right).
-3. Click **Load unpacked** and pick this `extension/` directory.
-4. Click the extension icon, paste the token, confirm port, hit **Save**.
-5. Open any page, click the icon again, hit **Start capture**.
-
-A yellow Chrome banner appears while the debugger is attached — that is unavoidable for `chrome.debugger`-based capture.
+1. Run istoria desktop once so the daemon is listening on `127.0.0.1:9787`.
+2. `cd extension && npm install && npm run build` — produces `dist/`.
+3. Open `chrome://extensions`, toggle **Developer mode** (top right).
+4. Click **Load unpacked** and pick the `dist/` directory.
+5. Capture starts automatically on every tab. Click the toolbar icon to
+   see live status.
 
 ## What gets sent
 
-Each captured tab produces two istoria sources:
+Each tab produces two istoria sources:
 
-- `chrome:<tab-title>` — `console.*`, uncaught exceptions, `Log.entryAdded`.
+- `chrome:<tab-title>` — `console.*`, uncaught exceptions.
 - `chrome:<tab-title>:net` — request / response / failure events.
 
-Events are buffered and POSTed in batches every 250ms or 50 events.
+Events are buffered and POSTed in batches every 250 ms or 50 events. Only
+metadata is sent (URL, method, status, timing, console message text) —
+never request or response bodies.
+
+## Build
+
+```
+npm run build
+```
+
+Outputs:
+
+- `extension/dist/` — unpacked extension (load this in dev mode).
+- `dist/istoria-extension-<version>.zip` (sibling of `extension/`) —
+  ready to upload to the Chrome Web Store.
+
+## Icon
+
+Shares the istoria desktop app icon. Source:
+`src-tauri/icons/source.svg`. Re-rasterize after changes:
+
+```
+for s in 16 32 48 128; do
+  rsvg-convert -w $s -h $s ../src-tauri/icons/source.svg \
+    -o src/icons/icon$s.png
+done
+```
 
 ## Publish (Chrome Web Store)
 
-See the `Part 3 — Publishing` section in the design doc for the full release checklist. Quick version:
-
-1. Bump `version` in `manifest.json`.
-2. `cd extension && zip -r ../istoria-extension.zip . -x "*.DS_Store"`.
-3. Upload to Chrome Web Store dev console; fill privacy policy and permission justifications (`debugger` requires both).
+1. Bump `version` in **both** `manifest.json` and `package.json` to the
+   same value.
+2. `npm run build`.
+3. Upload `../dist/istoria-extension-<version>.zip` in the
+   [Chrome Web Store dev console](https://chrome.google.com/webstore/devconsole).
+4. Paste listing copy + permission justifications from
+   [`CHROME_STORE.md`](CHROME_STORE.md).
+5. Host [`PRIVACY.md`](PRIVACY.md) at a public URL and paste it under
+   "Privacy policy".
+6. Submit for review.
