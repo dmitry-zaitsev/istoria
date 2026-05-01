@@ -110,3 +110,23 @@ export async function mcpPort(): Promise<number> {
 export async function openTerminal(command: string): Promise<void> {
   return invoke("open_terminal", { command });
 }
+
+export interface BranchState {
+  branch: string;
+  head_sha: string;
+  has_uncommitted: boolean;
+  default_branch: string;
+}
+
+export interface RelevanceAnalysis {
+  regexes: string[];
+  branch_state: BranchState;
+}
+
+export async function branchState(): Promise<BranchState> {
+  return invoke<BranchState>("branch_state");
+}
+
+export async function analyzeBranchRelevance(): Promise<RelevanceAnalysis> {
+  return invoke<RelevanceAnalysis>("analyze_branch_relevance");
+}

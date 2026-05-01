@@ -1,9 +1,11 @@
 use serde::Serialize;
 
+use crate::claude;
 use crate::code::{self, CodeLine, EditorEntry, EmissionSite};
 use crate::event::Event;
 use crate::pins;
 use crate::query::{self, Ast};
+use crate::relevance::{self, BranchState, RelevanceAnalysis};
 use crate::state::AppState;
 
 #[derive(Clone, Debug, Serialize)]
@@ -142,6 +144,35 @@ pub async fn open_url(url: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn branch_state(
+    state: tauri::State<'_, AppState>,
+) -> Result<BranchState, String> {
+    let root = project_root_or_err(&state)?;
+    let cache = std::sync::Arc::clone(&state.code_cache);
+    relevance::branch_state(root, &cache)
+}
+
+#[tauri::command]
+pub async fn analyze_branch_relevance(
+    state: tauri::State<'_, AppState>,
+) -> Result<RelevanceAnalysis, String> {
+    let root = project_root_or_err(&state)?.to_path_buf();
+    let cache = std::sync::Arc::clone(&state.code_cache);
+    let claude_status = claude::detect();
+    let claude_path = claude_status
+        .path
+        .ok_or_else(|| "claude code not installed".to_string())?;
+    // Move heavy work (git + claude subprocess) off the tauri command
+    // worker so the UI stays responsive while analysis runs.
+    tauri::async_runtime::spawn_blocking(move || {
+        let bs = relevance::branch_state(&root, &cache)?;
+        relevance::analyze(&root, &claude_path, &bs)
+    })
+    .await
+    .map_err(|e| format!("analysis task panicked: {e}"))?
 }
 
 #[tauri::command]

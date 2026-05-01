@@ -10,6 +10,7 @@ pub mod mcp;
 pub mod persistence;
 pub mod pins;
 pub mod query;
+pub mod relevance;
 pub mod ring;
 pub mod socket;
 pub mod source;
@@ -158,6 +159,8 @@ pub fn run(cli: cli::Cli) {
             ipc::clear_session,
             ipc::mcp_port,
             ipc::open_terminal,
+            ipc::branch_state,
+            ipc::analyze_branch_relevance,
             claude::claude_status,
             claude::codex_status,
         ])

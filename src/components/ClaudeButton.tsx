@@ -17,6 +17,9 @@ type Mode = "closed" | "connect" | "panel";
 export function ClaudeButton() {
   const connected = useStore((s) => s.claudeConnected);
   const setConnected = useStore((s) => s.setClaudeConnected);
+  const relevance = useStore((s) => s.relevance);
+  const relevanceStale = useStore((s) => s.relevanceStale);
+  const analyzing = useStore((s) => s.relevanceAnalyzing);
   const [probe, setProbe] = useState<Probe>({ state: "loading" });
   const [mode, setMode] = useState<Mode>("closed");
 
@@ -26,7 +29,6 @@ export function ClaudeButton() {
       .then((s) => {
         if (cancelled) return;
         setProbe(s.installed ? { state: "ready" } : { state: "missing" });
-        // Auto-disconnect if Claude Code disappeared since last run.
         if (!s.installed && useStore.getState().claudeConnected) {
           useStore.getState().setClaudeConnected(false);
         }
@@ -53,9 +55,23 @@ export function ClaudeButton() {
       ? "Checking Claude Code…"
       : probe.state === "missing"
         ? "Claude Code not installed — click to learn more"
-        : connected
-          ? "AI — MCP & agent setup"
-          : "Connect Claude Code for advanced analysis";
+        : !connected
+          ? "Connect Claude Code for advanced analysis"
+          : analyzing
+            ? "Analyzing branch…"
+            : relevanceStale
+              ? "Branch changed — re-run analysis"
+              : relevance
+                ? `AI · ${relevance.regexes.length} relevance pattern${
+                    relevance.regexes.length === 1 ? "" : "s"
+                  }`
+                : "AI — MCP & branch relevance";
+
+  // Orange dot signals: branch drifted since last analysis, OR connected
+  // but no analysis run yet. Hidden while a run is in flight (the
+  // breathing animation already says "busy").
+  const showDot =
+    connected && !analyzing && (relevanceStale || !relevance);
 
   const handleClick = () => {
     setMode(connected ? "panel" : "connect");
@@ -75,13 +91,16 @@ export function ClaudeButton() {
     <>
       <button
         type="button"
-        className={`icon-btn tabs-claude-btn${connected ? " on" : ""}`}
+        className={`icon-btn tabs-claude-btn${connected ? " on" : ""}${
+          analyzing ? " analyzing" : ""
+        }`}
         onClick={handleClick}
         title={tooltip}
         aria-label="AI integration"
         aria-pressed={connected}
       >
         <SparkleIcon />
+        {showDot && <span className="claude-dot" aria-hidden="true" />}
       </button>
       {mode === "connect" && (
         <ConnectDialog
@@ -100,13 +119,13 @@ export function ClaudeButton() {
   );
 }
 
-interface DialogProps {
+interface ConnectDialogProps {
   probe: Probe;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-function ConnectDialog({ probe, onClose, onConfirm }: DialogProps) {
+function ConnectDialog({ probe, onClose, onConfirm }: ConnectDialogProps) {
   const missing = probe.state === "missing";
   const loading = probe.state === "loading";
   return (
@@ -126,11 +145,10 @@ function ConnectDialog({ probe, onClose, onConfirm }: DialogProps) {
                 to unlock:
               </p>
               <ul className="claude-dialog-list">
+                <li>Highlight log entries relevant to the current branch</li>
                 <li>Summarize errors and recurring patterns</li>
                 <li>Explain stack traces in plain English</li>
                 <li>Translate plain English into filters</li>
-                <li>Spot anomalies and traffic spikes</li>
-                <li>Root-cause across multiple sources</li>
               </ul>
               <p className="claude-dialog-muted">
                 Install Claude Code, then reopen this dialog.
@@ -141,11 +159,10 @@ function ConnectDialog({ probe, onClose, onConfirm }: DialogProps) {
             <>
               <p>Connect your local Claude Code to unlock:</p>
               <ul className="claude-dialog-list">
+                <li>Highlight log entries relevant to the current branch</li>
                 <li>Summarize errors and recurring patterns</li>
                 <li>Explain stack traces in plain English</li>
                 <li>Translate plain English into filters</li>
-                <li>Spot anomalies and traffic spikes</li>
-                <li>Root-cause across multiple sources</li>
               </ul>
             </>
           )}

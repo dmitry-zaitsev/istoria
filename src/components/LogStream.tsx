@@ -17,6 +17,7 @@ interface LogStreamProps {
   fieldColumns: FieldColumn[];
   highlightTerms: HighlightTerm[];
   alertMatches: Map<number, string[]>;
+  relevanceRe: RegExp | null;
 }
 
 const ROW_PX = 26;
@@ -36,6 +37,7 @@ export function LogStream({
   fieldColumns,
   highlightTerms,
   alertMatches,
+  relevanceRe,
 }: LogStreamProps) {
   const selectedSet = new Set(selectedIds);
   const alerts = useStore((s) => s.alerts);
@@ -285,13 +287,18 @@ export function LogStream({
             matchedIds && matchedIds.length > 0
               ? alertColorById.get(matchedIds[0]!)
               : undefined;
+          const isRelevant =
+            relevanceRe != null &&
+            (relevanceRe.test(ev.msg) || relevanceRe.test(ev.raw));
           return (
             <div
               key={ev.id}
               data-row-id={ev.id}
               className={`logrow lvl-${cls}${isSel ? " sel" : ""}${
                 isPrimary ? " primary" : ""
-              }${isPinned ? " pinned" : ""}${alertColor ? ` alert-${alertColor}` : ""}`}
+              }${isPinned ? " pinned" : ""}${alertColor ? ` alert-${alertColor}` : ""}${
+                isRelevant ? " relevant" : ""
+              }`}
               style={{
                 position: "absolute",
                 top: 0,

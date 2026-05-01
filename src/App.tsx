@@ -25,6 +25,7 @@ import {
   MIN_DEBOUNCE_MS,
 } from "./lib/alerts";
 import {
+  branchState,
   listPins,
   queryRecent,
   subscribeEvents,
@@ -58,6 +59,8 @@ export default function App() {
   const setScrollTarget = useStore((s) => s.setScrollTarget);
   const alerts = useStore((s) => s.alerts);
   const setAlerts = useStore((s) => s.setAlerts);
+  const relevance = useStore((s) => s.relevance);
+  const setRelevanceStale = useStore((s) => s.setRelevanceStale);
 
   // When inspector opens (selectedId transitions null → non-null), scroll
   // the row into view above the inspector overlay so it's not occluded.
@@ -117,6 +120,39 @@ export default function App() {
     [parsed, filterValid],
   );
 
+  // Compile the relevance regex list into a single OR-joined RegExp so
+  // each row only pays one .test() call. Patterns are wrapped in `(?:..)`
+  // to keep alternation safe even when individual patterns contain
+  // top-level alternatives. Strip `/.../flags` wrappers if Claude
+  // returned them despite the prompt. Invalid patterns are dropped
+  // with a console warning so the cause is visible in devtools.
+  const relevanceRe = useMemo(() => {
+    if (!relevance || relevance.regexes.length === 0) return null;
+    const safe: string[] = [];
+    for (const raw of relevance.regexes) {
+      const normalized = stripRegexWrapper(raw);
+      try {
+        new RegExp(normalized);
+        safe.push(`(?:${normalized})`);
+      } catch (e) {
+        console.warn("relevance: dropped invalid regex", raw, e);
+      }
+    }
+    if (safe.length === 0) {
+      console.warn(
+        "relevance: all patterns were invalid; nothing will match",
+        relevance.regexes,
+      );
+      return null;
+    }
+    try {
+      return new RegExp(safe.join("|"), "i");
+    } catch (e) {
+      console.warn("relevance: failed to compile combined regex", safe, e);
+      return null;
+    }
+  }, [relevance]);
+
   // Facets only respect the ts: bounds (if any), not the full query —
   // so changing a level filter doesn't shrink the source list to one
   // value. If no ts bounds are set, all events are visible.
@@ -133,16 +169,17 @@ export default function App() {
   );
   const suggestKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
-    return [
+    const base = [
       "msg",
       "raw",
       "ts",
       "pinned",
       "stack",
       "hasStackTrace",
-      ...groups.map((g) => g.key),
     ];
-  }, [tsScopedEvents]);
+    if (relevance) base.push("relevant");
+    return [...base, ...groups.map((g) => g.key)];
+  }, [tsScopedEvents, relevance]);
   const suggestValuesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
     const groups = computeFacets(tsScopedEvents);
@@ -155,8 +192,9 @@ export default function App() {
     m.set("pinned", ["true", "false"]);
     m.set("stack", ["true", "false"]);
     m.set("hasStackTrace", ["true", "false"]);
+    if (relevance) m.set("relevant", ["true", "false"]);
     return m;
-  }, [tsScopedEvents]);
+  }, [tsScopedEvents, relevance]);
 
   const sources = useMemo(() => {
     const seen = new Set<string>();
@@ -261,6 +299,60 @@ export default function App() {
       unlisten?.();
     };
   }, []);
+
+  // Whenever the window regains focus, re-probe the project's git
+  // state. If HEAD or the working-tree dirty flag differs from what
+  // we analyzed against, mark the relevance result as stale so the
+  // Claude button can prompt for a re-run. Skipped silently when no
+  // analysis is stored (nothing to compare against) or when git is
+  // unavailable for the project root.
+  useEffect(() => {
+    if (!relevance) return;
+    let cancelled = false;
+    // Only toast on the first focus that observes a change — repeated
+    // focus events while the user is reading shouldn't keep nagging.
+    let toastedForThisAnalysis = useStore.getState().relevanceStale;
+    const check = () => {
+      branchState()
+        .then((bs) => {
+          if (cancelled || !relevance) return;
+          const stored = relevance.branch_state;
+          const changed =
+            bs.head_sha !== stored.head_sha ||
+            bs.has_uncommitted !== stored.has_uncommitted ||
+            bs.branch !== stored.branch;
+          if (changed) {
+            setRelevanceStale(true);
+            if (!toastedForThisAnalysis) {
+              toastedForThisAnalysis = true;
+              toast("Branch changed — re-run Claude analysis to refresh");
+            }
+          }
+        })
+        .catch(() => {
+          // git unavailable / not a repo — leave stale flag alone
+        });
+    };
+    let unlisten: (() => void) | undefined;
+    getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        if (focused) check();
+      })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch(() => {
+        // not running under Tauri (e.g. vite preview) — skip
+      });
+    // Also probe once on mount in case the user opened istoria from
+    // a different branch than the one stored in localStorage.
+    check();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [relevance, setRelevanceStale]);
 
   // Compile alert queries once per alerts change, then derive matches
   // for displayed (downstream) events. Map: event.id → alertId[].
@@ -383,10 +475,10 @@ export default function App() {
     // Resolve aggregation functions (\`percentile(N)\`) against the
     // current event set before walking the AST per row.
     const resolved = resolveAst(parsed as Ast, sourceEvents);
-    const ctx = { pinnedIds };
+    const ctx = { pinnedIds, relevanceRe };
     const filtered = sourceEvents.filter((ev) => evalAst(resolved, ev, ctx));
     return applySort(filtered, sort);
-  }, [sourceEvents, parsed, filterValid, sort, pinnedIds]);
+  }, [sourceEvents, parsed, filterValid, sort, pinnedIds, relevanceRe]);
 
   useEffect(() => {
     setEvents(displayedEvents);
@@ -405,13 +497,13 @@ export default function App() {
       return n;
     }
     const resolved = resolveAst(parsed as Ast, unfilteredEvents);
-    const ctx = { pinnedIds };
+    const ctx = { pinnedIds, relevanceRe };
     let n = 0;
     for (const ev of unfilteredEvents) {
       if (ev.id > cutoff && evalAst(resolved, ev, ctx)) n++;
     }
     return n;
-  }, [pausedSrc, unfilteredEvents, filterValid, parsed, pinnedIds]);
+  }, [pausedSrc, unfilteredEvents, filterValid, parsed, pinnedIds, relevanceRe]);
 
   const setNewCount = useStore((s) => s.setNewCount);
   useEffect(() => {
@@ -482,6 +574,7 @@ export default function App() {
             fieldColumns={fieldColumns}
             highlightTerms={highlightTerms}
             alertMatches={alertMatches}
+            relevanceRe={relevanceRe}
           />
           {selected && (
             <Inspector
@@ -501,6 +594,15 @@ export default function App() {
       />
     </div>
   );
+}
+
+/// Claude is asked NOT to wrap regexes in `/.../flags`, but sometimes
+/// does anyway. Strip the surrounding slashes (and any trailing flag
+/// letters) so `new RegExp(p)` doesn't choke. Leaves a non-wrapped
+/// pattern untouched.
+function stripRegexWrapper(p: string): string {
+  const m = p.match(/^\/(.+)\/([gimsuy]*)$/s);
+  return m ? m[1]! : p;
 }
 
 function collectTsBounds(ast: Ast): { lo: number; hi: number } {

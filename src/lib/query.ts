@@ -185,6 +185,10 @@ function parseAtom(c: Cursor): Ast {
   }
   if (key && peek(c) === ":") {
     c.pos++;
+    // Tolerate `key: value` with whitespace after the colon. Common
+    // typing pattern; without this `relevant: true` falls back to two
+    // free-term atoms and the filter silently matches nothing.
+    eatWs(c);
     // numeric cmp?
     const cmp = matchCmpOp(c);
     if (cmp) {
@@ -399,6 +403,9 @@ function wildcardToRegex(glob: string): RegExp {
 /// (e.g. `pinned` reads the user's pin set, not a field on the row).
 export interface EvalCtx {
   pinnedIds?: Set<number>;
+  /// Single OR-joined regex compiled from the relevance regex list.
+  /// `relevant:true` matches when this regex hits ev.msg or ev.raw.
+  relevanceRe?: RegExp | null;
 }
 
 const STACK_KEYS = ["stack", "stacktrace", "stack_trace", "trace"];
@@ -425,6 +432,11 @@ function lookup(ev: LogEvent, key: string, ctx?: EvalCtx): unknown {
   if (key === "id") return ev.id;
   if (key === "pinned") return ctx?.pinnedIds?.has(ev.id) ?? false;
   if (key === "hasStackTrace" || key === "stack") return hasStackTrace(ev);
+  if (key === "relevant") {
+    const re = ctx?.relevanceRe;
+    if (!re) return false;
+    return re.test(ev.msg) || re.test(ev.raw);
+  }
   let cur: unknown = ev.fields;
   for (const part of key.split(".")) {
     if (cur && typeof cur === "object") {

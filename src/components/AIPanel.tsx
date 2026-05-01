@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
+  analyzeBranchRelevance,
   claudeStatus,
   codexStatus,
   mcpPort,
@@ -8,6 +9,7 @@ import {
   type ClaudeStatus,
 } from "../lib/ipc";
 import { toast } from "../lib/toast";
+import { useStore } from "../store";
 import { SparkleIcon } from "./SparkleIcon";
 
 interface Props {
@@ -23,6 +25,11 @@ interface AgentState {
 export function AIPanel({ onClose, onDisconnect }: Props) {
   const [port, setPort] = useState<number | null>(null);
   const [agents, setAgents] = useState<AgentState | null>(null);
+  const relevance = useStore((s) => s.relevance);
+  const setRelevance = useStore((s) => s.setRelevance);
+  const relevanceStale = useStore((s) => s.relevanceStale);
+  const analyzing = useStore((s) => s.relevanceAnalyzing);
+  const setAnalyzing = useStore((s) => s.setRelevanceAnalyzing);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +90,30 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
   const codexInstalled = !!agents?.codex?.installed;
   const anyInstalled = claudeInstalled || codexInstalled;
 
+  const runAnalyze = async () => {
+    if (analyzing) return;
+    setAnalyzing(true);
+    try {
+      const result = await analyzeBranchRelevance();
+      setRelevance(result);
+      const n = result.regexes.length;
+      toast(
+        n === 0
+          ? "Branch analysis: no relevant log patterns found"
+          : `Branch analysis: ${n} pattern${n === 1 ? "" : "s"} marked relevant`,
+      );
+    } catch (e) {
+      toast(`Branch analysis failed: ${String(e)}`);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const clearAnalysis = () => setRelevance(null);
+
+  // Relevance section is gated on Claude — Codex doesn't run our prompt.
+  const relevanceAvailable = claudeInstalled;
+
   return (
     <div className="palette-overlay" onClick={onClose}>
       <div
@@ -97,18 +128,22 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
           <section className="ai-section">
             <h4 className="ai-section-title">MCP server</h4>
             <p>
-              Local agents like Claude Code and Codex can query your logs via
-              MCP.
+              Local agents like Claude Code and Codex can query your logs
+              over MCP.
             </p>
-            <p className="claude-dialog-muted">
+            <div className="ai-status-row">
               {url ? (
                 <>
-                  Running on <code>{url}</code>
+                  <span className="ai-status-dot ok" aria-hidden="true" />
+                  <code className="ai-mono">{url}</code>
                 </>
               ) : (
-                <>Starting…</>
+                <>
+                  <span className="ai-status-dot" aria-hidden="true" />
+                  <span className="claude-dialog-muted">Starting…</span>
+                </>
               )}
-            </p>
+            </div>
           </section>
 
           <section className="ai-section">
@@ -117,8 +152,8 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
               <p className="claude-dialog-muted">Detecting agents…</p>
             ) : !anyInstalled ? (
               <p className="claude-dialog-muted">
-                No supported agents detected on this machine. Install Claude
-                Code or Codex, then reopen this panel.
+                No supported agents detected. Install Claude Code or Codex,
+                then reopen this panel.
               </p>
             ) : (
               <div className="ai-actions">
@@ -144,6 +179,27 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
               </div>
             )}
           </section>
+
+          <section className="ai-section">
+            <h4 className="ai-section-title">Branch relevance</h4>
+            <p>
+              Highlight log entries tied to your current branch's changes,
+              and unlock the <code>relevant:true</code> filter.
+            </p>
+            {!relevanceAvailable ? (
+              <p className="claude-dialog-muted">
+                Requires Claude Code. Install it to enable branch analysis.
+              </p>
+            ) : (
+              <RelevanceBlock
+                analyzing={analyzing}
+                relevance={relevance}
+                stale={relevanceStale}
+                onAnalyze={runAnalyze}
+                onClear={clearAnalysis}
+              />
+            )}
+          </section>
         </div>
         <div className="claude-dialog-actions">
           <button type="button" className="claude-btn ghost" onClick={onClose}>
@@ -159,6 +215,73 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+interface RelevanceBlockProps {
+  analyzing: boolean;
+  relevance: ReturnType<typeof useStore.getState>["relevance"];
+  stale: boolean;
+  onAnalyze: () => void;
+  onClear: () => void;
+}
+
+function RelevanceBlock({
+  analyzing,
+  relevance,
+  stale,
+  onAnalyze,
+  onClear,
+}: RelevanceBlockProps) {
+  const status = analyzing
+    ? "Analyzing — this can take 30–60s"
+    : relevance
+      ? `${relevance.regexes.length} pattern${
+          relevance.regexes.length === 1 ? "" : "s"
+        } · branch ${relevance.branch_state.branch}${stale ? " · branch changed since" : ""}`
+      : "No analysis yet for this branch";
+  const dotClass = analyzing
+    ? "warn"
+    : relevance && !stale
+      ? "ok"
+      : relevance && stale
+        ? "warn"
+        : "";
+  return (
+    <>
+      <div className="ai-status-row">
+        <span className={`ai-status-dot ${dotClass}`} aria-hidden="true" />
+        <span className={relevance ? "" : "claude-dialog-muted"}>
+          {status}
+        </span>
+      </div>
+      <div className="ai-actions">
+        <button
+          type="button"
+          className="claude-btn primary ai-agent-btn"
+          onClick={onAnalyze}
+          disabled={analyzing}
+        >
+          <SparkleIcon />
+          <span>
+            {analyzing
+              ? "Analyzing…"
+              : relevance
+                ? "Re-run analysis"
+                : "Analyze branch"}
+          </span>
+        </button>
+        {relevance && !analyzing && (
+          <button
+            type="button"
+            className="claude-btn ghost"
+            onClick={onClear}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </>
   );
 }
 

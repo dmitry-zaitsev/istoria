@@ -167,6 +167,57 @@ body,
   align-self: center;
   margin-right: 6px;
   margin-left: 4px;
+  position: relative;
+}
+/* Tiny dot signalling either "branch changed since last analysis" or
+   "connected but no analysis yet". Lives on the icon button so it's
+   visible without opening the dialog. */
+.tabs-claude-btn .claude-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 1.5px var(--surface);
+  pointer-events: none;
+}
+/* Active analysis: breathing radial halo + slight icon scale + colour
+   shift on the sparkle. Calmer than a spin — reads as "thinking" not
+   "loading". 1.8s cycle is slow enough not to feel anxious but fast
+   enough to register at a glance. */
+.tabs-claude-btn.analyzing {
+  animation: ai-pulse-bg 1.8s ease-in-out infinite;
+}
+.tabs-claude-btn.analyzing::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 10px;
+  background: radial-gradient(
+    circle,
+    var(--brand) 0%,
+    transparent 65%
+  );
+  pointer-events: none;
+  animation: ai-pulse-halo 1.8s ease-in-out infinite;
+}
+.tabs-claude-btn.analyzing svg {
+  animation: ai-pulse-icon 1.8s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes ai-pulse-bg {
+  0%, 100% { background: var(--brand-50); }
+  50%      { background: var(--brand-100); }
+}
+@keyframes ai-pulse-halo {
+  0%, 100% { opacity: 0.12; transform: scale(0.85); }
+  50%      { opacity: 0.4;  transform: scale(1.18); }
+}
+@keyframes ai-pulse-icon {
+  0%, 100% { transform: scale(1);     color: var(--brand); }
+  50%      { transform: scale(1.14);  color: var(--brand-700); }
 }
 .tabs-drag-fill {
   flex: 1 1 auto;
@@ -1565,27 +1616,69 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .claude-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .ai-panel {
-  width: 480px;
+  width: 460px;
 }
+.ai-panel .claude-dialog-body { padding: 6px 18px 16px; }
 .ai-section {
-  padding: 0 0 12px;
+  padding: 14px 0 12px;
 }
-.ai-section + .ai-section {
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
+.ai-section:first-child { padding-top: 6px; }
+.ai-section + .ai-section { border-top: 1px solid var(--line); }
 .ai-section-title {
   margin: 0 0 6px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--muted);
+}
+.ai-section p { margin: 0 0 8px; }
+.ai-section p:last-child { margin-bottom: 0; }
+.ai-section code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 1px 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--ink-2);
+}
+.ai-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+.ai-status-row .ai-mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 7px;
+  color: var(--ink-2);
+}
+.ai-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  flex-shrink: 0;
+}
+.ai-status-dot.ok {
+  background: var(--ok-fg, #15803d);
+  box-shadow: 0 0 0 3px rgba(15, 122, 74, 0.12);
+}
+.ai-status-dot.warn {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
 }
 .ai-actions {
   display: flex;
   gap: 8px;
-  margin: 6px 0 0;
+  margin: 10px 0 0;
   flex-wrap: wrap;
 }
 .ai-agent-btn {
@@ -1759,6 +1852,17 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .logrow.sel.alert-orange,
 .logrow.sel.alert-blue,
 .logrow.sel.alert-violet { background: var(--brand-50); }
+
+/* ── Branch-relevant rows (Claude-derived) ────────────────────── */
+/* Teal-tinted band so it reads as a separate signal from pin
+   (amber inset) and alerts (red/orange/blue/violet). Lower
+   specificity than alert/sel rules so those still win when both
+   apply. */
+.logrow.relevant {
+  background: linear-gradient(90deg, #ccfbf1 0%, transparent 70%);
+  box-shadow: inset 2px 0 0 #0d9488;
+}
+.logrow.sel.relevant { background: var(--brand-50); }
 
 /* "+ notify" button overlays the right edge of the filter input
    without pushing the input width. Single click creates an alert with

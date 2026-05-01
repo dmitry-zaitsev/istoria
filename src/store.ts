@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Alert } from "./lib/alerts";
-import type { LogEvent } from "./lib/ipc";
+import type { LogEvent, RelevanceAnalysis } from "./lib/ipc";
 import type { View } from "./lib/views";
 
 export const INSPECTOR_MIN = 100;
@@ -93,6 +93,7 @@ export type SortKey = "newest-bottom" | "newest-top";
 
 const SORT_KEY = "sort.v1";
 const CLAUDE_CONNECTED_KEY = "claudeConnected.v1";
+const RELEVANCE_KEY = "relevance.v1";
 
 function loadInitialSort(): SortKey {
   try {
@@ -112,6 +113,25 @@ function loadInitialClaudeConnected(): boolean {
   }
 }
 
+function loadInitialRelevance(): RelevanceAnalysis | null {
+  try {
+    const raw = localStorage.getItem(RELEVANCE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      Array.isArray(parsed.regexes) &&
+      parsed.branch_state &&
+      typeof parsed.branch_state.head_sha === "string"
+    ) {
+      return parsed as RelevanceAnalysis;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 interface Store {
   events: LogEvent[];
   filter: string;
@@ -125,6 +145,14 @@ interface Store {
   newCount: number;
   sort: SortKey;
   claudeConnected: boolean;
+  relevance: RelevanceAnalysis | null;
+  /// True after a window-focus check observed a branch state different
+  /// from the analysis we have stored. Reset to false on re-analyze
+  /// or clear.
+  relevanceStale: boolean;
+  /// While analyze is in flight we disable the trigger to prevent
+  /// double-spawning a Claude subprocess.
+  relevanceAnalyzing: boolean;
   pinnedIds: Set<number>;
   scrollTargetId: number | null;
   alerts: Alert[];
@@ -144,6 +172,9 @@ interface Store {
   setNewCount: (n: number) => void;
   setSort: (sort: SortKey) => void;
   setClaudeConnected: (connected: boolean) => void;
+  setRelevance: (a: RelevanceAnalysis | null) => void;
+  setRelevanceStale: (stale: boolean) => void;
+  setRelevanceAnalyzing: (analyzing: boolean) => void;
   setPinnedIds: (ids: Set<number>) => void;
   togglePinLocal: (id: number) => void;
   setScrollTarget: (id: number | null) => void;
@@ -170,6 +201,9 @@ export const useStore = create<Store>((set) => ({
   newCount: 0,
   sort: loadInitialSort(),
   claudeConnected: loadInitialClaudeConnected(),
+  relevance: loadInitialRelevance(),
+  relevanceStale: false,
+  relevanceAnalyzing: false,
   pinnedIds: new Set<number>(),
   scrollTargetId: null,
   alerts: [],
@@ -214,6 +248,17 @@ export const useStore = create<Store>((set) => ({
     }
     set({ claudeConnected: connected });
   },
+  setRelevance: (a) => {
+    try {
+      if (a) localStorage.setItem(RELEVANCE_KEY, JSON.stringify(a));
+      else localStorage.removeItem(RELEVANCE_KEY);
+    } catch {
+      // ignore
+    }
+    set({ relevance: a, relevanceStale: false });
+  },
+  setRelevanceStale: (stale) => set({ relevanceStale: stale }),
+  setRelevanceAnalyzing: (analyzing) => set({ relevanceAnalyzing: analyzing }),
   setPinnedIds: (pinnedIds) => set({ pinnedIds }),
   togglePinLocal: (id) =>
     set((s) => {
