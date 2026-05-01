@@ -165,7 +165,7 @@ export function Tabs() {
                   </div>
                 )}
                 <div className="tab-menu-item" onClick={() => onDuplicate(v)}>
-                  Duplicate
+                  Save as view
                 </div>
                 {views.length > 1 && v.id !== 1 && (
                   <div
