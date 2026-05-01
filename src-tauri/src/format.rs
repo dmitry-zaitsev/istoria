@@ -33,7 +33,7 @@ impl Detector {
         self.locked
     }
 
-    pub fn parse(&mut self, id: u64, source: &str, raw: String) -> Event {
+    pub fn parse(&mut self, id: u64, source: &str, branch: &str, raw: String) -> Event {
         let try_json = !matches!(self.locked, Some(LineFormat::Plain));
         let parsed: Option<Value> = if try_json {
             serde_json::from_str::<Value>(&raw)
@@ -58,8 +58,8 @@ impl Detector {
         }
 
         match parsed {
-            Some(v) => event_from_json(id, source, raw, v),
-            None => event_from_plain(id, source, raw),
+            Some(v) => event_from_json(id, source, branch, raw, v),
+            None => event_from_plain(id, source, branch, raw),
         }
     }
 }
@@ -70,7 +70,7 @@ impl Default for Detector {
     }
 }
 
-fn event_from_json(id: u64, source: &str, raw: String, v: Value) -> Event {
+fn event_from_json(id: u64, source: &str, branch: &str, raw: String, v: Value) -> Event {
     let obj = v.as_object().expect("filtered to objects above");
     // Try common string-level keys first, then fall back to numeric
     // (Bunyan/Pino encode level as 10/20/30/40/50/60).
@@ -106,6 +106,7 @@ fn event_from_json(id: u64, source: &str, raw: String, v: Value) -> Event {
         id,
         ts: now_unix_ms(),
         source: source.to_string(),
+        branch: branch.to_string(),
         level,
         msg,
         raw,
@@ -113,7 +114,7 @@ fn event_from_json(id: u64, source: &str, raw: String, v: Value) -> Event {
     }
 }
 
-fn event_from_plain(id: u64, source: &str, raw: String) -> Event {
+fn event_from_plain(id: u64, source: &str, branch: &str, raw: String) -> Event {
     let stripped = strip_ansi(&raw);
     // Keyword first; ANSI color is the fallback signal so that an
     // explicit `INFO` line stays Info even if a timestamp prefix is
@@ -126,6 +127,7 @@ fn event_from_plain(id: u64, source: &str, raw: String) -> Event {
         id,
         ts: now_unix_ms(),
         source: source.to_string(),
+        branch: branch.to_string(),
         level,
         msg: stripped,
         raw,
@@ -284,7 +286,7 @@ mod tests {
         let mut d = Detector::new();
         for i in 0..SNIFF_WINDOW {
             let raw = format!("{{\"msg\":\"hi {i}\",\"level\":\"info\"}}");
-            d.parse(i as u64, "test", raw);
+            d.parse(i as u64, "test", "main",raw);
         }
         assert_eq!(d.locked_format(), Some(LineFormat::Json));
     }
@@ -293,7 +295,7 @@ mod tests {
     fn detector_locks_on_plain_when_majority_unparseable() {
         let mut d = Detector::new();
         for i in 0..SNIFF_WINDOW {
-            d.parse(i as u64, "test", format!("plain line {i}"));
+            d.parse(i as u64, "test", "main",format!("plain line {i}"));
         }
         assert_eq!(d.locked_format(), Some(LineFormat::Plain));
     }
@@ -301,7 +303,7 @@ mod tests {
     #[test]
     fn malformed_json_falls_back_to_plain_event() {
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", "{not valid".to_string());
+        let ev = d.parse(1, "src", "main","{not valid".to_string());
         assert!(ev.fields.is_none());
         assert_eq!(ev.msg, "{not valid");
     }
@@ -309,7 +311,7 @@ mod tests {
     #[test]
     fn json_extracts_msg_and_level() {
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", r#"{"level":"error","msg":"boom"}"#.to_string());
+        let ev = d.parse(1, "src", "main",r#"{"level":"error","msg":"boom"}"#.to_string());
         assert_eq!(ev.level, Level::Error);
         assert_eq!(ev.msg, "boom");
         assert!(ev.fields.is_some());
@@ -318,13 +320,13 @@ mod tests {
     #[test]
     fn plain_level_substring_match() {
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", "2026-04-25 ERROR: db down".to_string());
+        let ev = d.parse(1, "src", "main","2026-04-25 ERROR: db down".to_string());
         assert_eq!(ev.level, Level::Error);
-        let ev = d.parse(2, "src", "WARN flaky".to_string());
+        let ev = d.parse(2, "src", "main","WARN flaky".to_string());
         assert_eq!(ev.level, Level::Warn);
-        let ev = d.parse(3, "src", "DEBUG details".to_string());
+        let ev = d.parse(3, "src", "main","DEBUG details".to_string());
         assert_eq!(ev.level, Level::Debug);
-        let ev = d.parse(4, "src", "no markers here".to_string());
+        let ev = d.parse(4, "src", "main","no markers here".to_string());
         assert_eq!(ev.level, Level::Info);
     }
 
@@ -355,7 +357,7 @@ mod tests {
         ];
         for (line, want) in cases {
             let mut d = Detector::new();
-            let ev = d.parse(1, "src", line.to_string());
+            let ev = d.parse(1, "src", "main",line.to_string());
             assert_eq!(ev.level, want, "line: {line}");
         }
     }
@@ -364,19 +366,19 @@ mod tests {
     fn plain_level_uses_ansi_color_when_no_keyword() {
         // Red without any level keyword → Error.
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", "\x1b[31msomething went sideways\x1b[0m".to_string());
+        let ev = d.parse(1, "src", "main","\x1b[31msomething went sideways\x1b[0m".to_string());
         assert_eq!(ev.level, Level::Error);
         // Bright red also counts.
         let mut d = Detector::new();
-        let ev = d.parse(2, "src", "\x1b[91mboom\x1b[0m".to_string());
+        let ev = d.parse(2, "src", "main","\x1b[91mboom\x1b[0m".to_string());
         assert_eq!(ev.level, Level::Error);
         // Yellow → Warn.
         let mut d = Detector::new();
-        let ev = d.parse(3, "src", "\x1b[33mheads up\x1b[0m".to_string());
+        let ev = d.parse(3, "src", "main","\x1b[33mheads up\x1b[0m".to_string());
         assert_eq!(ev.level, Level::Warn);
         // Bold + color (\x1b[1;31m) still detected.
         let mut d = Detector::new();
-        let ev = d.parse(4, "src", "\x1b[1;31mcompile failure\x1b[0m foo".to_string());
+        let ev = d.parse(4, "src", "main","\x1b[1;31mcompile failure\x1b[0m foo".to_string());
         assert_eq!(ev.level, Level::Error);
     }
 
@@ -389,6 +391,7 @@ mod tests {
         let ev = d.parse(
             1,
             "src",
+            "main",
             "\x1b[33m[12:00:00]\x1b[0m INFO startup complete".to_string(),
         );
         assert_eq!(ev.level, Level::Info);
@@ -402,6 +405,7 @@ mod tests {
         let ev = d.parse(
             1,
             "src",
+            "main",
             r#"{"level":"info","msg":"@linear/client:start-client: Error: Port 8080 is already in use"}"#
                 .to_string(),
         );
@@ -411,6 +415,7 @@ mod tests {
         let ev = d.parse(
             2,
             "src",
+            "main",
             r#"{"level":"info","msg":" ELIFECYCLE  Command failed with exit code 1."}"#.to_string(),
         );
         assert_eq!(ev.level, Level::Error);
@@ -422,12 +427,13 @@ mod tests {
         // keyword, and don't upgrade a debug/warn even if msg has
         // "error" in it — the producer made an explicit choice.
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", r#"{"level":"warn","msg":"slowness"}"#.to_string());
+        let ev = d.parse(1, "src", "main",r#"{"level":"warn","msg":"slowness"}"#.to_string());
         assert_eq!(ev.level, Level::Warn);
         let mut d = Detector::new();
         let ev = d.parse(
             2,
             "src",
+            "main",
             r#"{"level":"debug","msg":"Error count: 0"}"#.to_string(),
         );
         assert_eq!(ev.level, Level::Debug);
@@ -442,7 +448,7 @@ mod tests {
         ];
         for (line, want) in cases {
             let mut d = Detector::new();
-            let ev = d.parse(1, "src", line.to_string());
+            let ev = d.parse(1, "src", "main",line.to_string());
             assert_eq!(ev.level, want, "line: {line}");
         }
     }
@@ -462,7 +468,7 @@ mod tests {
         ];
         for line in cases {
             let mut d = Detector::new();
-            let ev = d.parse(1, "src", line.to_string());
+            let ev = d.parse(1, "src", "main",line.to_string());
             assert_eq!(ev.level, Level::Info, "line should not be Error: {line}");
         }
     }
@@ -472,13 +478,13 @@ mod tests {
         // "errors" is plural — `\berror\b` doesn't match, so a clean
         // "0 errors" build summary doesn't get tagged red.
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", "build complete: 0 errors".to_string());
+        let ev = d.parse(1, "src", "main","build complete: 0 errors".to_string());
         assert_eq!(ev.level, Level::Info);
         // "informational" must not trip `\binfo\b` (no other markers,
         // so it lands on the default Info anyway — kept here so a
         // future change to the default doesn't silently swallow this).
         let mut d = Detector::new();
-        let ev = d.parse(2, "src", "Terraform: 0 added, 0 changed.".to_string());
+        let ev = d.parse(2, "src", "main","Terraform: 0 added, 0 changed.".to_string());
         assert_eq!(ev.level, Level::Info);
     }
 
@@ -489,12 +495,13 @@ mod tests {
         let ev = d.parse(
             1,
             "src",
+            "main",
             r#"{"levelname":"ERROR","message":"boom"}"#.to_string(),
         );
         assert_eq!(ev.level, Level::Error);
         // Generic loglevel key
         let mut d = Detector::new();
-        let ev = d.parse(2, "src", r#"{"loglevel":"warn","msg":"x"}"#.to_string());
+        let ev = d.parse(2, "src", "main",r#"{"loglevel":"warn","msg":"x"}"#.to_string());
         assert_eq!(ev.level, Level::Warn);
     }
 
@@ -504,6 +511,7 @@ mod tests {
         let ev = d.parse(
             1,
             "src",
+            "main",
             r#"{"msg":"Exception in thread main"}"#.to_string(),
         );
         assert_eq!(ev.level, Level::Error);
@@ -512,19 +520,19 @@ mod tests {
     #[test]
     fn json_numeric_bunyan_levels() {
         let mut d = Detector::new();
-        let ev = d.parse(1, "src", r#"{"level":50,"msg":"oops"}"#.to_string());
+        let ev = d.parse(1, "src", "main",r#"{"level":50,"msg":"oops"}"#.to_string());
         assert_eq!(ev.level, Level::Error);
         let mut d = Detector::new();
-        let ev = d.parse(2, "src", r#"{"level":40,"msg":"meh"}"#.to_string());
+        let ev = d.parse(2, "src", "main",r#"{"level":40,"msg":"meh"}"#.to_string());
         assert_eq!(ev.level, Level::Warn);
         let mut d = Detector::new();
-        let ev = d.parse(3, "src", r#"{"level":30,"msg":"hi"}"#.to_string());
+        let ev = d.parse(3, "src", "main",r#"{"level":30,"msg":"hi"}"#.to_string());
         assert_eq!(ev.level, Level::Info);
         let mut d = Detector::new();
-        let ev = d.parse(4, "src", r#"{"level":20,"msg":"trace"}"#.to_string());
+        let ev = d.parse(4, "src", "main",r#"{"level":20,"msg":"trace"}"#.to_string());
         assert_eq!(ev.level, Level::Debug);
         let mut d = Detector::new();
-        let ev = d.parse(5, "src", r#"{"level":10,"msg":"trace"}"#.to_string());
+        let ev = d.parse(5, "src", "main",r#"{"level":10,"msg":"trace"}"#.to_string());
         assert_eq!(ev.level, Level::Trace);
     }
 }

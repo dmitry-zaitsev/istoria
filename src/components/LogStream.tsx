@@ -318,6 +318,11 @@ export function LogStream({
                   {ev.source}
                 </span>
               )}
+              {visibility.br && (
+                <span className="br" title={ev.branch}>
+                  {ev.branch}
+                </span>
+              )}
               {fieldColumns.map((fc) => {
                 const v = getValueAtPath(ev.fields, fc.path);
                 const empty = v === undefined || v === null;

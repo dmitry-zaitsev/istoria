@@ -418,6 +418,7 @@ function hasStackTrace(ev: LogEvent): boolean {
 function lookup(ev: LogEvent, key: string, ctx?: EvalCtx): unknown {
   if (key === "level") return ev.level;
   if (key === "source") return ev.source;
+  if (key === "branch") return ev.branch;
   if (key === "msg") return ev.msg;
   if (key === "raw") return ev.raw;
   if (key === "ts" || key === "timestamp") return ev.ts;

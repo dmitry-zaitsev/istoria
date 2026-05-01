@@ -24,11 +24,12 @@ const TOP_N_KEYS = 5;
 const ALL_KEYS_CAP = 50;
 const TOP_N_VALUES = 50;
 // Top-level event fields are mirrored into facet groups
-// (Level / Source) explicitly. Skip them in auto-discovery so they
-// don't show up twice when the JSON payload also carries the value.
+// (Level / Source / Branch) explicitly. Skip them in auto-discovery so
+// they don't show up twice when the JSON payload also carries the value.
 const MIRRORED_KEYS = new Set([
   "level",
   "source",
+  "branch",
   "msg",
   "raw",
   "ts",
@@ -65,6 +66,14 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
   groups.push(group("level", "Level", events, (e) => [e.level]));
   const sourceGroup = group("source", "Source", events, (e) => [e.source]);
   if (sourceGroup.values.length > 1) groups.push(sourceGroup);
+  // Show the Branch group whenever at least one non-empty branch is
+  // present, even when there's only one — branch is identity-level
+  // metadata users want visible, not a "filter only when ambiguous"
+  // facet like Source.
+  const branchGroup = group("branch", "Branch", events, (e) =>
+    e.branch ? [e.branch] : [],
+  );
+  if (branchGroup.values.length > 0) groups.push(branchGroup);
 
   const keyStats = new Map<string, Set<string>>();
   for (const e of events) {

@@ -37,6 +37,7 @@ const BUILTIN_LABELS: Record<ColKey, string> = {
   ts: "time",
   lvl: "level",
   src: "source",
+  br: "branch",
 };
 
 export function ColumnHeader({
@@ -102,7 +103,7 @@ export function ColumnHeader({
 
   const buildPickerEntries = (): PickerEntry[] => {
     const entries: PickerEntry[] = [];
-    for (const k of ["ts", "lvl", "src"] as const) {
+    for (const k of ["ts", "lvl", "src", "br"] as const) {
       entries.push({
         kind: "builtin",
         key: k,
@@ -162,6 +163,16 @@ export function ColumnHeader({
           }
           onHandleDown={startDrag({ kind: "builtin", col: "src" }, widths.src)}
           dragging={isDragging({ kind: "builtin", col: "src" })}
+        />
+      )}
+      {visibility.br && (
+        <ColCell
+          label={BUILTIN_LABELS.br}
+          onLabelClick={(rect) =>
+            setMenu({ kind: "builtin", col: "br", anchor: rect })
+          }
+          onHandleDown={startDrag({ kind: "builtin", col: "br" }, widths.br)}
+          dragging={isDragging({ kind: "builtin", col: "br" })}
         />
       )}
       {fieldColumns.map((fc) => (

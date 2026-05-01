@@ -23,6 +23,7 @@ export function Tabs() {
   const setFilter = useStore((s) => s.setFilter);
   const filter = useStore((s) => s.filter);
   const sources = useStore((s) => s.sources);
+  const branches = useStore((s) => s.branches);
 
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
@@ -185,28 +186,52 @@ export function Tabs() {
             .catch(() => {});
         }}
       />
-      {sources.length > 0 && (
-        <div className="tabs-sources">
-          {sources.map((s) => {
-            const active = isFacetActive(filter, "source", s);
+      {branches.length > 0 ? (
+        <div className="tabs-branches">
+          {branches.map((b) => {
+            const active = isFacetActive(filter, "branch", b);
             return (
               <span
-                key={s}
-                className={`session-tag${active ? " active" : ""}`}
+                key={b}
+                className={`session-tag branch${active ? " active" : ""}`}
                 role="button"
                 title={
                   active
-                    ? `Filtering by source: ${s} (click to remove)`
-                    : `Filter by source: ${s}`
+                    ? `Filtering by branch: ${b} (click to remove)`
+                    : `Filter by branch: ${b}`
                 }
                 style={{ cursor: "pointer" }}
-                onClick={() => setFilter(toggleFacetOr(filter, "source", s))}
+                onClick={() => setFilter(toggleFacetOr(filter, "branch", b))}
               >
-                {s}
+                {b}
               </span>
             );
           })}
         </div>
+      ) : (
+        sources.length > 0 && (
+          <div className="tabs-sources">
+            {sources.map((s) => {
+              const active = isFacetActive(filter, "source", s);
+              return (
+                <span
+                  key={s}
+                  className={`session-tag${active ? " active" : ""}`}
+                  role="button"
+                  title={
+                    active
+                      ? `Filtering by source: ${s} (click to remove)`
+                      : `Filter by source: ${s}`
+                  }
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setFilter(toggleFacetOr(filter, "source", s))}
+                >
+                  {s}
+                </span>
+              );
+            })}
+          </div>
+        )
       )}
       <ClaudeButton />
     </div>

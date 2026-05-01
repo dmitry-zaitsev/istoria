@@ -20,6 +20,11 @@ pub struct ForwarderHeader {
     /// would mean every forwarder picks `pipe-1` independently.
     #[serde(default)]
     pub name_override: Option<String>,
+    /// Branch label (git branch or folder name fallback) of the
+    /// forwarder's cwd. Each forwarder lives in its own working
+    /// directory, so the owner cannot derive this on its own.
+    #[serde(default)]
+    pub branch: String,
     pub pid: i32,
 }
 
@@ -105,7 +110,8 @@ async fn handle_forwarder(
         std::io::Error::new(std::io::ErrorKind::InvalidData, format!("bad header: {e}"))
     })?;
     let source_name = registry.allocate(header.name_override.as_deref());
-    tracing::info!(name = %source_name, pid = header.pid, "forwarder attached");
+    let branch = header.branch.clone();
+    tracing::info!(name = %source_name, branch = %branch, pid = header.pid, "forwarder attached");
 
     let mut detector = Detector::new();
     let mut line = String::new();
@@ -120,7 +126,7 @@ async fn handle_forwarder(
             continue;
         }
         let id = ring.next_id();
-        let ev = detector.parse(id, &source_name, trimmed);
+        let ev = detector.parse(id, &source_name, &branch, trimmed);
         if ev.msg.trim().is_empty() && ev.fields.is_none() {
             continue;
         }
@@ -134,10 +140,15 @@ async fn handle_forwarder(
 
 /// Forwarder mode: connect to owner, send header, pipe stdin → owner.
 /// Returns Ok on graceful EOF.
-pub async fn run_forwarder(stream: Stream, name_override: Option<String>) -> std::io::Result<()> {
+pub async fn run_forwarder(
+    stream: Stream,
+    name_override: Option<String>,
+    branch: String,
+) -> std::io::Result<()> {
     let mut writer = stream;
     let header = ForwarderHeader {
         name_override,
+        branch,
         pid: std::process::id() as i32,
     };
     let mut header_bytes = serde_json::to_vec(&header).map_err(|e| {

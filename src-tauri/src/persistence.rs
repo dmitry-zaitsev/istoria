@@ -10,7 +10,7 @@ use crate::event::{Event, Level};
 
 pub const DB_DIR_NAME: &str = "istoria";
 pub const DB_FILE_NAME: &str = "istoria.db";
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 pub const FLUSH_INTERVAL_MS: u64 = 250;
 pub const FLUSH_BATCH: usize = 1_000;
 
@@ -220,6 +220,28 @@ fn migrate(conn: &Connection) -> duckdb::Result<()> {
             tracing::warn!(error = %e, "v5 alerts.enabled backfill failed");
         }
     }
+
+    if stored < 6 {
+        // Add `branch` to events. Existing rows backfill to '' since
+        // we don't know what branch they came from. NOT NULL because
+        // every new event ships with a branch (empty for HTTP ingest).
+        let has_col: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM information_schema.columns \
+                 WHERE lower(table_name) = 'events' AND lower(column_name) = 'branch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if has_col == 0 {
+            if let Err(e) = conn.execute(
+                "ALTER TABLE events ADD COLUMN branch TEXT DEFAULT ''",
+                [],
+            ) {
+                tracing::warn!(error = %e, "v6 events.branch ALTER failed");
+            }
+        }
+    }
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('user_version', ?)",
         params![SCHEMA_VERSION.to_string()],
@@ -299,6 +321,7 @@ fn flush(conn: &Mutex<Connection>, session_id: i64, buf: &mut Vec<Event>) {
                 ev.msg.as_str(),
                 ev.raw.as_str(),
                 fields_json,
+                ev.branch.as_str(),
             ])?;
         }
         app.flush()?;

@@ -165,9 +165,17 @@ export function Inspector({
     window.addEventListener("mouseup", up);
   };
 
-  const fields =
-    (event.fields as Record<string, unknown> | undefined) ??
-    fieldsFromPlain(event);
+  const fields = (() => {
+    const base =
+      (event.fields as Record<string, unknown> | undefined) ??
+      fieldsFromPlain(event);
+    // Surface top-level event metadata in the JSON view so users can
+    // see (and filter on) `branch` / `source` even when the producer's
+    // payload omits them. JSON payload values win on key conflict.
+    const augmented: Record<string, unknown> = {};
+    if (event.branch) augmented.branch = event.branch;
+    return { ...augmented, ...base };
+  })();
   const fieldsCount = Object.keys(fields).length;
   const lvl = levelClass(event.level);
 
@@ -633,7 +641,7 @@ function findRelated(
 }
 
 function fieldsFromPlain(event: LogEvent): Record<string, unknown> {
-  return {
+  const out: Record<string, unknown> = {
     id: event.id,
     ts: event.ts,
     source: event.source,
@@ -641,6 +649,8 @@ function fieldsFromPlain(event: LogEvent): Record<string, unknown> {
     msg: event.msg,
     raw: event.raw,
   };
+  if (event.branch) out.branch = event.branch;
+  return out;
 }
 
 function levelClass(level: Level): "err" | "warn" | "info" | "dbg" {

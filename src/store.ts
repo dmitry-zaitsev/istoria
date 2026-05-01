@@ -7,7 +7,7 @@ export const INSPECTOR_MIN = 100;
 export const INSPECTOR_MAX = 600;
 export const INSPECTOR_DEFAULT = 320;
 
-export type ColKey = "ts" | "lvl" | "src";
+export type ColKey = "ts" | "lvl" | "src" | "br";
 export type ColumnWidths = Record<ColKey, number>;
 export type ColumnVisibility = Partial<Record<ColKey, boolean>>;
 export interface FieldColumn {
@@ -15,9 +15,9 @@ export interface FieldColumn {
   width: number;
 }
 
-export const COL_MIN: Record<ColKey, number> = { ts: 60, lvl: 44, src: 50 };
-export const COL_MAX: Record<ColKey, number> = { ts: 240, lvl: 140, src: 400 };
-export const COL_DEFAULTS: ColumnWidths = { ts: 92, lvl: 64, src: 80 };
+export const COL_MIN: Record<ColKey, number> = { ts: 60, lvl: 44, src: 50, br: 50 };
+export const COL_MAX: Record<ColKey, number> = { ts: 240, lvl: 140, src: 400, br: 400 };
+export const COL_DEFAULTS: ColumnWidths = { ts: 92, lvl: 64, src: 80, br: 100 };
 
 export const FIELD_COL_MIN = 40;
 export const FIELD_COL_MAX = 600;
@@ -33,7 +33,7 @@ function loadInitialCols(): ColumnWidths {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<ColumnWidths>;
       const out: ColumnWidths = { ...COL_DEFAULTS };
-      for (const k of ["ts", "lvl", "src"] as const) {
+      for (const k of ["ts", "lvl", "src", "br"] as const) {
         const v = parsed[k];
         if (typeof v === "number" && Number.isFinite(v)) {
           out[k] = Math.min(COL_MAX[k], Math.max(COL_MIN[k], v));
@@ -53,7 +53,7 @@ function loadInitialVisibility(): ColumnVisibility {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as ColumnVisibility;
     const out: ColumnVisibility = {};
-    for (const k of ["ts", "lvl", "src"] as const) {
+    for (const k of ["ts", "lvl", "src", "br"] as const) {
       const v = parsed[k];
       if (typeof v === "boolean") out[k] = v;
     }
@@ -129,6 +129,7 @@ interface Store {
   scrollTargetId: number | null;
   alerts: Alert[];
   sources: string[];
+  branches: string[];
   columnWidths: ColumnWidths;
   columnVisibility: ColumnVisibility;
   fieldColumns: FieldColumn[];
@@ -148,6 +149,7 @@ interface Store {
   setScrollTarget: (id: number | null) => void;
   setAlerts: (alerts: Alert[]) => void;
   setSources: (sources: string[]) => void;
+  setBranches: (branches: string[]) => void;
   setColumnWidth: (col: ColKey, w: number) => void;
   setColumnVisible: (col: ColKey, visible: boolean) => void;
   resetColumnVisibility: (col: ColKey) => void;
@@ -172,6 +174,7 @@ export const useStore = create<Store>((set) => ({
   scrollTargetId: null,
   alerts: [],
   sources: [],
+  branches: [],
   columnWidths: loadInitialCols(),
   columnVisibility: loadInitialVisibility(),
   fieldColumns: loadInitialFieldColumns(),
@@ -222,6 +225,7 @@ export const useStore = create<Store>((set) => ({
   setScrollTarget: (scrollTargetId) => set({ scrollTargetId }),
   setAlerts: (alerts) => set({ alerts }),
   setSources: (sources) => set({ sources }),
+  setBranches: (branches) => set({ branches }),
   setColumnWidth: (col, w) =>
     set((s) => {
       const clamped = Math.min(COL_MAX[col], Math.max(COL_MIN[col], w));

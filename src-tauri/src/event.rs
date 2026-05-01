@@ -16,6 +16,9 @@ pub struct Event {
     /// Unix milliseconds.
     pub ts: i64,
     pub source: String,
+    /// Git branch (or folder name fallback) of the producer's cwd at
+    /// pipe attach time. Empty string when unknown (HTTP ingest).
+    pub branch: String,
     pub level: Level,
     pub msg: String,
     pub raw: String,
@@ -31,6 +34,7 @@ impl Event {
             id,
             ts,
             source: source.to_string(),
+            branch: String::new(),
             level: Level::Info,
             msg,
             raw,

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use parking_lot::Mutex;
 
 /// Resolve the source name for this istoria invocation.
@@ -36,6 +38,50 @@ fn suffix_with_counter(base: &str, existing: &[String]) -> String {
         }
     }
     unreachable!()
+}
+
+/// Derive the branch label for the cwd: current git branch, or the
+/// folder name as fallback. `None` only if cwd is unreadable / has no
+/// usable name (root path with no git ancestor).
+///
+/// Pure file reads — no `git` subprocess. Walks up looking for `.git`
+/// (dir or worktree pointer file) and parses `HEAD`. Detached HEAD
+/// (no `ref: refs/heads/…`) falls back to the folder name.
+pub fn derive_branch(cwd: &Path) -> Option<String> {
+    if let Some(branch) = git_branch(cwd) {
+        return Some(branch);
+    }
+    cwd.file_name().and_then(|s| s.to_str()).map(String::from)
+}
+
+fn git_branch(start: &Path) -> Option<String> {
+    let mut dir = Some(start);
+    while let Some(d) = dir {
+        let dot_git = d.join(".git");
+        if dot_git.is_dir() {
+            return read_head_branch(&dot_git.join("HEAD"));
+        }
+        if dot_git.is_file() {
+            let content = std::fs::read_to_string(&dot_git).ok()?;
+            let gitdir = content.trim().strip_prefix("gitdir: ")?.trim();
+            let head_path = Path::new(gitdir).join("HEAD");
+            return read_head_branch(&head_path);
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+fn read_head_branch(head: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(head).ok()?;
+    parse_head_branch(&content)
+}
+
+fn parse_head_branch(content: &str) -> Option<String> {
+    content
+        .trim()
+        .strip_prefix("ref: refs/heads/")
+        .map(String::from)
 }
 
 /// Owner-side registry of source names allocated this session. Each
@@ -123,5 +169,84 @@ mod tests {
         r.allocate(None);
         r.reset();
         assert_eq!(r.allocate(None), "pipe-1");
+    }
+
+    #[test]
+    fn parse_head_branch_ref() {
+        assert_eq!(
+            parse_head_branch("ref: refs/heads/main\n").as_deref(),
+            Some("main")
+        );
+        assert_eq!(
+            parse_head_branch("ref: refs/heads/feature/x").as_deref(),
+            Some("feature/x")
+        );
+    }
+
+    #[test]
+    fn parse_head_branch_detached_returns_none() {
+        // Detached HEAD: HEAD holds a raw SHA, not a `ref: …` line.
+        assert_eq!(parse_head_branch("a1b2c3d4e5f6\n"), None);
+    }
+
+    #[test]
+    fn derive_branch_falls_back_to_folder() {
+        let base = std::env::temp_dir().join(format!(
+            "istoria-source-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let cwd = base.join("my-project");
+        std::fs::create_dir_all(&cwd).unwrap();
+        let got = derive_branch(&cwd);
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(got.as_deref(), Some("my-project"));
+    }
+
+    #[test]
+    fn derive_branch_reads_git_head() {
+        let base = std::env::temp_dir().join(format!(
+            "istoria-source-git-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let cwd = base.join("repo");
+        let dot_git = cwd.join(".git");
+        std::fs::create_dir_all(&dot_git).unwrap();
+        std::fs::write(dot_git.join("HEAD"), "ref: refs/heads/feature/login\n").unwrap();
+        let got = derive_branch(&cwd);
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(got.as_deref(), Some("feature/login"));
+    }
+
+    #[test]
+    fn derive_branch_follows_worktree_gitdir() {
+        let base = std::env::temp_dir().join(format!(
+            "istoria-source-worktree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let real_gitdir = base.join("main-repo/.git/worktrees/wt");
+        std::fs::create_dir_all(&real_gitdir).unwrap();
+        std::fs::write(real_gitdir.join("HEAD"), "ref: refs/heads/wt-branch\n").unwrap();
+        let cwd = base.join("worktree");
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::write(
+            cwd.join(".git"),
+            format!("gitdir: {}\n", real_gitdir.display()),
+        )
+        .unwrap();
+        let got = derive_branch(&cwd);
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(got.as_deref(), Some("wt-branch"));
     }
 }

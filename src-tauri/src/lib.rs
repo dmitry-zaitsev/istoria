@@ -38,6 +38,14 @@ pub fn run(cli: cli::Cli) {
     let socket_path = socket::socket_path();
     let stdin_piped = !std::io::stdin().is_terminal();
 
+    // Derive branch label from the *invocation* cwd: every forwarder
+    // runs in its own dir, so this must be done before forwarder
+    // dispatch swaps us into the owner's working directory.
+    let branch = std::env::current_dir()
+        .ok()
+        .and_then(|p| source::derive_branch(&p))
+        .unwrap_or_default();
+
     if stdin_piped {
         // Forwarder dispatch: try to attach to existing owner.
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -47,7 +55,11 @@ pub fn run(cli: cli::Cli) {
         let connect = rt.block_on(socket::try_connect(&socket_path));
         if let Some(stream) = connect {
             tracing::info!("forwarder attaching to existing istoria");
-            let res = rt.block_on(socket::run_forwarder(stream, cli.name.clone()));
+            let res = rt.block_on(socket::run_forwarder(
+                stream,
+                cli.name.clone(),
+                branch.clone(),
+            ));
             if let Err(e) = res {
                 tracing::warn!(error = %e, "forwarder ended with error");
             }
@@ -71,10 +83,17 @@ pub fn run(cli: cli::Cli) {
         let ring_for_ingest = Arc::clone(&ring);
         let tee = !cli.silent;
         let source_for_ingest = source_name.clone();
+        let branch_for_ingest = branch.clone();
         let store_for_ingest = store.clone();
         tauri::async_runtime::spawn(async move {
-            ingest::run_stdin_reader(ring_for_ingest, store_for_ingest, source_for_ingest, tee)
-                .await;
+            ingest::run_stdin_reader(
+                ring_for_ingest,
+                store_for_ingest,
+                source_for_ingest,
+                branch_for_ingest,
+                tee,
+            )
+            .await;
         });
     }
 

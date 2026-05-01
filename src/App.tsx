@@ -163,23 +163,35 @@ export default function App() {
     for (const e of unfilteredEvents) seen.add(e.source);
     return [...seen].sort();
   }, [unfilteredEvents]);
+  const branches = useMemo(() => {
+    const seen = new Set<string>();
+    for (const e of unfilteredEvents) {
+      if (e.branch) seen.add(e.branch);
+    }
+    return [...seen].sort();
+  }, [unfilteredEvents]);
   const columnVisibility = useStore((s) => s.columnVisibility);
   const fieldColumns = useStore((s) => s.fieldColumns);
   const effectiveVisibility: Record<ColKey, boolean> = {
     ts: columnVisibility.ts ?? true,
     lvl: columnVisibility.lvl ?? true,
     src: columnVisibility.src ?? (sources.length > 1),
+    br: columnVisibility.br ?? (branches.length > 1),
   };
   const availableFieldKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
     return groups
       .map((g) => g.key)
-      .filter((k) => k !== "level" && k !== "source");
+      .filter((k) => k !== "level" && k !== "source" && k !== "branch");
   }, [tsScopedEvents]);
   const setSources = useStore((s) => s.setSources);
   useEffect(() => {
     setSources(sources);
   }, [sources, setSources]);
+  const setBranches = useStore((s) => s.setBranches);
+  useEffect(() => {
+    setBranches(branches);
+  }, [branches, setBranches]);
 
   // Bootstrap pins on mount.
   useEffect(() => {
@@ -418,6 +430,7 @@ export default function App() {
   if (effectiveVisibility.ts) gridParts.push(`${columnWidths.ts}px`);
   if (effectiveVisibility.lvl) gridParts.push(`${columnWidths.lvl}px`);
   if (effectiveVisibility.src) gridParts.push(`${columnWidths.src}px`);
+  if (effectiveVisibility.br) gridParts.push(`${columnWidths.br}px`);
   for (const fc of fieldColumns) gridParts.push(`${fc.width}px`);
   gridParts.push("1fr", "auto");
   const colVars = {

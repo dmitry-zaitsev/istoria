@@ -7,6 +7,7 @@ export interface LogEvent {
   id: number;
   ts: number;
   source: string;
+  branch: string;
   level: Level;
   msg: string;
   raw: string;

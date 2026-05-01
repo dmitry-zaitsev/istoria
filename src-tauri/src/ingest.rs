@@ -14,6 +14,7 @@ pub async fn run_stdin_reader(
     ring: Arc<Ring>,
     store: Option<Arc<Store>>,
     source: String,
+    branch: String,
     tee: bool,
 ) {
     let stdin = BufReader::with_capacity(64 * 1024, tokio::io::stdin());
@@ -32,7 +33,7 @@ pub async fn run_stdin_reader(
                     continue;
                 }
                 let id = ring.next_id();
-                let ev = detector.parse(id, &source, line);
+                let ev = detector.parse(id, &source, &branch, line);
                 if ev.msg.trim().is_empty() && ev.fields.is_none() {
                     continue;
                 }

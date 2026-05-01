@@ -31,6 +31,10 @@ struct AppCtx {
 #[derive(Deserialize)]
 struct IngestBody {
     source: String,
+    /// Optional branch label. External clients (browser extension)
+    /// often have no git context; empty string is fine.
+    #[serde(default)]
+    branch: String,
     events: Vec<IngestEvent>,
 }
 
@@ -141,6 +145,7 @@ async fn ingest(
             id,
             ts: ev.ts.unwrap_or_else(now_unix_ms),
             source: body.source.clone(),
+            branch: body.branch.clone(),
             level,
             msg: ev.text,
             raw,
