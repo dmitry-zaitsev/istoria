@@ -153,3 +153,55 @@ pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), Stri
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn mcp_port() -> Result<u16, String> {
+    Ok(crate::mcp::DEFAULT_PORT)
+}
+
+/// Open a new Terminal/console window and run `command` in it. macOS uses
+/// AppleScript via osascript; Linux walks a list of common emulators;
+/// Windows shells out to cmd. The command string is constructed in-app
+/// (e.g. `claude mcp add ...`), so no user-supplied shell input.
+#[tauri::command]
+pub async fn open_terminal(command: String) -> Result<(), String> {
+    if command.trim().is_empty() {
+        return Err("empty command".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let escaped = command.replace('\\', "\\\\").replace('"', "\\\"");
+        let do_script = format!("tell application \"Terminal\" to do script \"{}\"", escaped);
+        let activate = "tell application \"Terminal\" to activate".to_string();
+        std::process::Command::new("osascript")
+            .args(["-e", &do_script, "-e", &activate])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let wrapped = format!("{}; exec $SHELL", command);
+        for (term, args) in [
+            ("gnome-terminal", vec!["--", "bash", "-c", &wrapped]),
+            ("konsole", vec!["-e", "bash", "-c", &wrapped]),
+            ("x-terminal-emulator", vec!["-e", "bash", "-c", &wrapped]),
+            ("xterm", vec!["-e", "bash", "-c", &wrapped]),
+        ] {
+            if std::process::Command::new(term).args(args).spawn().is_ok() {
+                return Ok(());
+            }
+        }
+        return Err("no supported terminal emulator found".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "cmd", "/K", &command])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[allow(unreachable_code)]
+    Err("unsupported platform".into())
+}

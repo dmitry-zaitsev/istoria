@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { claudeStatus } from "../lib/ipc";
 import { useStore } from "../store";
+import { AIPanel } from "./AIPanel";
+import { SparkleIcon } from "./SparkleIcon";
 
 const INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/overview";
 
@@ -10,11 +12,13 @@ type Probe =
   | { state: "missing" }
   | { state: "ready" };
 
+type Mode = "closed" | "connect" | "panel";
+
 export function ClaudeButton() {
   const connected = useStore((s) => s.claudeConnected);
   const setConnected = useStore((s) => s.setClaudeConnected);
   const [probe, setProbe] = useState<Probe>({ state: "loading" });
-  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("closed");
 
   useEffect(() => {
     let cancelled = false;
@@ -36,13 +40,13 @@ export function ClaudeButton() {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (mode === "closed") return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") setMode("closed");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [mode]);
 
   const tooltip =
     probe.state === "loading"
@@ -50,30 +54,46 @@ export function ClaudeButton() {
       : probe.state === "missing"
         ? "Claude Code not installed — click to learn more"
         : connected
-          ? "Claude Code connected — advanced analysis enabled"
+          ? "AI — MCP & agent setup"
           : "Connect Claude Code for advanced analysis";
+
+  const handleClick = () => {
+    setMode(connected ? "panel" : "connect");
+  };
+
+  const handleConnect = () => {
+    setConnected(true);
+    setMode("panel");
+  };
+
+  const handleDisconnect = () => {
+    setConnected(false);
+    setMode("closed");
+  };
 
   return (
     <>
       <button
         type="button"
         className={`icon-btn tabs-claude-btn${connected ? " on" : ""}`}
-        onClick={() => setOpen(true)}
+        onClick={handleClick}
         title={tooltip}
-        aria-label="Claude Code integration"
+        aria-label="AI integration"
         aria-pressed={connected}
       >
         <SparkleIcon />
       </button>
-      {open && (
-        <ClaudeDialog
+      {mode === "connect" && (
+        <ConnectDialog
           probe={probe}
-          connected={connected}
-          onClose={() => setOpen(false)}
-          onConfirm={() => {
-            setConnected(!connected);
-            setOpen(false);
-          }}
+          onClose={() => setMode("closed")}
+          onConfirm={handleConnect}
+        />
+      )}
+      {mode === "panel" && (
+        <AIPanel
+          onClose={() => setMode("closed")}
+          onDisconnect={handleDisconnect}
         />
       )}
     </>
@@ -82,12 +102,11 @@ export function ClaudeButton() {
 
 interface DialogProps {
   probe: Probe;
-  connected: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-function ClaudeDialog({ probe, connected, onClose, onConfirm }: DialogProps) {
+function ConnectDialog({ probe, onClose, onConfirm }: DialogProps) {
   const missing = probe.state === "missing";
   const loading = probe.state === "loading";
   return (
@@ -118,7 +137,7 @@ function ClaudeDialog({ probe, connected, onClose, onConfirm }: DialogProps) {
               </p>
             </>
           )}
-          {probe.state === "ready" && !connected && (
+          {probe.state === "ready" && (
             <>
               <p>Connect your local Claude Code to unlock:</p>
               <ul className="claude-dialog-list">
@@ -129,9 +148,6 @@ function ClaudeDialog({ probe, connected, onClose, onConfirm }: DialogProps) {
                 <li>Root-cause across multiple sources</li>
               </ul>
             </>
-          )}
-          {probe.state === "ready" && connected && (
-            <p>Claude Code is connected. Disconnect any time.</p>
           )}
         </div>
         <div className="claude-dialog-actions">
@@ -164,35 +180,16 @@ function ClaudeDialog({ probe, connected, onClose, onConfirm }: DialogProps) {
               </button>
               <button
                 type="button"
-                className={`claude-btn ${connected ? "danger" : "primary"}`}
+                className="claude-btn primary"
                 onClick={onConfirm}
                 disabled={loading}
               >
-                {connected ? "Disconnect" : "Connect"}
+                Connect
               </button>
             </>
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-function SparkleIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 1.5l1.4 4 4 1.4-4 1.4-1.4 4-1.4-4-4-1.4 4-1.4z" />
-      <path d="M13 11l.6 1.7 1.7.6-1.7.6L13 15.6l-.6-1.7-1.7-.6 1.7-.6z" />
-    </svg>
   );
 }

@@ -6,6 +6,7 @@ pub mod format;
 pub mod http;
 pub mod ingest;
 pub mod ipc;
+pub mod mcp;
 pub mod persistence;
 pub mod pins;
 pub mod query;
@@ -101,6 +102,11 @@ pub fn run(cli: cli::Cli) {
         http::run_server(ring_for_http, store_for_http).await;
     });
 
+    let ring_for_mcp = Arc::clone(&ring);
+    tauri::async_runtime::spawn(async move {
+        mcp::run_server(ring_for_mcp).await;
+    });
+
     let ring_for_emit = Arc::clone(&ring);
 
     let project_root = std::env::current_dir()
@@ -131,7 +137,10 @@ pub fn run(cli: cli::Cli) {
             ipc::list_editors,
             ipc::open_url,
             ipc::clear_session,
+            ipc::mcp_port,
+            ipc::open_terminal,
             claude::claude_status,
+            claude::codex_status,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

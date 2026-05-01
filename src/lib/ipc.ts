@@ -91,8 +91,21 @@ export async function listEditors(): Promise<EditorEntry[]> {
 export interface ClaudeStatus {
   installed: boolean;
   path: string | null;
+  mcpAdded: boolean;
 }
 
 export async function claudeStatus(): Promise<ClaudeStatus> {
   return invoke<ClaudeStatus>("claude_status");
+}
+
+export async function codexStatus(): Promise<ClaudeStatus> {
+  return invoke<ClaudeStatus>("codex_status");
+}
+
+export async function mcpPort(): Promise<number> {
+  return invoke<number>("mcp_port");
+}
+
+export async function openTerminal(command: string): Promise<void> {
+  return invoke("open_terminal", { command });
 }

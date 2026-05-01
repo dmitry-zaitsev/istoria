@@ -1559,6 +1559,49 @@ body[data-density="comfy"]   .logrow { padding: 7px 14px; }
 .claude-btn.danger:hover { filter: brightness(1.05); }
 .claude-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.ai-panel {
+  width: 480px;
+}
+.ai-section {
+  padding: 0 0 12px;
+}
+.ai-section + .ai-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ai-section-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.ai-actions {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 0;
+  flex-wrap: wrap;
+}
+.ai-agent-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-agent-btn svg { flex-shrink: 0; }
+.ai-agent-added {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ok-fg, var(--ink-2));
+  font-size: 12px;
+}
+.ai-agent-added svg { flex-shrink: 0; color: var(--ok-fg, currentColor); }
+
 /* ── Toast ─────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
