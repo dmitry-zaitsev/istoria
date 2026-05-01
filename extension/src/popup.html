@@ -15,6 +15,8 @@
         --brand:       #4ea8e0;
         --ok-fg:       #0f7a4a;
         --warn-fg:     #a65d12;
+        --rec:         #dc2626;
+        --rec-hover:   #b91c1c;
         --ui:          "Inter", -apple-system, system-ui, sans-serif;
         --mono:        "JetBrains Mono", ui-monospace, Menlo, monospace;
       }
@@ -62,24 +64,67 @@
         box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.15);
       }
       .dot.live {
-        background: var(--ok-fg);
-        box-shadow: 0 0 0 3px rgba(15, 122, 74, 0.15);
-        animation: pulse 1.6s ease-in-out infinite;
+        background: var(--rec);
+        box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+        animation: pulse 1.4s ease-in-out infinite;
       }
       .dot.warn {
         background: var(--warn-fg);
         box-shadow: 0 0 0 3px rgba(166, 93, 18, 0.15);
       }
       @keyframes pulse {
-        0%, 100% { box-shadow: 0 0 0 3px rgba(15, 122, 74, 0.15); }
-        50%      { box-shadow: 0 0 0 5px rgba(15, 122, 74, 0.05); }
+        0%, 100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
+        50%      { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.05); }
+      }
+
+      .body { padding: 12px 14px 14px; background: var(--surface-2); }
+
+      .btn {
+        appearance: none;
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font: inherit;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: background 0.12s ease;
+      }
+      .btn:disabled { opacity: 0.6; cursor: default; }
+      .btn-rec {
+        background: var(--rec);
+        color: #fff;
+      }
+      .btn-rec:hover:not(:disabled) { background: var(--rec-hover); }
+      .btn-rec .icon {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+      }
+      .btn-stop {
+        background: #1f2937;
+        color: #fff;
+      }
+      .btn-stop:hover:not(:disabled) { background: #0f172a; }
+      .btn-stop .icon {
+        width: 9px;
+        height: 9px;
+        background: #fff;
+        border-radius: 1px;
       }
 
       .status {
-        padding: 12px 14px;
-        font-size: 13px;
+        margin-top: 10px;
+        font-size: 12px;
         color: var(--ink-2);
-        background: var(--surface-2);
+        line-height: 1.4;
       }
       .status .hint {
         display: block;
@@ -100,9 +145,15 @@
       <span id="dot" class="dot"></span>
     </header>
 
-    <div class="status">
-      <span id="statusText">Loading…</span>
-      <span id="statusHint" class="hint"></span>
+    <div class="body">
+      <button id="recBtn" class="btn btn-rec" disabled>
+        <span class="icon"></span>
+        <span id="recLabel">Loading…</span>
+      </button>
+      <div class="status">
+        <span id="statusText"></span>
+        <span id="statusHint" class="hint"></span>
+      </div>
     </div>
 
     <script src="popup.js"></script>

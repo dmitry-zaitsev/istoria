@@ -11,7 +11,7 @@ istoria browser logs
 ## Short description (≤132 chars)
 
 ```
-Stream browser console + network events from any tab into the local istoria desktop app over loopback.
+Stream browser console + network events from the active tab into the local istoria desktop app over loopback.
 ```
 
 ## Detailed description
@@ -20,6 +20,10 @@ Stream browser console + network events from any tab into the local istoria desk
 istoria browser logs forwards what your browser sees — console messages,
 uncaught exceptions, and network request metadata — into the istoria
 desktop application running on the same machine.
+
+Click the toolbar icon and hit "Start recording" on the tab you want to
+capture. Recording is per-tab and ends when you click Stop, close the
+tab, or navigate away. Nothing runs until you opt in.
 
 Everything stays on your computer. Events are POSTed to 127.0.0.1:9787,
 the loopback address the istoria daemon listens on. No remote servers,
@@ -43,9 +47,9 @@ Developer Tools
 ## Single purpose
 
 ```
-Capture console and network events from the user's browser tabs and forward
-them, over the local loopback interface, to the istoria desktop application
-running on the same machine.
+Capture console and network events from a browser tab the user explicitly
+opts in to, and forward them, over the local loopback interface, to the
+istoria desktop application running on the same machine.
 ```
 
 ## Permission justifications
@@ -59,14 +63,22 @@ loopback address; this permission does not grant access to any remote
 host. The narrow scope (http://127.0.0.1/* only) is intentional.
 ```
 
-### Broad host access (`<all_urls>` in content scripts)
+### `activeTab`
 
 ```
-The extension installs two content scripts at document_start on every
-URL the user visits so it can observe console.* calls, uncaught
-exceptions, and fetch/XHR network activity from those pages. The
-captured data is forwarded only to 127.0.0.1 (see above) and never
-to a remote server.
+When the user clicks "Start recording" in the extension popup, the
+extension uses the activeTab grant to read the current tab so it can
+inject the capture scripts. No background access to other tabs and no
+access to tabs the user has not explicitly opted in to.
+```
+
+### `scripting`
+
+```
+Used together with activeTab to programmatically inject the capture
+scripts (bridge.js into the isolated world, injected.js into the page's
+main world) when the user clicks "Start recording". Without scripting
+there is no way to attach the capture logic on demand.
 ```
 
 ### Remote code use

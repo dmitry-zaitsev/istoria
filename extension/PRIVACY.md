@@ -40,9 +40,11 @@ Only software running on the user's machine that listens on
 
 - `host_permissions: http://127.0.0.1/*` — required to POST captured events
   to the local istoria daemon.
-- Content scripts on `<all_urls>` — required to observe console and network
-  events from pages the user visits. Capture is active on every tab while
-  the extension is enabled.
+- `activeTab` + `scripting` — required to inject the capture scripts into
+  the current tab when the user clicks **Start recording** in the popup.
+  Capture is per-tab and opt-in. Nothing runs on a tab until the user
+  explicitly starts recording it; recording ends on Stop, tab close, or
+  navigation.
 
 ## Contact
 

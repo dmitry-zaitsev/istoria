@@ -1,8 +1,8 @@
 # istoria browser logs (Chrome extension)
 
-Chrome MV3 extension that streams console + network events from every tab
-into the local istoria desktop app via its HTTP ingest endpoint at
-`http://127.0.0.1:9787/ingest`.
+Chrome MV3 extension that streams console + network events from a tab
+you opt in to, into the local istoria desktop app via its HTTP ingest
+endpoint at `http://127.0.0.1:9787/ingest`.
 
 ## Install (dev)
 
@@ -10,8 +10,9 @@ into the local istoria desktop app via its HTTP ingest endpoint at
 2. `cd extension && npm install && npm run build` — produces `dist/`.
 3. Open `chrome://extensions`, toggle **Developer mode** (top right).
 4. Click **Load unpacked** and pick the `dist/` directory.
-5. Capture starts automatically on every tab. Click the toolbar icon to
-   see live status.
+5. Click the toolbar icon on the tab you want to capture and hit
+   **Start recording**. Recording is per-tab and ends when you click
+   Stop, close the tab, or navigate to a different page.
 
 ## What gets sent
 
