@@ -309,9 +309,6 @@ export default function App() {
   useEffect(() => {
     if (!relevance) return;
     let cancelled = false;
-    // Only toast on the first focus that observes a change — repeated
-    // focus events while the user is reading shouldn't keep nagging.
-    let toastedForThisAnalysis = useStore.getState().relevanceStale;
     const check = () => {
       branchState()
         .then((bs) => {
@@ -321,13 +318,7 @@ export default function App() {
             bs.head_sha !== stored.head_sha ||
             bs.has_uncommitted !== stored.has_uncommitted ||
             bs.branch !== stored.branch;
-          if (changed) {
-            setRelevanceStale(true);
-            if (!toastedForThisAnalysis) {
-              toastedForThisAnalysis = true;
-              toast("Branch changed — re-run Claude analysis to refresh");
-            }
-          }
+          if (changed) setRelevanceStale(true);
         })
         .catch(() => {
           // git unavailable / not a repo — leave stale flag alone
@@ -345,8 +336,6 @@ export default function App() {
       .catch(() => {
         // not running under Tauri (e.g. vite preview) — skip
       });
-    // Also probe once on mount in case the user opened istoria from
-    // a different branch than the one stored in localStorage.
     check();
     return () => {
       cancelled = true;
