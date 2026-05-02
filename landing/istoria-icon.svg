@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B6FB0"></stop>
+      <stop offset="1" stop-color="#0B355A"></stop>
+    </linearGradient>
+    <linearGradient id="topHL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"></stop>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"></stop>
+    </linearGradient>
+    <filter id="barShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="4"></feGaussianBlur>
+    </filter>
+    <clipPath id="clip">
+      <rect x="100" y="100" width="824" height="824" rx="185" ry="185"></rect>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#clip)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"></rect>
+    <rect x="100" y="100" width="824" height="340" fill="url(#topHL)"></rect>
+  </g>
+
+  <g fill="#F6F1E6">
+    <rect x="265" y="404" width="490" height="44" rx="22"></rect>
+    <rect x="265" y="504" width="360" height="44" rx="22"></rect>
+    <rect x="265" y="604" width="434" height="44" rx="22"></rect>
+  </g>
+</svg>
