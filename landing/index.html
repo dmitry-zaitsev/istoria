@@ -161,7 +161,10 @@
       .cmd code {
         color: var(--ink);
         white-space: nowrap;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .cmd .pr {
         color: var(--muted-2);
