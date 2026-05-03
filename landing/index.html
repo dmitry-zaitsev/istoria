@@ -1,446 +1,652 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>istoria — log viewer for local dev</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-<style>
-  :root {
-    --bg:        #ffffff;
-    --bg-2:      #fafafa;
-    --ink:       #0e0e10;
-    --ink-2:     #2a2a2c;
-    --muted:     #6e6e72;
-    --muted-2:   #a1a1a6;
-    --rule:      #ececec;
-    --rule-soft: #f3f3f3;
-    --accent:    #1a6f60;
+  <head>
+    <meta charset="utf-8" />
+    <title>istoria — log viewer for local dev</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --bg-2: #fafafa;
+        --ink: #0e0e10;
+        --ink-2: #2a2a2c;
+        --muted: #6e6e72;
+        --muted-2: #a1a1a6;
+        --rule: #ececec;
+        --rule-soft: #f3f3f3;
+        --accent: #1a6f60;
 
-    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-    --sans: 'IBM Plex Sans', -apple-system, system-ui, 'Helvetica Neue', sans-serif;
-  }
+        --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --sans: "IBM Plex Sans", -apple-system, system-ui, "Helvetica Neue", sans-serif;
+      }
 
-  *, *::before, *::after { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    font-family: var(--sans);
-    background: var(--bg);
-    color: var(--ink-2);
-    font-size: 15px;
-    line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-  }
-  ::selection { background: var(--ink); color: var(--bg); }
-  a { color: inherit; text-decoration: none; }
-  code, .mono { font-family: var(--mono); }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: var(--sans);
+        background: var(--bg);
+        color: var(--ink-2);
+        font-size: 15px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      ::selection {
+        background: var(--ink);
+        color: var(--bg);
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+      }
 
-  .wrap { max-width: 880px; margin: 0 auto; padding: 0 32px; }
+      .wrap {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 0 32px;
+      }
 
-  /* Top */
-  header.top { padding: 24px 0; }
-  .top-row {
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .brand {
-    display: inline-flex; align-items: center; gap: 9px;
-    font-weight: 600; color: var(--ink);
-    font-size: 15px; letter-spacing: -0.01em;
-  }
-  .brand img {
-    width: 22px; height: 22px; display: block; border-radius: 5px;
-  }
-  .top-nav {
-    display: flex; gap: 22px;
-    font-family: var(--mono);
-    font-size: 12.5px;
-    color: var(--muted);
-  }
-  .top-nav a:hover { color: var(--ink); }
+      /* Top */
+      header.top {
+        padding: 24px 0;
+      }
+      .top-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 600;
+        color: var(--ink);
+        font-size: 15px;
+        letter-spacing: -0.01em;
+      }
+      .brand img {
+        width: 22px;
+        height: 22px;
+        display: block;
+        border-radius: 5px;
+      }
+      .top-nav {
+        display: flex;
+        gap: 22px;
+        align-items: center;
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .top-nav a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .top-nav a:hover {
+        color: var(--ink);
+      }
+      .top-nav svg {
+        width: 14px;
+        height: 14px;
+        fill: currentColor;
+        display: block;
+      }
 
-  /* Hero */
-  .hero { padding: 56px 0 40px; }
-  h1 {
-    font-family: var(--sans);
-    font-weight: 600;
-    font-size: 38px;
-    line-height: 1.1;
-    letter-spacing: -0.03em;
-    color: var(--ink);
-    margin: 0 0 18px;
-    max-width: 18ch;
-  }
-  .lede {
-    font-size: 16px;
-    line-height: 1.6;
-    color: var(--muted);
-    margin: 0;
-    max-width: 56ch;
-  }
-  .lede code {
-    font-family: var(--mono);
-    font-size: .92em;
-    color: var(--ink-2);
-  }
+      /* Hero */
+      .hero {
+        padding: 56px 0 40px;
+      }
+      h1 {
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 38px;
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+        margin: 0 0 18px;
+        max-width: 18ch;
+      }
+      .lede {
+        font-size: 16px;
+        line-height: 1.6;
+        color: var(--muted);
+        margin: 0;
+        max-width: 56ch;
+      }
+      .lede code {
+        font-family: var(--mono);
+        font-size: 0.92em;
+        color: var(--ink-2);
+      }
 
-  /* Install row */
-  .install-row {
-    margin-top: 32px;
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-  }
-  .cmd {
-    display: inline-flex; align-items: center; gap: 12px;
-    background: var(--bg-2);
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    padding: 9px 8px 9px 14px;
-    font-family: var(--mono);
-    font-size: 13.5px;
-    max-width: 100%;
-  }
-  .cmd code {
-    color: var(--ink);
-    white-space: nowrap;
-    flex: 0 0 auto;
-  }
-  .cmd .pr { color: var(--muted-2); user-select: none; flex: 0 0 auto; }
-  .cmd button { flex: 0 0 auto; }
-  .cmd button {
-    background: var(--bg);
-    border: 1px solid var(--rule);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 11px;
-    padding: 4px 9px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: color .15s, border-color .15s;
-  }
-  .cmd button:hover { color: var(--ink); border-color: var(--ink); }
-  .cmd button.ok { color: var(--accent); border-color: var(--accent); }
-  .cmd button.ok::before { content: '✓ '; }
-  .alt {
-    font-family: var(--mono);
-    font-size: 12.5px;
-    color: var(--muted);
-  }
-  .alt a { color: var(--muted); border-bottom: 1px solid var(--rule); }
-  .alt a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+      /* Install row */
+      .install-row {
+        margin-top: 32px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .cmd {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--bg-2);
+        border: 1px solid var(--rule);
+        border-radius: 6px;
+        padding: 9px 8px 9px 14px;
+        font-family: var(--mono);
+        font-size: 13.5px;
+        max-width: 100%;
+      }
+      .cmd code {
+        color: var(--ink);
+        white-space: nowrap;
+        flex: 0 0 auto;
+      }
+      .cmd .pr {
+        color: var(--muted-2);
+        user-select: none;
+        flex: 0 0 auto;
+      }
+      .cmd button {
+        flex: 0 0 auto;
+      }
+      .cmd button {
+        background: var(--bg);
+        border: 1px solid var(--rule);
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 4px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition:
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .cmd button:hover {
+        color: var(--ink);
+        border-color: var(--ink);
+      }
+      .cmd button.ok {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .cmd button.ok::before {
+        content: "✓ ";
+      }
+      .alt {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .alt a {
+        color: var(--muted);
+        border-bottom: 1px solid var(--rule);
+      }
+      .alt a:hover {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
 
-  /* Screenshot */
-  .shot {
-    margin: 56px 0 80px;
-    border: 1px solid var(--rule);
-    border-radius: 8px;
-    overflow: hidden;
-    background: var(--bg-2);
-    box-shadow: 0 24px 48px -32px rgba(15,16,17,.18);
-  }
-  .shot img { display: block; width: 100%; height: auto; }
+      /* Screenshot */
+      .shot {
+        margin: 56px 0 80px;
+        border: 1px solid var(--rule);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg-2);
+        box-shadow: 0 24px 48px -32px rgba(15, 16, 17, 0.18);
+      }
+      .shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
 
-  /* Sections */
-  section { padding: 40px 0; border-top: 1px solid var(--rule); }
-  .sec-label {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin: 0 0 24px;
-  }
+      /* Sections */
+      section {
+        padding: 40px 0;
+        border-top: 1px solid var(--rule);
+      }
+      .sec-label {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin: 0 0 24px;
+      }
 
-  /* What it does */
-  .does {
-    list-style: none; padding: 0; margin: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0;
-    border-top: 1px solid var(--rule);
-    border-left: 1px solid var(--rule);
-  }
-  @media (max-width: 640px) { .does { grid-template-columns: 1fr; } }
-  .does li {
-    border-right: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    padding: 18px 22px;
-  }
-  .does li b {
-    display: block;
-    font-family: var(--sans);
-    font-weight: 600;
-    font-size: 14.5px;
-    color: var(--ink);
-    margin-bottom: 4px;
-  }
-  .does li span {
-    color: var(--muted);
-    font-size: 13.5px;
-    line-height: 1.55;
-  }
-  .does li code {
-    font-family: var(--mono);
-    font-size: 12px;
-    background: var(--bg-2);
-    border: 1px solid var(--rule-soft);
-    color: var(--ink-2);
-    padding: 1px 4px;
-    border-radius: 3px;
-  }
+      /* What it does */
+      .does {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        border-top: 1px solid var(--rule);
+        border-left: 1px solid var(--rule);
+      }
+      @media (max-width: 640px) {
+        .does {
+          grid-template-columns: 1fr;
+        }
+      }
+      .does li {
+        border-right: 1px solid var(--rule);
+        border-bottom: 1px solid var(--rule);
+        padding: 18px 22px;
+      }
+      .does li b {
+        display: block;
+        font-family: var(--sans);
+        font-weight: 600;
+        font-size: 14.5px;
+        color: var(--ink);
+        margin-bottom: 4px;
+      }
+      .does li span {
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.55;
+      }
+      .does li code {
+        font-family: var(--mono);
+        font-size: 12px;
+        background: var(--bg-2);
+        border: 1px solid var(--rule-soft);
+        color: var(--ink-2);
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
 
-  /* Install steps */
-  .extras {
-    list-style: none; padding: 0; margin: 4px 0 0;
-    display: flex; flex-direction: column; gap: 7px;
-  }
-  .extras li {
-    display: block;
-    color: var(--muted);
-    font-size: 13.5px;
-    line-height: 1.55;
-    padding-left: 14px;
-    position: relative;
-  }
-  .extras li::before {
-    content: '•';
-    position: absolute;
-    left: 0;
-    color: var(--muted-2);
-  }
-  .extras li b {
-    color: var(--ink);
-    font-weight: 600;
-  }
-  .extras li b a { color: inherit; }
-  .extras li a {
-    color: var(--ink);
-    border-bottom: 1px solid var(--rule);
-    transition: border-color .15s;
-  }
-  .extras li a:hover { border-bottom-color: var(--ink); }
-  .steps {
-    list-style: none; padding: 0; margin: 0;
-    counter-reset: step;
-    display: flex; flex-direction: column; gap: 18px;
-  }
-  .steps > li {
-    display: grid;
-    grid-template-columns: 24px 1fr;
-    gap: 14px;
-    align-items: baseline;
-  }
-  .steps > li::before {
-    counter-increment: step;
-    content: counter(step, decimal-leading-zero);
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted-2);
-    padding-top: 4px;
-  }
-  .steps .body {
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .steps p {
-    margin: 0; color: var(--ink-2); font-size: 14.5px;
-  }
-  .steps p .sub {
-    color: var(--muted); display: block; font-size: 13px; margin-top: 2px;
-  }
-  .steps code {
-    font-family: var(--mono);
-    font-size: 12.5px;
-    background: var(--bg-2);
-    border: 1px solid var(--rule-soft);
-    color: var(--ink-2);
-    padding: 1px 5px;
-    border-radius: 3px;
-  }
-  .cmd-dark {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 12px;
-    padding: 11px 14px;
-    background: #0f1113;
-    border-radius: 6px;
-    font-family: var(--mono);
-    font-size: 13px;
-    color: #e6e6e3;
-  }
-  .cmd-dark .pr { color: #6cbd9d; user-select: none; }
-  .cmd-dark code {
-    color: #f0efeb; background: transparent; border: 0; padding: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .cmd-dark button {
-    background: transparent;
-    border: 1px solid #2c3038;
-    color: #9398a3;
-    font-family: var(--mono);
-    font-size: 10.5px;
-    padding: 3px 9px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: color .15s, border-color .15s;
-  }
-  .cmd-dark button:hover { color: #f0efeb; border-color: #4a4f5a; }
-  .cmd-dark button.ok { color: #6cbd9d; border-color: #2d4a3c; }
-  .cmd-dark button.ok::before { content: '✓ '; }
+      /* Install steps */
+      .extras {
+        list-style: none;
+        padding: 0;
+        margin: 4px 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .extras li {
+        display: block;
+        color: var(--muted);
+        font-size: 13.5px;
+        line-height: 1.55;
+        padding-left: 14px;
+        position: relative;
+      }
+      .extras li::before {
+        content: "•";
+        position: absolute;
+        left: 0;
+        color: var(--muted-2);
+      }
+      .extras li b {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .extras li b a {
+        color: inherit;
+      }
+      .extras li a {
+        color: var(--ink);
+        border-bottom: 1px solid var(--rule);
+        transition: border-color 0.15s;
+      }
+      .extras li a:hover {
+        border-bottom-color: var(--ink);
+      }
+      .steps {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        counter-reset: step;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+      .steps > li {
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        gap: 14px;
+        align-items: baseline;
+      }
+      .steps > li::before {
+        counter-increment: step;
+        content: counter(step, decimal-leading-zero);
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted-2);
+        padding-top: 4px;
+      }
+      .steps .body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .steps p {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 14.5px;
+      }
+      .steps p .sub {
+        color: var(--muted);
+        display: block;
+        font-size: 13px;
+        margin-top: 2px;
+      }
+      .steps code {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        background: var(--bg-2);
+        border: 1px solid var(--rule-soft);
+        color: var(--ink-2);
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+      .cmd-dark {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        background: #0f1113;
+        border-radius: 6px;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: #e6e6e3;
+      }
+      .cmd-dark .pr {
+        color: #6cbd9d;
+        user-select: none;
+      }
+      .cmd-dark code {
+        color: #f0efeb;
+        background: transparent;
+        border: 0;
+        padding: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cmd-dark button {
+        background: transparent;
+        border: 1px solid #2c3038;
+        color: #9398a3;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        padding: 3px 9px;
+        border-radius: 3px;
+        cursor: pointer;
+        transition:
+          color 0.15s,
+          border-color 0.15s;
+      }
+      .cmd-dark button:hover {
+        color: #f0efeb;
+        border-color: #4a4f5a;
+      }
+      .cmd-dark button.ok {
+        color: #6cbd9d;
+        border-color: #2d4a3c;
+      }
+      .cmd-dark button.ok::before {
+        content: "✓ ";
+      }
 
-  .install-tabs {
-    display: flex; gap: 0;
-    margin-bottom: 4px;
-  }
-  .install-tab {
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid var(--rule);
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 6px 14px;
-    cursor: pointer;
-    margin-bottom: -1px;
-  }
-  .install-tab:first-child { padding-left: 0; }
-  .install-tab:hover { color: var(--ink); }
-  .install-tab.active {
-    color: var(--ink);
-    border-bottom-color: var(--ink);
-  }
+      .install-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 4px;
+      }
+      .install-tab {
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid var(--rule);
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 12px;
+        padding: 6px 14px;
+        cursor: pointer;
+        margin-bottom: -1px;
+      }
+      .install-tab:first-child {
+        padding-left: 0;
+      }
+      .install-tab:hover {
+        color: var(--ink);
+      }
+      .install-tab.active {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+      }
 
-  /* Footer */
-  footer {
-    padding: 36px 0 56px;
-    border-top: 1px solid var(--rule);
-    margin-top: 24px;
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .foot {
-    display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap;
-  }
-  .foot a { color: var(--muted); }
-  .foot a:hover { color: var(--ink); }
+      /* Footer */
+      footer {
+        padding: 36px 0 56px;
+        border-top: 1px solid var(--rule);
+        margin-top: 24px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .foot {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        flex-wrap: wrap;
+      }
+      .foot a {
+        color: var(--muted);
+      }
+      .foot a:hover {
+        color: var(--ink);
+      }
 
-  @media (max-width: 520px) {
-    h1 { font-size: 30px; }
-    .hero { padding: 36px 0 24px; }
-  }
-</style>
-</head>
-<body>
-
-<header class="top">
-  <div class="wrap top-row">
-    <a href="#" class="brand"><img src="istoria-icon.svg" alt="" />istoria</a>
-    <nav class="top-nav">
-      <a href="#start">start</a>
-    </nav>
-  </div>
-</header>
-
-<section class="hero" style="border:0;">
-  <div class="wrap">
-    <h1>The log viewer for local dev.</h1>
-    <p class="lede">Pipe any process into <code>istoria</code> and tail, search, and filter its logs in one window. Local, fast, no setup.</p>
-
-    <div class="install-row">
-      <div class="cmd">
-        <span class="pr">$</span>
-        <code id="hero-cmd">brew install dmitry-zaitsev/tap/istoria</code>
-        <button type="button" id="hero-btn" data-copy="brew install dmitry-zaitsev/tap/istoria">copy</button>
+      @media (max-width: 520px) {
+        h1 {
+          font-size: 30px;
+        }
+        .hero {
+          padding: 36px 0 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="wrap top-row">
+        <a href="#" class="brand"><img src="istoria-icon.svg" alt="" />istoria</a>
+        <nav class="top-nav">
+          <a href="#start">start</a>
+          <a
+            href="https://github.com/dmitry-zaitsev/istoria"
+            target="_blank"
+            rel="noopener"
+            aria-label="GitHub"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+              />
+            </svg>
+            github
+          </a>
+        </nav>
       </div>
-    </div>
+    </header>
 
-    <div class="shot">
-      <img src="screenshots/istoria-app.png" alt="istoria — filter bar, histogram, and event stream" />
-    </div>
-  </div>
-</section>
+    <section class="hero" style="border: 0">
+      <div class="wrap">
+        <h1>The log viewer for local dev.</h1>
+        <p class="lede">
+          Pipe any process into <code>istoria</code> and tail, search, and filter its logs in one
+          window. Local, fast, no setup.
+        </p>
 
-<section>
-  <div class="wrap">
-    <p class="sec-label">what it does</p>
-    <ul class="does">
-      <li><b>Tails any process.</b> <span>Pipe stdout, attach to files, or follow Docker and Kubernetes pods.</span></li>
-      <li><b>Parses structured logs.</b> <span>JSON and logfmt fields become facets you can filter on.</span></li>
-      <li><b>Filter expression.</b> <span><code>level:error AND status_code:&gt;=400</code>.</span></li>
-      <li><b>Histogram.</b> <span>See spikes; click a bucket to scope the stream to that window.</span></li>
-      <li><b>Local index.</b> <span>Search runs on disk at <code>~/.istoria</code>. No daemon, no server.</span></li>
-      <li><b>Stays local.</b> <span>No telemetry, no accounts, no outbound connections.</span></li>
-    </ul>
-  </div>
-</section>
-
-<section id="start">
-  <div class="wrap">
-    <p class="sec-label">getting started</p>
-
-    <ol class="steps">
-      <li>
-        <div class="body">
-          <p>Install via Homebrew. <span class="sub">macOS and Linux.</span></p>
-          <div class="cmd-dark">
+        <div class="install-row">
+          <div class="cmd">
             <span class="pr">$</span>
-            <code id="step-1-cmd">brew install dmitry-zaitsev/tap/istoria</code>
-            <button type="button" data-copy-target="step-1-cmd">copy</button>
+            <code id="hero-cmd">brew install dmitry-zaitsev/tap/istoria</code>
+            <button type="button" id="hero-btn" data-copy="brew install dmitry-zaitsev/tap/istoria">
+              copy
+            </button>
           </div>
         </div>
-      </li>
-      <li>
-        <div class="body">
-          <p>Pipe a process into it.</p>
-          <div class="cmd-dark">
-            <span class="pr">$</span>
-            <code id="step-2-cmd">npm run dev | istoria</code>
-            <button type="button" data-copy-target="step-2-cmd">copy</button>
-          </div>
+
+        <div class="shot">
+          <img
+            src="screenshots/istoria-app.png"
+            alt="istoria — filter bar, histogram, and event stream"
+          />
         </div>
-      </li>
-      <li>
-        <div class="body">
-          <p>Level it up.</p>
-          <ul class="extras">
-            <li><b><a href="https://chromewebstore.google.com/detail/aackbjkeomlkkcmpcnldhhdgdaaohild?utm_source=item-share-cb" target="_blank" rel="noopener">Chrome extension</a></b> · stream a tab's console and network events into the same window.</li>
-            <li><b>MCP server</b> · point local agents (Claude Code, Codex) at istoria to query logs in-session.</li>
-            <li><b>Alerts</b> · save a filter, get a desktop notification when matches show up.</li>
-            <li><b>Saved views</b> · pin filters as tabs and reopen them later.</li>
-          </ul>
-        </div>
-      </li>
-    </ol>
-  </div>
-</section>
+      </div>
+    </section>
 
-<footer>
-  <div class="wrap foot">
-    <span>istoria</span>
-    <span><a href="https://www.linkedin.com/in/dmitryzaicew/" target="_blank" rel="noopener">by Dima</a></span>
-  </div>
-</footer>
+    <section>
+      <div class="wrap">
+        <p class="sec-label">what it does</p>
+        <ul class="does">
+          <li>
+            <b>Tails any process.</b>
+            <span>Pipe stdout, attach to files, or follow Docker and Kubernetes pods.</span>
+          </li>
+          <li>
+            <b>Parses structured logs.</b>
+            <span>JSON and logfmt fields become facets you can filter on.</span>
+          </li>
+          <li>
+            <b>Filter expression.</b>
+            <span><code>level:error AND status_code:&gt;=400</code>.</span>
+          </li>
+          <li>
+            <b>Histogram.</b>
+            <span>See spikes; click a bucket to scope the stream to that window.</span>
+          </li>
+          <li>
+            <b>Local index.</b>
+            <span>Search runs on disk at <code>~/.istoria</code>. No daemon, no server.</span>
+          </li>
+          <li>
+            <b>Stays local.</b> <span>No telemetry, no accounts, no outbound connections.</span>
+          </li>
+        </ul>
+      </div>
+    </section>
 
-<script>
-  function flash(btn) {
-    const o = btn.textContent;
-    btn.classList.add('ok');
-    btn.textContent = 'copied';
-    setTimeout(() => { btn.classList.remove('ok'); btn.textContent = o; }, 1300);
-  }
-  document.querySelectorAll('button[data-copy]').forEach(b => {
-    b.addEventListener('click', () => { navigator.clipboard?.writeText(b.dataset.copy); flash(b); });
-  });
-  document.querySelectorAll('button[data-copy-target]').forEach(b => {
-    b.addEventListener('click', () => {
-      const t = document.getElementById(b.dataset.copyTarget);
-      if (!t) return;
-      navigator.clipboard?.writeText(t.textContent.trim());
-      flash(b);
-    });
-  });
-</script>
+    <section id="start">
+      <div class="wrap">
+        <p class="sec-label">getting started</p>
 
-</body>
+        <ol class="steps">
+          <li>
+            <div class="body">
+              <p>Install via Homebrew. <span class="sub">macOS and Linux.</span></p>
+              <div class="cmd-dark">
+                <span class="pr">$</span>
+                <code id="step-1-cmd">brew install dmitry-zaitsev/tap/istoria</code>
+                <button type="button" data-copy-target="step-1-cmd">copy</button>
+              </div>
+            </div>
+          </li>
+          <li>
+            <div class="body">
+              <p>Pipe a process into it.</p>
+              <div class="cmd-dark">
+                <span class="pr">$</span>
+                <code id="step-2-cmd">npm run dev | istoria</code>
+                <button type="button" data-copy-target="step-2-cmd">copy</button>
+              </div>
+            </div>
+          </li>
+          <li>
+            <div class="body">
+              <p>Level it up.</p>
+              <ul class="extras">
+                <li>
+                  <b
+                    ><a
+                      href="https://chromewebstore.google.com/detail/aackbjkeomlkkcmpcnldhhdgdaaohild?utm_source=item-share-cb"
+                      target="_blank"
+                      rel="noopener"
+                      >Chrome extension</a
+                    ></b
+                  >
+                  · stream a tab's console and network events into the same window.
+                </li>
+                <li>
+                  <b>MCP server</b> · point local agents (Claude Code, Codex) at istoria to query
+                  logs in-session.
+                </li>
+                <li>
+                  <b>Alerts</b> · save a filter, get a desktop notification when matches show up.
+                </li>
+                <li><b>Saved views</b> · pin filters as tabs and reopen them later.</li>
+              </ul>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap foot">
+        <span>istoria</span>
+        <span
+          ><a href="https://www.linkedin.com/in/dmitryzaicew/" target="_blank" rel="noopener"
+            >by Dima</a
+          ></span
+        >
+      </div>
+    </footer>
+
+    <script>
+      function flash(btn) {
+        const o = btn.textContent;
+        btn.classList.add("ok");
+        btn.textContent = "copied";
+        setTimeout(() => {
+          btn.classList.remove("ok");
+          btn.textContent = o;
+        }, 1300);
+      }
+      document.querySelectorAll("button[data-copy]").forEach((b) => {
+        b.addEventListener("click", () => {
+          navigator.clipboard?.writeText(b.dataset.copy);
+          flash(b);
+        });
+      });
+      document.querySelectorAll("button[data-copy-target]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const t = document.getElementById(b.dataset.copyTarget);
+          if (!t) return;
+          navigator.clipboard?.writeText(t.textContent.trim());
+          flash(b);
+        });
+      });
+    </script>
+  </body>
 </html>
