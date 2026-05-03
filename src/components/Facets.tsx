@@ -43,7 +43,7 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
         (g) =>
           g.key.toLowerCase().includes(q) ||
           g.label.toLowerCase().includes(q) ||
-          g.values.some((v) => v.value.toLowerCase().includes(q)),
+          g.values.some((v) => v.value.toLowerCase().includes(q))
       )
     : groups.slice(0, TOP_N_FACET_GROUPS);
   const hidden = q ? 0 : Math.max(0, groups.length - matchedGroups.length);
@@ -53,9 +53,7 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
       <div className="facet-key-search-wrap">
         <input
           className="facet-key-search"
-          placeholder={
-            hidden > 0 ? `search facets (+${hidden} hidden)…` : "search facets…"
-          }
+          placeholder={hidden > 0 ? `search facets (+${hidden} hidden)…` : "search facets…"}
           value={keySearch}
           onChange={(e) => setKeySearch(e.target.value)}
         />
@@ -71,18 +69,10 @@ export function Facets({ events, filter, onFilterChange }: FacetsProps) {
             onFilterChange={onFilterChange}
           />
         ) : (
-          <Group
-            key={g.key}
-            group={g}
-            pinned={pinned}
-            onToggle={toggle}
-            valueFilter={q}
-          />
-        ),
+          <Group key={g.key} group={g} pinned={pinned} onToggle={toggle} valueFilter={q} />
+        )
       )}
-      {matchedGroups.length === 0 && (
-        <div className="facet-empty">No facets match.</div>
-      )}
+      {matchedGroups.length === 0 && <div className="facet-empty">No facets match.</div>}
     </aside>
   );
 }
@@ -108,9 +98,7 @@ function Group({
   const effectiveSearch = showSearch ? search : "";
   const effective = valueFilter || effectiveSearch;
   const matched = effective
-    ? group.values.filter((v) =>
-        v.value.toLowerCase().includes(effective.toLowerCase()),
-      )
+    ? group.values.filter((v) => v.value.toLowerCase().includes(effective.toLowerCase()))
     : group.values;
 
   // Keep the original count-desc order. Toggling a checkbox must NOT
@@ -153,11 +141,7 @@ function Group({
         />
       ))}
       {overflow > 0 && !effectiveSearch && (
-        <div
-          className="facet-more"
-          role="button"
-          onClick={() => setShowAll((x) => !x)}
-        >
+        <div className="facet-more" role="button" onClick={() => setShowAll((x) => !x)}>
           {showAll ? "show less" : `show ${overflow.toLocaleString()} more`}
         </div>
       )}
@@ -177,11 +161,7 @@ function FacetRow({
   onClick: () => void;
 }) {
   return (
-    <div
-      className={`facet-row${checked ? " checked" : ""}`}
-      onClick={onClick}
-      role="button"
-    >
+    <div className={`facet-row${checked ? " checked" : ""}`} onClick={onClick} role="button">
       <span className={`facet-check${checked ? " on" : ""}`} aria-hidden>
         {checked ? "✓" : ""}
       </span>

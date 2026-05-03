@@ -29,9 +29,7 @@ const PATHS = [
   "/api/admin",
   "/health",
 ];
-const STATUS_CODES = [
-  200, 200, 200, 200, 200, 201, 204, 304, 400, 401, 403, 404, 500, 502, 503,
-];
+const STATUS_CODES = [200, 200, 200, 200, 200, 201, 204, 304, 400, 401, 403, 404, 500, 502, 503];
 const USERS = [42, 88, 207, 1009, 9001, 12345];
 const LEVELS = ["info", "info", "info", "debug", "warn", "warn", "error"];
 const ERR_MESSAGES = [
@@ -98,9 +96,7 @@ function makeHttpEvent() {
   };
   if (level === "error") {
     obj.msg = pick(ERR_MESSAGES);
-    obj.stack = pick(STACK_TEMPLATES).map((f) =>
-      f.replace("%LINE%", String(10 + (ridx() % 200))),
-    );
+    obj.stack = pick(STACK_TEMPLATES).map((f) => f.replace("%LINE%", String(10 + (ridx() % 200))));
   }
   return JSON.stringify(obj);
 }

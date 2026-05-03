@@ -7,10 +7,7 @@ import { SparkleIcon } from "./SparkleIcon";
 
 const INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/overview";
 
-type Probe =
-  | { state: "loading" }
-  | { state: "missing" }
-  | { state: "ready" };
+type Probe = { state: "loading" } | { state: "missing" } | { state: "ready" };
 
 type Mode = "closed" | "connect" | "panel";
 
@@ -70,8 +67,7 @@ export function ClaudeButton() {
   // Orange dot signals: branch drifted since last analysis, OR connected
   // but no analysis run yet. Hidden while a run is in flight (the
   // breathing animation already says "busy").
-  const showDot =
-    connected && !analyzing && (relevanceStale || !relevance);
+  const showDot = connected && !analyzing && (relevanceStale || !relevance);
 
   const handleClick = () => {
     setMode(connected ? "panel" : "connect");
@@ -103,17 +99,10 @@ export function ClaudeButton() {
         {showDot && <span className="claude-dot" aria-hidden="true" />}
       </button>
       {mode === "connect" && (
-        <ConnectDialog
-          probe={probe}
-          onClose={() => setMode("closed")}
-          onConfirm={handleConnect}
-        />
+        <ConnectDialog probe={probe} onClose={() => setMode("closed")} onConfirm={handleConnect} />
       )}
       {mode === "panel" && (
-        <AIPanel
-          onClose={() => setMode("closed")}
-          onDisconnect={handleDisconnect}
-        />
+        <AIPanel onClose={() => setMode("closed")} onDisconnect={handleDisconnect} />
       )}
     </>
   );
@@ -140,19 +129,14 @@ function ConnectDialog({ probe, onClose, onConfirm }: ConnectDialogProps) {
           {missing && (
             <>
               <p>Claude Code isn't installed on this machine.</p>
-              <p>
-                Once installed, istoria can use it (via the Claude Agent SDK)
-                to unlock:
-              </p>
+              <p>Once installed, istoria can use it (via the Claude Agent SDK) to unlock:</p>
               <ul className="claude-dialog-list">
                 <li>Highlight log entries relevant to the current branch</li>
                 <li>Summarize errors and recurring patterns</li>
                 <li>Explain stack traces in plain English</li>
                 <li>Translate plain English into filters</li>
               </ul>
-              <p className="claude-dialog-muted">
-                Install Claude Code, then reopen this dialog.
-              </p>
+              <p className="claude-dialog-muted">Install Claude Code, then reopen this dialog.</p>
             </>
           )}
           {probe.state === "ready" && (
@@ -170,29 +154,16 @@ function ConnectDialog({ probe, onClose, onConfirm }: ConnectDialogProps) {
         <div className="claude-dialog-actions">
           {missing ? (
             <>
-              <button
-                type="button"
-                className="claude-btn ghost"
-                onClick={onClose}
-              >
+              <button type="button" className="claude-btn ghost" onClick={onClose}>
                 Close
               </button>
-              <a
-                className="claude-btn primary"
-                href={INSTALL_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
+              <a className="claude-btn primary" href={INSTALL_URL} target="_blank" rel="noreferrer">
                 Install instructions
               </a>
             </>
           ) : (
             <>
-              <button
-                type="button"
-                className="claude-btn ghost"
-                onClick={onClose}
-              >
+              <button type="button" className="claude-btn ghost" onClick={onClose}>
                 Cancel
               </button>
               <button

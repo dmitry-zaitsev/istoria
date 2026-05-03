@@ -4,18 +4,12 @@ interface StatusBarProps {
   filterActive: boolean;
 }
 
-export function StatusBar({
-  total,
-  filtered,
-  filterActive,
-}: StatusBarProps) {
+export function StatusBar({ total, filtered, filterActive }: StatusBarProps) {
   return (
     <div className="status">
       <span>{total.toLocaleString()} events</span>
       {filterActive && (
-        <span style={{ color: "var(--muted-2)" }}>
-          {filtered.toLocaleString()} match filter
-        </span>
+        <span style={{ color: "var(--muted-2)" }}>{filtered.toLocaleString()} match filter</span>
       )}
       <span className="right">
         <span>

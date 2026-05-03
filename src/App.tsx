@@ -6,6 +6,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { log } from "./lib/logger";
 import { Chrome } from "./components/Chrome";
 import { ColumnHeader } from "./components/ColumnHeader";
 import { FilterBar } from "./components/FilterBar";
@@ -19,19 +20,8 @@ import { computeFacets } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Toast } from "./components/Toast";
 import { UpdateBanner } from "./components/UpdateBanner";
-import {
-  compileAlerts,
-  loadAlerts,
-  matchAlerts,
-  MIN_DEBOUNCE_MS,
-} from "./lib/alerts";
-import {
-  branchState,
-  listPins,
-  queryRecent,
-  subscribeEvents,
-  type LogEvent,
-} from "./lib/ipc";
+import { compileAlerts, loadAlerts, matchAlerts, MIN_DEBOUNCE_MS } from "./lib/alerts";
+import { branchState, listPins, queryRecent, subscribeEvents, type LogEvent } from "./lib/ipc";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
@@ -80,7 +70,7 @@ export default function App() {
   // shape; the original `raw` is preserved on every row for the raw tab.
   const unfilteredEvents = useMemo(
     () => applyAll(canonicalEvents, COMPILED_BUILTINS),
-    [canonicalEvents],
+    [canonicalEvents]
   );
 
   // Wipe local state the moment the user clears the session, even if
@@ -95,7 +85,7 @@ export default function App() {
         setSelected(null);
         setPinnedIds(new Set());
       }),
-    [],
+    []
   );
   // Snapshot of unfilteredEvents at pause time. While set, all
   // downstream derivations operate on this frozen slice instead of
@@ -118,7 +108,7 @@ export default function App() {
   const filterValid = !isError(parsed);
   const highlightTerms = useMemo(
     () => (filterValid ? termsFromAst(parsed as Ast) : []),
-    [parsed, filterValid],
+    [parsed, filterValid]
   );
 
   // Compile the relevance regex list into a single OR-joined RegExp so
@@ -136,20 +126,17 @@ export default function App() {
         new RegExp(normalized);
         safe.push(`(?:${normalized})`);
       } catch (e) {
-        console.warn("relevance: dropped invalid regex", raw, e);
+        log.warn("relevance: dropped invalid regex", raw, e);
       }
     }
     if (safe.length === 0) {
-      console.warn(
-        "relevance: all patterns were invalid; nothing will match",
-        relevance.regexes,
-      );
+      log.warn("relevance: all patterns were invalid; nothing will match", relevance.regexes);
       return null;
     }
     try {
       return new RegExp(safe.join("|"), "i");
     } catch (e) {
-      console.warn("relevance: failed to compile combined regex", safe, e);
+      log.warn("relevance: failed to compile combined regex", safe, e);
       return null;
     }
   }, [relevance]);
@@ -162,22 +149,12 @@ export default function App() {
     return collectTsBounds(parsed);
   }, [parsed]);
   const tsScopedEvents = useMemo(
-    () =>
-      unfilteredEvents.filter(
-        (e) => e.ts >= tsBounds.lo && e.ts <= tsBounds.hi,
-      ),
-    [unfilteredEvents, tsBounds.lo, tsBounds.hi],
+    () => unfilteredEvents.filter((e) => e.ts >= tsBounds.lo && e.ts <= tsBounds.hi),
+    [unfilteredEvents, tsBounds.lo, tsBounds.hi]
   );
   const suggestKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
-    const base = [
-      "msg",
-      "raw",
-      "ts",
-      "pinned",
-      "stack",
-      "hasStackTrace",
-    ];
+    const base = ["msg", "raw", "ts", "pinned", "stack", "hasStackTrace"];
     if (relevance) base.push("relevant");
     return [...base, ...groups.map((g) => g.key)];
   }, [tsScopedEvents, relevance]);
@@ -187,7 +164,7 @@ export default function App() {
     for (const g of groups) {
       m.set(
         g.key,
-        g.values.slice(0, 50).map((v) => v.value),
+        g.values.slice(0, 50).map((v) => v.value)
       );
     }
     m.set("pinned", ["true", "false"]);
@@ -200,22 +177,22 @@ export default function App() {
   const sources = useMemo(() => {
     const seen = new Set<string>();
     for (const e of unfilteredEvents) seen.add(e.source);
-    return [...seen].sort();
+    return [...seen].toSorted();
   }, [unfilteredEvents]);
   const branches = useMemo(() => {
     const seen = new Set<string>();
     for (const e of unfilteredEvents) {
       if (e.branch) seen.add(e.branch);
     }
-    return [...seen].sort();
+    return [...seen].toSorted();
   }, [unfilteredEvents]);
   const columnVisibility = useStore((s) => s.columnVisibility);
   const fieldColumns = useStore((s) => s.fieldColumns);
   const effectiveVisibility: Record<ColKey, boolean> = {
     ts: columnVisibility.ts ?? true,
     lvl: columnVisibility.lvl ?? true,
-    src: columnVisibility.src ?? (sources.length > 1),
-    br: columnVisibility.br ?? (branches.length > 1),
+    src: columnVisibility.src ?? sources.length > 1,
+    br: columnVisibility.br ?? branches.length > 1,
   };
   const availableFieldKeys = useMemo(() => {
     const groups = computeFacets(tsScopedEvents);
@@ -239,7 +216,7 @@ export default function App() {
       .then((ids) => {
         if (!cancelled) setPinnedIds(new Set(ids));
       })
-      .catch((e) => console.warn("listPins failed", e));
+      .catch((e) => log.warn("listPins failed", e));
     return () => {
       cancelled = true;
     };
@@ -271,11 +248,11 @@ export default function App() {
       try {
         const all = await queryRecent(QUERY_LIMIT);
         if (cancelled) return;
-        const ordered = all.slice().reverse() as LogEvent[];
+        const ordered = all.slice().toReversed() as LogEvent[];
         setCanonicalEvents(ordered);
         setUnfilteredCount(ordered.length);
       } catch (e) {
-        console.warn("queryRecent failed", e);
+        log.warn("queryRecent failed", e);
       }
     };
     // Throttle: under heavy ingest we'd otherwise rebuild the
@@ -349,7 +326,7 @@ export default function App() {
   const compiledAlerts = useMemo(() => compileAlerts(alerts), [alerts]);
   const alertMatches = useMemo(
     () => matchAlerts(unfilteredEvents, compiledAlerts),
-    [unfilteredEvents, compiledAlerts],
+    [unfilteredEvents, compiledAlerts]
   );
 
   // Notification: per-alert debounce + suppressed-match counter so a
@@ -368,9 +345,8 @@ export default function App() {
   useEffect(() => {
     const notifying = alerts.filter((a) => a.notify);
     if (notifying.length === 0) {
-      lastSeenIdRef.current = unfilteredEvents.length > 0
-        ? unfilteredEvents[unfilteredEvents.length - 1]!.id
-        : -1;
+      lastSeenIdRef.current =
+        unfilteredEvents.length > 0 ? unfilteredEvents[unfilteredEvents.length - 1]!.id : -1;
       return;
     }
     const now = Date.now();
@@ -391,15 +367,11 @@ export default function App() {
           const last = lastFiredRef.current.get(a.id) ?? 0;
           const perAlertGap = Math.max(a.debounce_ms || 0, MIN_DEBOUNCE_MS);
           const inPerAlertCooldown = now - last < perAlertGap;
-          const inGlobalCooldown =
-            now - globalLastFireRef.current < MIN_DEBOUNCE_MS;
+          const inGlobalCooldown = now - globalLastFireRef.current < MIN_DEBOUNCE_MS;
           if (inPerAlertCooldown || inGlobalCooldown) {
             // Still in cooldown — accumulate so the next fire can
             // tell the user "+N more matched while you were away".
-            suppressedRef.current.set(
-              a.id,
-              (suppressedRef.current.get(a.id) ?? 0) + 1,
-            );
+            suppressedRef.current.set(a.id, (suppressedRef.current.get(a.id) ?? 0) + 1);
             continue;
           }
           lastFiredRef.current.set(a.id, now);
@@ -430,7 +402,7 @@ export default function App() {
                   notifyPermitRef.current = g;
                   return g;
                 } catch (e) {
-                  console.warn("notification permission probe failed", e);
+                  log.warn("notification permission probe failed", e);
                   notifyPermitRef.current = false;
                   return false;
                 } finally {
@@ -447,7 +419,7 @@ export default function App() {
           try {
             sendNotification({ title: a.name, body });
           } catch (e) {
-            console.warn("sendNotification failed", e);
+            log.warn("sendNotification failed", e);
             toast(`${a.name}: ${head}`);
           }
         }
@@ -479,8 +451,7 @@ export default function App() {
   // about new matches when the active filter excludes the new arrivals.
   const newCount = useMemo(() => {
     if (!pausedSrc) return 0;
-    const cutoff =
-      pausedSrc.length > 0 ? pausedSrc[pausedSrc.length - 1]!.id : -Infinity;
+    const cutoff = pausedSrc.length > 0 ? pausedSrc[pausedSrc.length - 1]!.id : -Infinity;
     if (!filterValid) {
       let n = 0;
       for (const ev of unfilteredEvents) if (ev.id > cutoff) n++;
@@ -502,7 +473,7 @@ export default function App() {
 
   const selected = useMemo(
     () => (selectedId == null ? null : events.find((e) => e.id === selectedId)),
-    [events, selectedId],
+    [events, selectedId]
   );
 
   const filterActive = filter.trim().length > 0;
@@ -531,17 +502,9 @@ export default function App() {
         suggestKeys={suggestKeys}
         suggestValuesByKey={suggestValuesByKey}
       />
-      <Histogram
-        events={events}
-        filter={filter}
-        onFilterChange={setFilter}
-      />
+      <Histogram events={events} filter={filter} onFilterChange={setFilter} />
       <div className="main">
-        <Facets
-          events={tsScopedEvents}
-          filter={filter}
-          onFilterChange={setFilter}
-        />
+        <Facets events={tsScopedEvents} filter={filter} onFilterChange={setFilter} />
         <div className="stream-col" style={colVars}>
           <StreamHeader
             total={unfilteredCount}
@@ -578,11 +541,7 @@ export default function App() {
           )}
         </div>
       </div>
-      <StatusBar
-        total={unfilteredCount}
-        filtered={events.length}
-        filterActive={filterActive}
-      />
+      <StatusBar total={unfilteredCount} filtered={events.length} filterActive={filterActive} />
     </div>
   );
 }
@@ -628,5 +587,5 @@ function applySort(events: LogEvent[], sort: SortKey): LogEvent[] {
   // default keeps that order so LogStream's scroll-to-bottom places
   // newest at the bottom.
   if (sort === "newest-bottom") return events;
-  return events.slice().sort((a, b) => b.ts - a.ts || b.id - a.id);
+  return events.slice().toSorted((a, b) => b.ts - a.ts || b.id - a.id);
 }

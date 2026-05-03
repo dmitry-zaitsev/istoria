@@ -56,10 +56,7 @@ export function StreamHeader({
       <span className="count">
         <b>{filtered.toLocaleString()}</b> events
         {filterActive && (
-          <span style={{ color: "var(--muted-2)" }}>
-            {" "}
-            · of {total.toLocaleString()}
-          </span>
+          <span style={{ color: "var(--muted-2)" }}> · of {total.toLocaleString()}</span>
         )}
       </span>
       <span className="right" ref={ref}>
@@ -73,11 +70,7 @@ export function StreamHeader({
             ★ {pinnedIds.size}
           </button>
         )}
-        <PinsPanel
-          events={unfilteredEvents}
-          open={pinsOpen}
-          onClose={() => setPinsOpen(false)}
-        />
+        <PinsPanel events={unfilteredEvents} open={pinsOpen} onClose={() => setPinsOpen(false)} />
         {alerts.length > 0 && (
           <button
             type="button"
@@ -99,11 +92,7 @@ export function StreamHeader({
               const txt = picked.map((e) => JSON.stringify(e)).join("\n");
               navigator.clipboard
                 ?.writeText(txt)
-                .then(() =>
-                  toast(
-                    `Copied ${picked.length} row${picked.length === 1 ? "" : "s"}`,
-                  ),
-                )
+                .then(() => toast(`Copied ${picked.length} row${picked.length === 1 ? "" : "s"}`))
                 .catch(() => toast("Copy failed"));
             }}
             title="Copy selected rows as JSONL"
@@ -126,11 +115,7 @@ export function StreamHeader({
         >
           clear
         </button>
-        <button
-          type="button"
-          className="sort-btn"
-          onClick={() => setOpen((x) => !x)}
-        >
+        <button type="button" className="sort-btn" onClick={() => setOpen((x) => !x)}>
           sort: {SORT_LABELS[sort]}
         </button>
         {open && (

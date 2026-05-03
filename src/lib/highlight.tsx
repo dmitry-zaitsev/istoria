@@ -77,7 +77,7 @@ export function highlight(text: string, terms: HighlightTerm[]): ReactNode {
     nodes.push(
       <mark key={i} className="hl">
         {text.slice(s, e)}
-      </mark>,
+      </mark>
     );
     cursor = e;
   });

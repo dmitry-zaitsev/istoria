@@ -90,19 +90,20 @@ does not load or evaluate code from remote sources.
 
 ### Data usage disclosures (Privacy practices tab)
 
-| Data type           | Collected? | Notes                                       |
-| ------------------- | ---------- | ------------------------------------------- |
-| Personally identifiable information | No |                                             |
-| Health information  | No         |                                             |
-| Financial info      | No         |                                             |
-| Authentication info | No         |                                             |
-| Personal communications | No     |                                             |
-| Location            | No         |                                             |
-| Web history         | No*        | * Tab titles + URLs may appear inside captured network events but are sent only to 127.0.0.1. |
-| User activity       | No*        | * Console output the page chose to print is forwarded only to 127.0.0.1. |
-| Website content     | No*        | * Console + network event metadata only — never page DOM, request bodies, or response bodies. |
+| Data type                           | Collected? | Notes                                                                                          |
+| ----------------------------------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| Personally identifiable information | No         |                                                                                                |
+| Health information                  | No         |                                                                                                |
+| Financial info                      | No         |                                                                                                |
+| Authentication info                 | No         |                                                                                                |
+| Personal communications             | No         |                                                                                                |
+| Location                            | No         |                                                                                                |
+| Web history                         | No\*       | \* Tab titles + URLs may appear inside captured network events but are sent only to 127.0.0.1. |
+| User activity                       | No\*       | \* Console output the page chose to print is forwarded only to 127.0.0.1.                      |
+| Website content                     | No\*       | \* Console + network event metadata only — never page DOM, request bodies, or response bodies. |
 
 Certify:
+
 - [x] I do not sell or transfer user data to third parties.
 - [x] I do not use or transfer user data for purposes unrelated to the
       single purpose described above.

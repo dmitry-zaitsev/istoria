@@ -11,16 +11,16 @@ Edit rules here. Both readers reload on app restart.
 
 Array of `RuleSpec`:
 
-| Field | Notes |
-|---|---|
-| `id` | Stable identifier. |
-| `name` | Human-readable label. |
-| `order` | Evaluation order — lower runs first. Specific formats before generic. |
-| `pattern` | Rust/JS-compatible regex. Use `(?<name>...)` for named groups. |
-| `flags` | Optional. Currently only `i` (case-insensitive) is honored backend-side. |
-| `output.source` / `level` / `msg` | Templates with `${groupName}` substitution. Frontend-only. |
-| `output.fields` | Map of field-name → template. Frontend-only. |
-| `output.merge_fields` | Template that resolves to a JSON object literal whose keys spread onto fields. Frontend-only. |
+| Field                             | Notes                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------- |
+| `id`                              | Stable identifier.                                                                            |
+| `name`                            | Human-readable label.                                                                         |
+| `order`                           | Evaluation order — lower runs first. Specific formats before generic.                         |
+| `pattern`                         | Rust/JS-compatible regex. Use `(?<name>...)` for named groups.                                |
+| `flags`                           | Optional. Currently only `i` (case-insensitive) is honored backend-side.                      |
+| `output.source` / `level` / `msg` | Templates with `${groupName}` substitution. Frontend-only.                                    |
+| `output.fields`                   | Map of field-name → template. Frontend-only.                                                  |
+| `output.merge_fields`             | Template that resolves to a JSON object literal whose keys spread onto fields. Frontend-only. |
 
 ## Backend contract
 

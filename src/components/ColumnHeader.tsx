@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useStore, type ColKey, type FieldColumn } from "../store";
 
@@ -14,9 +8,7 @@ interface ColumnHeaderProps {
   availableFieldKeys: string[];
 }
 
-type DragTarget =
-  | { kind: "builtin"; col: ColKey }
-  | { kind: "field"; path: string };
+type DragTarget = { kind: "builtin"; col: ColKey } | { kind: "field"; path: string };
 
 interface DragState {
   target: DragTarget;
@@ -40,11 +32,7 @@ const BUILTIN_LABELS: Record<ColKey, string> = {
   br: "branch",
 };
 
-export function ColumnHeader({
-  visibility,
-  fieldColumns,
-  availableFieldKeys,
-}: ColumnHeaderProps) {
+export function ColumnHeader({ visibility, fieldColumns, availableFieldKeys }: ColumnHeaderProps) {
   const widths = useStore((s) => s.columnWidths);
   const setColumnWidth = useStore((s) => s.setColumnWidth);
   const setColumnVisible = useStore((s) => s.setColumnVisible);
@@ -76,18 +64,16 @@ export function ColumnHeader({
     };
   }, [setColumnWidth, setFieldColumnWidth]);
 
-  const startDrag =
-    (target: DragTarget, currentWidth: number) =>
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      dragRef.current = {
-        target,
-        startX: e.clientX,
-        startW: currentWidth,
-      };
-      setActiveDrag(target);
-      document.body.classList.add("col-resizing");
+  const startDrag = (target: DragTarget, currentWidth: number) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    dragRef.current = {
+      target,
+      startX: e.clientX,
+      startW: currentWidth,
     };
+    setActiveDrag(target);
+    document.body.classList.add("col-resizing");
+  };
 
   const isDragging = (target: DragTarget) => {
     if (!activeDrag) return false;
@@ -138,9 +124,7 @@ export function ColumnHeader({
       {visibility.ts && (
         <ColCell
           label={BUILTIN_LABELS.ts}
-          onLabelClick={(rect) =>
-            setMenu({ kind: "builtin", col: "ts", anchor: rect })
-          }
+          onLabelClick={(rect) => setMenu({ kind: "builtin", col: "ts", anchor: rect })}
           onHandleDown={startDrag({ kind: "builtin", col: "ts" }, widths.ts)}
           dragging={isDragging({ kind: "builtin", col: "ts" })}
         />
@@ -148,9 +132,7 @@ export function ColumnHeader({
       {visibility.lvl && (
         <ColCell
           label={BUILTIN_LABELS.lvl}
-          onLabelClick={(rect) =>
-            setMenu({ kind: "builtin", col: "lvl", anchor: rect })
-          }
+          onLabelClick={(rect) => setMenu({ kind: "builtin", col: "lvl", anchor: rect })}
           onHandleDown={startDrag({ kind: "builtin", col: "lvl" }, widths.lvl)}
           dragging={isDragging({ kind: "builtin", col: "lvl" })}
         />
@@ -158,9 +140,7 @@ export function ColumnHeader({
       {visibility.src && (
         <ColCell
           label={BUILTIN_LABELS.src}
-          onLabelClick={(rect) =>
-            setMenu({ kind: "builtin", col: "src", anchor: rect })
-          }
+          onLabelClick={(rect) => setMenu({ kind: "builtin", col: "src", anchor: rect })}
           onHandleDown={startDrag({ kind: "builtin", col: "src" }, widths.src)}
           dragging={isDragging({ kind: "builtin", col: "src" })}
         />
@@ -168,9 +148,7 @@ export function ColumnHeader({
       {visibility.br && (
         <ColCell
           label={BUILTIN_LABELS.br}
-          onLabelClick={(rect) =>
-            setMenu({ kind: "builtin", col: "br", anchor: rect })
-          }
+          onLabelClick={(rect) => setMenu({ kind: "builtin", col: "br", anchor: rect })}
           onHandleDown={startDrag({ kind: "builtin", col: "br" }, widths.br)}
           dragging={isDragging({ kind: "builtin", col: "br" })}
         />
@@ -179,9 +157,7 @@ export function ColumnHeader({
         <ColCell
           key={fc.path}
           label={fc.path}
-          onLabelClick={(rect) =>
-            setMenu({ kind: "field", path: fc.path, anchor: rect })
-          }
+          onLabelClick={(rect) => setMenu({ kind: "field", path: fc.path, anchor: rect })}
           onHandleDown={startDrag({ kind: "field", path: fc.path }, fc.width)}
           dragging={isDragging({ kind: "field", path: fc.path })}
         />
@@ -233,10 +209,7 @@ export function ColumnHeader({
             </button>
           )}
           {menu.kind === "picker" && (
-            <ColumnPicker
-              entries={buildPickerEntries()}
-              onToggle={togglePickerEntry}
-            />
+            <ColumnPicker entries={buildPickerEntries()} onToggle={togglePickerEntry} />
           )}
         </ColPopover>
       )}
@@ -267,10 +240,7 @@ function ColCell({
       >
         {label}
       </span>
-      <div
-        className={`col-handle${dragging ? " active" : ""}`}
-        onPointerDown={onHandleDown}
-      />
+      <div className={`col-handle${dragging ? " active" : ""}`} onPointerDown={onHandleDown} />
     </div>
   );
 }
@@ -287,8 +257,7 @@ function ColumnPicker({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-  const labelOf = (e: PickerEntry) =>
-    e.kind === "builtin" ? e.label : e.path;
+  const labelOf = (e: PickerEntry) => (e.kind === "builtin" ? e.label : e.path);
   const filtered = q
     ? entries.filter((e) => labelOf(e).toLowerCase().includes(q.toLowerCase()))
     : entries;
@@ -304,16 +273,9 @@ function ColumnPicker({
         onKeyDown={(e) => e.stopPropagation()}
       />
       <div className="col-picker-list">
-        {filtered.length === 0 && (
-          <div className="col-popover-empty">No matches.</div>
-        )}
+        {filtered.length === 0 && <div className="col-popover-empty">No matches.</div>}
         {filtered.map((e) => (
-          <PickerRow
-            key={pickerEntryKey(e)}
-            entry={e}
-            label={labelOf(e)}
-            onToggle={onToggle}
-          />
+          <PickerRow key={pickerEntryKey(e)} entry={e} label={labelOf(e)} onToggle={onToggle} />
         ))}
       </div>
     </div>
@@ -407,4 +369,3 @@ function ColPopover({
     </div>
   );
 }
-

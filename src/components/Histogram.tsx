@@ -38,10 +38,7 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
   const brushRef = useRef<{ start: number; end: number } | null>(null);
   brushRef.current = brush;
 
-  const { buckets, bucketMs, tMin, tMax } = useMemo(
-    () => bucketize(events),
-    [events],
-  );
+  const { buckets, bucketMs, tMin, tMax } = useMemo(() => bucketize(events), [events]);
 
   const peak = Math.max(1, ...buckets.map((b) => b.total));
 
@@ -138,28 +135,24 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
             </div>
           );
         })}
-        {brush && trackRef.current && (() => {
-          const rectW = trackRef.current.clientWidth || 1;
-          const lo = Math.min(brush.start, brush.end);
-          const hi = Math.max(brush.start, brush.end);
-          const tLo = Math.round(tMin + (lo / rectW) * (tMax - tMin));
-          const tHi = Math.round(tMin + (hi / rectW) * (tMax - tMin));
-          const dur = tHi - tLo;
-          return (
-            <>
-              <div
-                className="histo-brush"
-                style={{ left: lo, width: Math.max(2, hi - lo) }}
-              />
-              <div
-                className="histo-brush-tip"
-                style={{ left: (lo + hi) / 2 }}
-              >
-                {formatSmartDate(tLo)} → {formatSmartDate(tHi)} · {formatDuration(dur)}
-              </div>
-            </>
-          );
-        })()}
+        {brush &&
+          trackRef.current &&
+          (() => {
+            const rectW = trackRef.current.clientWidth || 1;
+            const lo = Math.min(brush.start, brush.end);
+            const hi = Math.max(brush.start, brush.end);
+            const tLo = Math.round(tMin + (lo / rectW) * (tMax - tMin));
+            const tHi = Math.round(tMin + (hi / rectW) * (tMax - tMin));
+            const dur = tHi - tLo;
+            return (
+              <>
+                <div className="histo-brush" style={{ left: lo, width: Math.max(2, hi - lo) }} />
+                <div className="histo-brush-tip" style={{ left: (lo + hi) / 2 }}>
+                  {formatSmartDate(tLo)} → {formatSmartDate(tHi)} · {formatDuration(dur)}
+                </div>
+              </>
+            );
+          })()}
         {pinned.lo != null && pinned.hi != null && (
           <div
             className="histo-brush pinned"
@@ -174,11 +167,7 @@ export function Histogram({ events, filter, onFilterChange }: HistogramProps) {
       {expanded && (
         <div className="histo-axis">
           {ticks.map((t, i) => (
-            <span
-              key={i}
-              style={{ left: `${pct(t, tMin, tMax)}%` }}
-              className="tick"
-            >
+            <span key={i} style={{ left: `${pct(t, tMin, tMax)}%` }} className="tick">
               {tickFmt(t)}
             </span>
           ))}
@@ -249,12 +238,9 @@ function pickBucket(rangeMs: number): number {
 function bucketLabel(bucketMs: number): (ts: number) => string {
   return (ts) => {
     const d = new Date(ts);
-    if (bucketMs >= 24 * 60 * 60_000)
-      return `${d.getMonth() + 1}/${d.getDate()}`;
-    if (bucketMs >= 60 * 60_000)
-      return `${pad(d.getHours())}:00`;
-    if (bucketMs >= 60_000)
-      return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (bucketMs >= 24 * 60 * 60_000) return `${d.getMonth() + 1}/${d.getDate()}`;
+    if (bucketMs >= 60 * 60_000) return `${pad(d.getHours())}:00`;
+    if (bucketMs >= 60_000) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 }
@@ -308,16 +294,13 @@ function applyTsRange(
   query: string,
   lo: number,
   hi: number,
-  onFilterChange: (q: string) => void,
+  onFilterChange: (q: string) => void
 ): void {
   // Strip any existing ts comparison clauses (numeric or quoted-ISO).
   const pat = /(\s+AND\s+|^)ts:(>|>=|<|<=)("(?:\\.|[^"])*"|[^\s)]+)/g;
   let q = query.replace(pat, (_, prefix) => (prefix.startsWith(" AND") ? "" : ""));
   q = q.replace(/ts:(>|>=|<|<=)("(?:\\.|[^"])*"|[^\s)]+)\s+AND\s+/g, "");
   q = q.trim();
-  const clauses = [
-    `ts:>="${formatSmartDate(lo)}"`,
-    `ts:<="${formatSmartDate(hi)}"`,
-  ];
+  const clauses = [`ts:>="${formatSmartDate(lo)}"`, `ts:<="${formatSmartDate(hi)}"`];
   onFilterChange(q ? `${q} AND ${clauses.join(" AND ")}` : clauses.join(" AND "));
 }

@@ -5,22 +5,23 @@
     <title>istoria</title>
     <style>
       :root {
-        --surface:     #ffffff;
-        --surface-2:   #fafbfc;
-        --ink:         #0f172a;
-        --ink-2:       #1f2937;
-        --muted:       #64748b;
-        --muted-2:     #94a3b8;
-        --line-soft:   #eef1f5;
-        --brand:       #4ea8e0;
-        --ok-fg:       #0f7a4a;
-        --warn-fg:     #a65d12;
-        --rec:         #dc2626;
-        --rec-hover:   #b91c1c;
-        --ui:          "Inter", -apple-system, system-ui, sans-serif;
-        --mono:        "JetBrains Mono", ui-monospace, Menlo, monospace;
+        --surface: #ffffff;
+        --surface-2: #fafbfc;
+        --ink: #0f172a;
+        --ink-2: #1f2937;
+        --muted: #64748b;
+        --muted-2: #94a3b8;
+        --line-soft: #eef1f5;
+        --brand: #4ea8e0;
+        --ok-fg: #0f7a4a;
+        --warn-fg: #a65d12;
+        --rec: #dc2626;
+        --rec-hover: #b91c1c;
+        --ui: "Inter", -apple-system, system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
       }
-      html, body {
+      html,
+      body {
         margin: 0;
         padding: 0;
         background: var(--surface);
@@ -29,7 +30,9 @@
         font-size: 13px;
         -webkit-font-smoothing: antialiased;
       }
-      body { width: 280px; }
+      body {
+        width: 280px;
+      }
 
       header {
         display: flex;
@@ -73,11 +76,19 @@
         box-shadow: 0 0 0 3px rgba(166, 93, 18, 0.15);
       }
       @keyframes pulse {
-        0%, 100% { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18); }
-        50%      { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.05); }
+        0%,
+        100% {
+          box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+        }
+        50% {
+          box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.05);
+        }
       }
 
-      .body { padding: 12px 14px 14px; background: var(--surface-2); }
+      .body {
+        padding: 12px 14px 14px;
+        background: var(--surface-2);
+      }
 
       .btn {
         appearance: none;
@@ -95,12 +106,17 @@
         gap: 8px;
         transition: background 0.12s ease;
       }
-      .btn:disabled { opacity: 0.6; cursor: default; }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
       .btn-rec {
         background: var(--rec);
         color: #fff;
       }
-      .btn-rec:hover:not(:disabled) { background: var(--rec-hover); }
+      .btn-rec:hover:not(:disabled) {
+        background: var(--rec-hover);
+      }
       .btn-rec .icon {
         width: 10px;
         height: 10px;
@@ -112,7 +128,9 @@
         background: #1f2937;
         color: #fff;
       }
-      .btn-stop:hover:not(:disabled) { background: #0f172a; }
+      .btn-stop:hover:not(:disabled) {
+        background: #0f172a;
+      }
       .btn-stop .icon {
         width: 9px;
         height: 9px;

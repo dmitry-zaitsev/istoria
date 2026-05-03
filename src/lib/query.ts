@@ -8,7 +8,14 @@ export type CmpOp = "lt" | "lte" | "gt" | "gte";
 export type Ast =
   | { kind: "key_exact"; key: string; value: string }
   | { kind: "key_cmp"; key: string; op: CmpOp; value: number }
-  | { kind: "key_cmp_fn"; key: string; op: CmpOp; fn: "percentile" | "last"; arg: number; argText?: string }
+  | {
+      kind: "key_cmp_fn";
+      key: string;
+      op: CmpOp;
+      fn: "percentile" | "last";
+      arg: number;
+      argText?: string;
+    }
   | { kind: "key_regex"; key: string; pattern: string }
   | { kind: "free"; term: string }
   | { kind: "and"; left: Ast; right: Ast }
@@ -289,13 +296,9 @@ export function parseSmartDate(s: string, ref = new Date()): number | null {
     return d.getTime();
   }
   // `Mon D[ HH:MM[:SS]]` → most recent occurrence on or before ref.
-  const m = s.match(
-    /^([A-Za-z]{3})\s+(\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
-  );
+  const m = s.match(/^([A-Za-z]{3})\s+(\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (m) {
-    const idx = MONTHS_SHORT.findIndex(
-      (mn) => mn.toLowerCase() === m[1]!.toLowerCase(),
-    );
+    const idx = MONTHS_SHORT.findIndex((mn) => mn.toLowerCase() === m[1]!.toLowerCase());
     if (idx < 0) return null;
     const day = +m[2]!;
     const hh = m[3] ? +m[3] : 0;
@@ -313,11 +316,7 @@ export function parseSmartDate(s: string, ref = new Date()): number | null {
 /// Recognize `percentile(N)` or `duration(N unit)` after the cmp
 /// position. Returns null if the cursor doesn't sit at a function
 /// call. Consumes through the closing paren on success.
-function tryParseFnCall(
-  c: Cursor,
-  key: string,
-  op: CmpOp,
-): Ast | null {
+function tryParseFnCall(c: Cursor, key: string, op: CmpOp): Ast | null {
   if (c.src.startsWith("percentile(", c.pos)) {
     c.pos += "percentile(".length;
     const inner = readUntil(c, ")");
@@ -332,8 +331,7 @@ function tryParseFnCall(
     const inner = readUntil(c, ")");
     if (peek(c) === ")") c.pos++;
     const ms = parseDurationMs(inner.trim());
-    if (ms == null)
-      throw new Error(`last expects \`N unit\`, got '${inner}'`);
+    if (ms == null) throw new Error(`last expects \`N unit\`, got '${inner}'`);
     return {
       kind: "key_cmp_fn",
       key,
@@ -542,11 +540,7 @@ const MONTHS_SHORT = [
 ];
 
 function chipValue(key: string, value: number | string): string {
-  if (
-    TS_KEYS.has(key) &&
-    typeof value === "number" &&
-    value >= TS_MS_FLOOR
-  ) {
+  if (TS_KEYS.has(key) && typeof value === "number" && value >= TS_MS_FLOOR) {
     return formatSmartDate(value);
   }
   return String(value);
@@ -563,9 +557,7 @@ export function formatSmartDate(unixMs: number, ref = new Date()): string {
   const time =
     ss === 0 && ms === 0
       ? `${pad(d.getHours())}:${pad(d.getMinutes())}`
-      : `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(ss)}${
-          ms ? "." + pad(ms, 3) : ""
-        }`;
+      : `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(ss)}${ms ? "." + pad(ms, 3) : ""}`;
   const sameDay = d.toDateString() === ref.toDateString();
   if (sameDay) return time;
   const sameYear = d.getFullYear() === ref.getFullYear();
@@ -588,9 +580,7 @@ function astToToken(ast: Ast): Token {
     case "key_cmp":
       return {
         kind: "key_cmp",
-        text: `${ast.key}:${cmpStr(ast.op)}${quoteIfNeeded(
-          chipValue(ast.key, ast.value),
-        )}`,
+        text: `${ast.key}:${cmpStr(ast.op)}${quoteIfNeeded(chipValue(ast.key, ast.value))}`,
       };
     case "key_cmp_fn": {
       const inner = ast.argText ?? String(ast.arg);
@@ -686,9 +676,7 @@ function render(ast: Ast): string {
     case "key_regex":
       return `${ast.key}~/${ast.pattern}/`;
     case "free":
-      return /\s/.test(ast.term)
-        ? `"${ast.term.replace(/"/g, '\\"')}"`
-        : ast.term;
+      return /\s/.test(ast.term) ? `"${ast.term.replace(/"/g, '\\"')}"` : ast.term;
     case "and":
       return `(${render(ast.left)} AND ${render(ast.right)})`;
     case "or":
@@ -703,11 +691,7 @@ function render(ast: Ast): string {
 /// concrete numeric cmp clauses. Cached per (key, fn, arg) tuple.
 export function resolveAst(ast: Ast, events: LogEvent[]): Ast {
   const cache = new Map<string, number>();
-  const valueAt = (
-    key: string,
-    fn: "percentile" | "last",
-    arg: number,
-  ) => {
+  const valueAt = (key: string, fn: "percentile" | "last", arg: number) => {
     const ck = `${key}|${fn}|${arg}`;
     let v = cache.get(ck);
     if (v != null) return v;
@@ -725,10 +709,7 @@ export function resolveAst(ast: Ast, events: LogEvent[]): Ast {
       nums.sort((a, b) => a - b);
       if (nums.length === 0) v = 0;
       else {
-        const idx = Math.min(
-          nums.length - 1,
-          Math.max(0, Math.floor((arg / 100) * nums.length)),
-        );
+        const idx = Math.min(nums.length - 1, Math.max(0, Math.floor((arg / 100) * nums.length)));
         v = nums[idx]!;
       }
     }

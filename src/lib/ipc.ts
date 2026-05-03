@@ -19,16 +19,11 @@ export interface EventNewPayload {
   dropped: number;
 }
 
-export async function queryRecent(
-  limit: number,
-  filter?: string,
-): Promise<LogEvent[]> {
+export async function queryRecent(limit: number, filter?: string): Promise<LogEvent[]> {
   return invoke<LogEvent[]>("query_recent", { limit, filter: filter ?? null });
 }
 
-export async function subscribeEvents(
-  cb: (payload: EventNewPayload) => void,
-): Promise<UnlistenFn> {
+export async function subscribeEvents(cb: (payload: EventNewPayload) => void): Promise<UnlistenFn> {
   return listen<EventNewPayload>("event-new", (e) => cb(e.payload));
 }
 
@@ -64,14 +59,12 @@ export interface EmissionSite {
 export async function getCodePreview(
   path: string,
   line: number,
-  context: number,
+  context: number
 ): Promise<CodeLine[]> {
   return invoke<CodeLine[]>("get_code_preview", { path, line, context });
 }
 
-export async function getEmissionSite(
-  msg: string,
-): Promise<EmissionSite | null> {
+export async function getEmissionSite(msg: string): Promise<EmissionSite | null> {
   return invoke<EmissionSite | null>("get_emission_site", { msg });
 }
 

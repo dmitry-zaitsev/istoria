@@ -48,4 +48,4 @@ Only software running on the user's machine that listens on
 
 ## Contact
 
-dz@wallspaghetti.com
+dmitry.zaicew@gmail.com

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { addClause, addNotClause, removeClause } from "../lib/facets";
 import { focusFilterInput } from "../lib/filterFocus";
 import { highlight, type HighlightTerm } from "../lib/highlight";
+import { log } from "../lib/logger";
 import {
   getCodePreview,
   getEmissionSite,
@@ -31,21 +32,9 @@ interface InspectorProps {
 
 type Tab = "json" | "stack" | "related" | "code" | "raw";
 
-const CORR_KEYS = [
-  "request_id",
-  "trace_id",
-  "correlation_id",
-  "span_id",
-  "session_id",
-];
+const CORR_KEYS = ["request_id", "trace_id", "correlation_id", "span_id", "session_id"];
 
-export function Inspector({
-  event,
-  events,
-  onSelect,
-  onClose,
-  highlightTerms,
-}: InspectorProps) {
+export function Inspector({ event, events, onSelect, onClose, highlightTerms }: InspectorProps) {
   const height = useStore((s) => s.inspectorHeight);
   const setHeight = useStore((s) => s.setInspectorHeight);
   const filter = useStore((s) => s.filter);
@@ -59,9 +48,7 @@ export function Inspector({
   // Pre-fetch emission site so the Code tab can be disabled with a
   // tooltip when there's no match in the project tree. Re-fetched per
   // event; cached server-side by msg.
-  const [emissionSite, setEmissionSite] = useState<
-    EmissionSite | null | "loading"
-  >("loading");
+  const [emissionSite, setEmissionSite] = useState<EmissionSite | null | "loading">("loading");
   useEffect(() => {
     let cancelled = false;
     setEmissionSite("loading");
@@ -75,7 +62,7 @@ export function Inspector({
       })
       .catch((e) => {
         if (!cancelled) {
-          console.warn("getEmissionSite failed", e);
+          log.warn("getEmissionSite failed", e);
           setEmissionSite(null);
         }
       });
@@ -128,8 +115,7 @@ export function Inspector({
     toggleFieldColumn(path);
     toast(exists ? `Hid column ${path}` : `Added column ${path}`);
   };
-  const isColumn = (path: string) =>
-    fieldColumns.some((c) => c.path === path);
+  const isColumn = (path: string) => fieldColumns.some((c) => c.path === path);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -166,9 +152,7 @@ export function Inspector({
   };
 
   const fields = (() => {
-    const base =
-      (event.fields as Record<string, unknown> | undefined) ??
-      fieldsFromPlain(event);
+    const base = (event.fields as Record<string, unknown> | undefined) ?? fieldsFromPlain(event);
     // Surface top-level event metadata in the JSON view so users can
     // see (and filter on) `branch` / `source` even when the producer's
     // payload omits them. JSON payload values win on key conflict.
@@ -208,9 +192,7 @@ export function Inspector({
           disabled={related.events.length === 0}
         >
           Related
-          {related.events.length > 0 && (
-            <span className="ct">{related.events.length}</span>
-          )}
+          {related.events.length > 0 && <span className="ct">{related.events.length}</span>}
         </TabButton>
         <TabButton
           active={tab === "code"}
@@ -234,11 +216,7 @@ export function Inspector({
           <span className={`lvl ${lvl}`} style={{ padding: "1px 5px" }}>
             {lvl}
           </span>
-          <span
-            className="btn sm ghost"
-            onClick={() => copy(event)}
-            role="button"
-          >
+          <span className="btn sm ghost" onClick={() => copy(event)} role="button">
             copy
           </span>
           <span
@@ -254,9 +232,7 @@ export function Inspector({
       <div className="inspector-body">
         {tab === "json" && (
           <div className="json">
-            <div className="msg-headline">
-              {highlight(event.msg || event.raw, highlightTerms)}
-            </div>
+            <div className="msg-headline">{highlight(event.msg || event.raw, highlightTerms)}</div>
             <JsonView
               value={fields}
               onFilter={onAddFilter}
@@ -274,9 +250,7 @@ export function Inspector({
             {stackFrames.length === 0 ? (
               <div className="empty-tab">No stack trace.</div>
             ) : (
-              stackFrames.map((f, i) => (
-                <StackFrame key={i} frame={f} index={i} />
-              ))
+              stackFrames.map((f, i) => <StackFrame key={i} frame={f} index={i} />)
             )}
           </div>
         )}
@@ -287,7 +261,10 @@ export function Inspector({
             ) : (
               <>
                 <div className="related-h">
-                  Sharing <code>{related.key}={related.value}</code>
+                  Sharing{" "}
+                  <code>
+                    {related.key}={related.value}
+                  </code>
                 </div>
                 {related.events.map((e) => (
                   <div
@@ -296,13 +273,9 @@ export function Inspector({
                     onClick={() => onSelect(e.id)}
                   >
                     <span className="ts">{formatTsFull(e.ts)}</span>
-                    <span className={`lvl ${levelClass(e.level)}`}>
-                      {levelClass(e.level)}
-                    </span>
+                    <span className={`lvl ${levelClass(e.level)}`}>{levelClass(e.level)}</span>
                     <span className="src">{e.source}</span>
-                    <span className="msg">
-                      {highlight(e.msg || e.raw, highlightTerms)}
-                    </span>
+                    <span className="msg">{highlight(e.msg || e.raw, highlightTerms)}</span>
                   </div>
                 ))}
               </>
@@ -310,9 +283,7 @@ export function Inspector({
           </div>
         )}
         {tab === "code" && <CodeTab site={emissionSite} />}
-        {tab === "raw" && (
-          <pre className="raw">{event.raw}</pre>
-        )}
+        {tab === "raw" && <pre className="raw">{event.raw}</pre>}
       </div>
     </aside>
   );
@@ -325,11 +296,7 @@ function CodeTab({ site }: { site: EmissionSite | null | "loading" }) {
   if (!site) {
     // Tab is disabled when site is null, but if a saved tab state lands
     // here defensively render the same explanation text.
-    return (
-      <div className="empty-tab">
-        Source not found in project.
-      </div>
-    );
+    return <div className="empty-tab">Source not found in project.</div>;
   }
   return (
     <div className="code-tab">
@@ -345,11 +312,7 @@ function CodeTab({ site }: { site: EmissionSite | null | "loading" }) {
         )}
         <OpenInIde absPath={site.path} line={site.line} />
       </div>
-      <CodePreview
-        preview={site.preview}
-        highlightLine={site.line}
-        path={site.rel_path}
-      />
+      <CodePreview preview={site.preview} highlightLine={site.line} path={site.rel_path} />
     </div>
   );
 }
@@ -357,16 +320,12 @@ function CodeTab({ site }: { site: EmissionSite | null | "loading" }) {
 const LAST_EDITOR_KEY = "last_editor_id";
 
 function buildOpenUrl(template: string, path: string, line: number): string {
-  return template
-    .replace("{path}", encodeURI(path))
-    .replace("{line}", String(line));
+  return template.replace("{path}", encodeURI(path)).replace("{line}", String(line));
 }
 
 function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
   const [editors, setEditors] = useState<EditorEntry[]>([]);
-  const [lastId, setLastId] = useState<string | null>(() =>
-    localStorage.getItem(LAST_EDITOR_KEY),
-  );
+  const [lastId, setLastId] = useState<string | null>(() => localStorage.getItem(LAST_EDITOR_KEY));
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -376,7 +335,7 @@ function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
       .then((list) => {
         if (!cancelled) setEditors(list);
       })
-      .catch((e) => console.warn("listEditors failed", e));
+      .catch((e) => log.warn("listEditors failed", e));
     return () => {
       cancelled = true;
     };
@@ -399,8 +358,7 @@ function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
     );
   }
 
-  const primary =
-    editors.find((e) => e.id === lastId) ?? editors[0]!;
+  const primary = editors.find((e) => e.id === lastId) ?? editors[0]!;
   const others = editors.filter((e) => e.id !== primary.id);
 
   const launch = (e: EditorEntry) => {
@@ -408,7 +366,7 @@ function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
     localStorage.setItem(LAST_EDITOR_KEY, e.id);
     setOpen(false);
     openUrl(buildOpenUrl(e.url_template, absPath, line)).catch((err) =>
-      toast(`open failed: ${String(err)}`),
+      toast(`open failed: ${String(err)}`)
     );
   };
 
@@ -437,11 +395,7 @@ function OpenInIde({ absPath, line }: { absPath: string; line: number }) {
       {open && others.length > 0 && (
         <div className="open-in-ide-menu">
           {others.map((e) => (
-            <div
-              key={e.id}
-              className="open-in-ide-item"
-              onClick={() => launch(e)}
-            >
+            <div key={e.id} className="open-in-ide-item" onClick={() => launch(e)}>
               {e.name}
             </div>
           ))}
@@ -467,10 +421,7 @@ function CodePreview({
   return (
     <pre className="code-preview hljs">
       {preview.map((ln) => (
-        <div
-          key={ln.line}
-          className={`code-row${ln.line === hitLine ? " hit" : ""}`}
-        >
+        <div key={ln.line} className={`code-row${ln.line === hitLine ? " hit" : ""}`}>
           <span className="code-row-no">{ln.line}</span>
           <span
             className="code-row-text"
@@ -529,7 +480,7 @@ function StackFrame({ frame, index }: { frame: string; index: number }) {
     getCodePreview(p.file, p.line, 2)
       .then((rows) => setPreview(rows))
       .catch((e) => {
-        console.warn("getCodePreview failed", e);
+        log.warn("getCodePreview failed", e);
         setPreview([]);
       });
   }, [open, p.file, p.line, preview]);
@@ -559,15 +510,11 @@ function StackFrame({ frame, index }: { frame: string; index: number }) {
             )}
           </span>
         )}
-        {canExpand && (
-          <span className="frame-chevron">{open ? "▾" : "▸"}</span>
-        )}
+        {canExpand && <span className="frame-chevron">{open ? "▾" : "▸"}</span>}
       </div>
       {open && p.line != null && (
         <div className="frame-preview">
-          {preview === "loading" && (
-            <div className="empty-tab small">Loading…</div>
-          )}
+          {preview === "loading" && <div className="empty-tab small">Loading…</div>}
           {Array.isArray(preview) && (
             <CodePreview preview={preview} highlightLine={p.line} path={p.file} />
           )}
@@ -608,8 +555,7 @@ function extractStack(event: LogEvent): string[] {
   if (fields) {
     for (const key of ["stack", "stacktrace", "stack_trace", "trace"]) {
       const v = fields[key];
-      if (Array.isArray(v))
-        return v.map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
+      if (Array.isArray(v)) return v.map((x) => (typeof x === "string" ? x : JSON.stringify(x)));
       if (typeof v === "string") return v.split(/\r?\n/).filter(Boolean);
     }
   }
@@ -621,7 +567,7 @@ function extractStack(event: LogEvent): string[] {
 
 function findRelated(
   event: LogEvent,
-  all: LogEvent[],
+  all: LogEvent[]
 ): { key: string; value: string; events: LogEvent[] } {
   const fields = event.fields as Record<string, unknown> | undefined;
   if (!fields) return { key: "", value: "", events: [] };
@@ -633,7 +579,7 @@ function findRelated(
       (e) =>
         e.id !== event.id &&
         e.fields != null &&
-        String((e.fields as Record<string, unknown>)[key]) === value,
+        String((e.fields as Record<string, unknown>)[key]) === value
     );
     if (matches.length > 0) return { key, value, events: matches };
   }
@@ -674,7 +620,7 @@ function formatTsFull(unixMs: number): string {
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(
       d.getMilliseconds(),
-      3,
+      3
     )}`
   );
 }
@@ -689,7 +635,7 @@ function copy(event: LogEvent) {
       ...(event.fields as Record<string, unknown> | undefined),
     },
     null,
-    2,
+    2
   );
   navigator.clipboard
     ?.writeText(txt)

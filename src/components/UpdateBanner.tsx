@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { checkForUpdates, openTerminal, type UpdateInfo } from "../lib/ipc";
+import { log } from "../lib/logger";
 
 const DISMISS_KEY = "update.dismissed.v1";
 
@@ -36,7 +37,7 @@ export function UpdateBanner() {
       .catch((e) => {
         // Offline, GitHub rate-limit, or proxy block — silent.
         // The banner is a courtesy; never escalate to the user.
-        console.warn("update check failed", e);
+        log.warn("update check failed", e);
       });
     return () => {
       cancelled = true;
@@ -62,13 +63,7 @@ export function UpdateBanner() {
     <div className="update-toast" role="status">
       <div className="update-toast-icon" aria-hidden="true">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-          <circle
-            cx="9"
-            cy="9"
-            r="6.5"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
+          <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.5" />
           <path
             d="M9 12V6M6.5 8.5L9 6l2.5 2.5"
             stroke="currentColor"

@@ -5,7 +5,7 @@
 //
 // Usage: node scripts/set-version.mjs 1.2.3
 
-import fs from 'node:fs';
+import fs from "node:fs";
 
 const v = process.argv[2];
 if (!v || !/^\d+\.\d+\.\d+$/.test(v)) {
@@ -14,19 +14,23 @@ if (!v || !/^\d+\.\d+\.\d+$/.test(v)) {
 }
 
 const writeJson = (path, mutate) => {
-  const obj = JSON.parse(fs.readFileSync(path, 'utf8'));
+  const obj = JSON.parse(fs.readFileSync(path, "utf8"));
   mutate(obj);
-  fs.writeFileSync(path, JSON.stringify(obj, null, 2) + '\n');
+  fs.writeFileSync(path, JSON.stringify(obj, null, 2) + "\n");
 };
 
-writeJson('package.json', p => { p.version = v; });
-writeJson('src-tauri/tauri.conf.json', t => { t.version = v; });
+writeJson("package.json", (p) => {
+  p.version = v;
+});
+writeJson("src-tauri/tauri.conf.json", (t) => {
+  t.version = v;
+});
 
-const cargoPath = 'Cargo.toml';
+const cargoPath = "Cargo.toml";
 const re = /(\[workspace\.package\][\s\S]*?\nversion\s*=\s*")[^"]+(")/;
-const c = fs.readFileSync(cargoPath, 'utf8');
+const c = fs.readFileSync(cargoPath, "utf8");
 if (!re.test(c)) {
-  console.error('Cargo.toml: workspace.package version not found');
+  console.error("Cargo.toml: workspace.package version not found");
   process.exit(1);
 }
 fs.writeFileSync(cargoPath, c.replace(re, `$1${v}$2`));

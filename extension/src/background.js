@@ -43,7 +43,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "start") {
     startRecording(msg.tabId).then(
       () => sendResponse({ ok: true }),
-      (e) => sendResponse({ ok: false, error: String(e?.message || e) }),
+      (e) => sendResponse({ ok: false, error: String(e?.message || e) })
     );
     return true; // async
   }
@@ -106,7 +106,7 @@ function ensureFlushTimer() {
 }
 
 async function flushAll() {
-  for (const s of [...buffers.keys()]) {
+  for (const s of Array.from(buffers.keys())) {
     await flushSource(s);
   }
 }

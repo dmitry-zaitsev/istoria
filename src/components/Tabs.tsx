@@ -132,8 +132,7 @@ export function Tabs() {
                 className="tab-rename"
                 defaultValue={v.name}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter")
-                    void onRenameSubmit(v, e.currentTarget.value);
+                  if (e.key === "Enter") void onRenameSubmit(v, e.currentTarget.value);
                   if (e.key === "Escape") setRenaming(null);
                 }}
                 onBlur={(e) => void onRenameSubmit(v, e.currentTarget.value)}
@@ -183,12 +182,7 @@ export function Tabs() {
           </div>
         );
       })}
-      <button
-        type="button"
-        className="tab-add"
-        title="New view"
-        onClick={onCreate}
-      >
+      <button type="button" className="tab-add" title="New view" onClick={onCreate}>
         +
       </button>
       {/* Leaf drag-region: explicit startDragging() on mousedown is
@@ -216,9 +210,7 @@ export function Tabs() {
                 className={`session-tag branch${active ? " active" : ""}`}
                 role="button"
                 title={
-                  active
-                    ? `Filtering by branch: ${b} (click to remove)`
-                    : `Filter by branch: ${b}`
+                  active ? `Filtering by branch: ${b} (click to remove)` : `Filter by branch: ${b}`
                 }
                 style={{ cursor: "pointer" }}
                 onClick={() => setFilter(toggleFacetOr(filter, "branch", b))}

@@ -4,6 +4,8 @@
 /// "+ new view", "save filter", etc. Views are tiny configuration so
 /// localStorage is fine.
 
+import { log } from "./logger";
+
 export interface View {
   id: number;
   name: string;
@@ -26,7 +28,7 @@ export function loadViews(): View[] {
         typeof v.id === "number" &&
         typeof v.name === "string" &&
         typeof v.query === "string" &&
-        typeof v.sort_order === "number",
+        typeof v.sort_order === "number"
     );
     return valid.length > 0 ? valid : seed();
   } catch {
@@ -38,7 +40,7 @@ function saveViews(views: View[]): void {
   try {
     localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
   } catch (e) {
-    console.warn("views persist failed", e);
+    log.warn("views persist failed", e);
   }
 }
 
@@ -51,8 +53,7 @@ function seed(): View[] {
 export function createViewLocal(name: string, query: string): View {
   const all = loadViews();
   const id = (all.reduce((m, v) => Math.max(m, v.id), 0) || 0) + 1;
-  const sort_order =
-    (all.reduce((m, v) => Math.max(m, v.sort_order), -1) || -1) + 1;
+  const sort_order = (all.reduce((m, v) => Math.max(m, v.sort_order), -1) || -1) + 1;
   const next: View = { id, name, query, sort_order };
   saveViews([...all, next]);
   return next;
@@ -94,6 +95,6 @@ export function saveActiveViewId(id: number): void {
   try {
     localStorage.setItem(ACTIVE_KEY, String(id));
   } catch (e) {
-    console.warn("active view persist failed", e);
+    log.warn("active view persist failed", e);
   }
 }

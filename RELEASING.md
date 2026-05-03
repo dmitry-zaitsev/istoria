@@ -35,21 +35,22 @@ echo "hello world" | istoria
 ## One-time setup
 
 ### Repos
+
 - Source: `dmitry-zaitsev/istoria` (this repo, private)
 - Release host: `dmitry-zaitsev/istoria-releases` — public, empty (CI populates Releases)
 - Tap: `dmitry-zaitsev/homebrew-tap` — public; CI writes `Formula/istoria.rb`
 
 ### Secrets (Settings → Secrets and variables → Actions)
 
-| Name | Purpose |
-|---|---|
-| `GH_RELEASES_PAT` | PAT with `contents: write` on `dmitry-zaitsev/istoria-releases` and `dmitry-zaitsev/homebrew-tap` |
-| `APPLE_CERTIFICATE` | base64 of Developer ID Application `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | `.p12` password |
-| `APPLE_SIGNING_IDENTITY` | SHA-1 of cert (or `Developer ID Application: Name (TEAMID)`) |
-| `APPLE_ID` | Apple ID email |
-| `APPLE_PASSWORD` | app-specific password (appleid.apple.com → Sign-In and Security) |
-| `APPLE_TEAM_ID` | Apple Developer team ID |
+| Name                         | Purpose                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| `GH_RELEASES_PAT`            | PAT with `contents: write` on `dmitry-zaitsev/istoria-releases` and `dmitry-zaitsev/homebrew-tap` |
+| `APPLE_CERTIFICATE`          | base64 of Developer ID Application `.p12`                                                         |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` password                                                                                   |
+| `APPLE_SIGNING_IDENTITY`     | SHA-1 of cert (or `Developer ID Application: Name (TEAMID)`)                                      |
+| `APPLE_ID`                   | Apple ID email                                                                                    |
+| `APPLE_PASSWORD`             | app-specific password (appleid.apple.com → Sign-In and Security)                                  |
+| `APPLE_TEAM_ID`              | Apple Developer team ID                                                                           |
 
 ### Branch protection
 

@@ -34,11 +34,7 @@ await esbuild.build({
 // IIFE so module syntax doesn't leak into a non-module context.
 await esbuild.build({
   ...common,
-  entryPoints: [
-    join(srcDir, "bridge.js"),
-    join(srcDir, "injected.js"),
-    join(srcDir, "popup.js"),
-  ],
+  entryPoints: [join(srcDir, "bridge.js"), join(srcDir, "injected.js"), join(srcDir, "popup.js")],
   outdir: distDir,
   format: "iife",
 });

@@ -72,9 +72,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
   }, []);
 
   const url = port ? `http://localhost:${port}/mcp` : null;
-  const claudeCmd = url
-    ? `claude mcp add --transport http istoria ${url}`
-    : null;
+  const claudeCmd = url ? `claude mcp add --transport http istoria ${url}` : null;
   const codexCmd = url ? `codex mcp add istoria --url ${url}` : null;
 
   const runInTerminal = async (cmd: string, label: string) => {
@@ -100,7 +98,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
       toast(
         n === 0
           ? "Branch analysis: no relevant log patterns found"
-          : `Branch analysis: ${n} pattern${n === 1 ? "" : "s"} marked relevant`,
+          : `Branch analysis: ${n} pattern${n === 1 ? "" : "s"} marked relevant`
       );
     } catch (e) {
       toast(`Branch analysis failed: ${String(e)}`);
@@ -116,10 +114,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
 
   return (
     <div className="palette-overlay" onClick={onClose}>
-      <div
-        className="claude-dialog ai-panel"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="claude-dialog ai-panel" onClick={(e) => e.stopPropagation()}>
         <div className="claude-dialog-head">
           <SparkleIcon />
           <span>AI</span>
@@ -127,10 +122,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
         <div className="claude-dialog-body">
           <section className="ai-section">
             <h4 className="ai-section-title">MCP server</h4>
-            <p>
-              Local agents like Claude Code and Codex can query your logs
-              over MCP.
-            </p>
+            <p>Local agents like Claude Code and Codex can query your logs over MCP.</p>
             <div className="ai-status-row">
               {url ? (
                 <>
@@ -152,8 +144,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
               <p className="claude-dialog-muted">Detecting agents…</p>
             ) : !anyInstalled ? (
               <p className="claude-dialog-muted">
-                No supported agents detected. Install Claude Code or Codex,
-                then reopen this panel.
+                No supported agents detected. Install Claude Code or Codex, then reopen this panel.
               </p>
             ) : (
               <div className="ai-actions">
@@ -161,9 +152,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
                   <AgentRow
                     label="Claude Code"
                     added={agents.claude.mcpAdded}
-                    onAdd={() =>
-                      claudeCmd && runInTerminal(claudeCmd, "Claude Code")
-                    }
+                    onAdd={() => claudeCmd && runInTerminal(claudeCmd, "Claude Code")}
                     canAdd={!!claudeCmd}
                   />
                 )}
@@ -183,8 +172,8 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
           <section className="ai-section">
             <h4 className="ai-section-title">Branch relevance</h4>
             <p>
-              Highlight log entries tied to your current branch's changes,
-              and unlock the <code>relevant:true</code> filter.
+              Highlight log entries tied to your current branch's changes, and unlock the{" "}
+              <code>relevant:true</code> filter.
             </p>
             {!relevanceAvailable ? (
               <p className="claude-dialog-muted">
@@ -205,11 +194,7 @@ export function AIPanel({ onClose, onDisconnect }: Props) {
           <button type="button" className="claude-btn ghost" onClick={onClose}>
             Close
           </button>
-          <button
-            type="button"
-            className="claude-btn danger"
-            onClick={onDisconnect}
-          >
+          <button type="button" className="claude-btn danger" onClick={onDisconnect}>
             Disconnect
           </button>
         </div>
@@ -226,13 +211,7 @@ interface RelevanceBlockProps {
   onClear: () => void;
 }
 
-function RelevanceBlock({
-  analyzing,
-  relevance,
-  stale,
-  onAnalyze,
-  onClear,
-}: RelevanceBlockProps) {
+function RelevanceBlock({ analyzing, relevance, stale, onAnalyze, onClear }: RelevanceBlockProps) {
   const status = analyzing
     ? "Analyzing — this can take 30–60s"
     : relevance
@@ -251,9 +230,7 @@ function RelevanceBlock({
     <>
       <div className="ai-status-row">
         <span className={`ai-status-dot ${dotClass}`} aria-hidden="true" />
-        <span className={relevance ? "" : "claude-dialog-muted"}>
-          {status}
-        </span>
+        <span className={relevance ? "" : "claude-dialog-muted"}>{status}</span>
       </div>
       <div className="ai-actions">
         <button
@@ -263,20 +240,10 @@ function RelevanceBlock({
           disabled={analyzing}
         >
           <SparkleIcon />
-          <span>
-            {analyzing
-              ? "Analyzing…"
-              : relevance
-                ? "Re-run analysis"
-                : "Analyze branch"}
-          </span>
+          <span>{analyzing ? "Analyzing…" : relevance ? "Re-run analysis" : "Analyze branch"}</span>
         </button>
         {relevance && !analyzing && (
-          <button
-            type="button"
-            className="claude-btn ghost"
-            onClick={onClear}
-          >
+          <button type="button" className="claude-btn ghost" onClick={onClear}>
             Clear
           </button>
         )}

@@ -22,23 +22,19 @@ const MIN_DISTINCT_FOR_PERCENTILES = 10;
 export function detectNumericFacets(events: LogEvent[]): string[] {
   const sample = events.slice(-200);
   if (sample.length < MIN_VALUES_FOR_PERCENTILES) return [];
-  const stats = new Map<
-    string,
-    { numeric: number; total: number; values: Set<number> }
-  >();
+  const stats = new Map<string, { numeric: number; total: number; values: Set<number> }>();
   for (const e of sample) {
     const f = e.fields as Record<string, unknown> | undefined;
     if (!f || typeof f !== "object") continue;
     walk(f, "", (path, value) => {
-      const c =
-        stats.get(path) ?? { numeric: 0, total: 0, values: new Set<number>() };
+      const c = stats.get(path) ?? { numeric: 0, total: 0, values: new Set<number>() };
       c.total++;
       const n =
         typeof value === "number"
           ? value
           : typeof value === "string" && value.trim() !== ""
-          ? Number(value)
-          : NaN;
+            ? Number(value)
+            : NaN;
       if (!Number.isNaN(n)) {
         c.numeric++;
         c.values.add(n);
@@ -75,7 +71,7 @@ function isDurationLike(key: string, values: Set<number>): boolean {
 function walk(
   obj: Record<string, unknown>,
   prefix: string,
-  emit: (p: string, v: unknown) => void,
+  emit: (p: string, v: unknown) => void
 ): void {
   for (const [k, v] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${k}` : k;
@@ -87,13 +83,7 @@ function walk(
   }
 }
 
-export function RangeSlider({
-  events,
-  fieldKey,
-  label,
-  filter,
-  onFilterChange,
-}: RangeSliderProps) {
+export function RangeSlider({ events, fieldKey, label, filter, onFilterChange }: RangeSliderProps) {
   const sorted = useMemo(() => {
     const out = extractValues(events, fieldKey);
     out.sort((a, b) => a - b);
@@ -117,16 +107,11 @@ export function RangeSlider({
           <div
             key={p}
             className={`facet-row${checked ? " checked" : ""}`}
-            onClick={() =>
-              onFilterChange(toggleFacetPct(filter, fieldKey, p))
-            }
+            onClick={() => onFilterChange(toggleFacetPct(filter, fieldKey, p))}
             role="button"
             title={`≥ p${p}`}
           >
-            <span
-              className={`facet-check${checked ? " on" : ""}`}
-              aria-hidden
-            >
+            <span className={`facet-check${checked ? " on" : ""}`} aria-hidden>
               {checked ? "✓" : ""}
             </span>
             <span className="facet-value">≥ p{p}</span>
@@ -140,10 +125,7 @@ export function RangeSlider({
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
-  const idx = Math.min(
-    sorted.length - 1,
-    Math.max(0, Math.floor((p / 100) * sorted.length)),
-  );
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((p / 100) * sorted.length)));
   return sorted[idx]!;
 }
 
@@ -170,8 +152,7 @@ function extractValues(events: LogEvent[], key: string): number[] {
 function lookup(fields: unknown, path: string): unknown {
   let cur = fields;
   for (const part of path.split(".")) {
-    if (cur && typeof cur === "object")
-      cur = (cur as Record<string, unknown>)[part];
+    if (cur && typeof cur === "object") cur = (cur as Record<string, unknown>)[part];
     else return undefined;
   }
   return cur;

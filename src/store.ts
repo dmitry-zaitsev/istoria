@@ -229,7 +229,7 @@ export const useStore = create<Store>((set) => ({
   setPaused: (paused, baseline) =>
     set((s) => ({
       paused,
-      pausedBaseline: paused ? baseline ?? s.events.length : 0,
+      pausedBaseline: paused ? (baseline ?? s.events.length) : 0,
     })),
   setNewCount: (newCount) => set({ newCount }),
   setSort: (sort) => {
@@ -320,9 +320,7 @@ export const useStore = create<Store>((set) => ({
   setFieldColumnWidth: (path, w) =>
     set((s) => {
       const clamped = Math.min(FIELD_COL_MAX, Math.max(FIELD_COL_MIN, w));
-      const next = s.fieldColumns.map((c) =>
-        c.path === path ? { ...c, width: clamped } : c,
-      );
+      const next = s.fieldColumns.map((c) => (c.path === path ? { ...c, width: clamped } : c));
       try {
         localStorage.setItem(COLS_FIELDS_KEY, JSON.stringify(next));
       } catch {

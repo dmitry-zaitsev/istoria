@@ -1,4 +1,5 @@
 import type { LogEvent } from "./ipc";
+import { log } from "./logger";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./query";
 
 export const ALERT_COLORS = ["red", "orange", "blue", "violet"] as const;
@@ -31,7 +32,7 @@ export function loadAlerts(): Alert[] {
           a != null &&
           typeof a.id === "string" &&
           typeof a.name === "string" &&
-          typeof a.query === "string",
+          typeof a.query === "string"
       )
       .map(
         (a): Alert => ({
@@ -45,12 +46,11 @@ export function loadAlerts(): Alert[] {
           // bypass the cooldown entirely (NaN compares yield false).
           debounce_ms: Math.max(
             typeof a.debounce_ms === "number" ? a.debounce_ms : 0,
-            MIN_DEBOUNCE_MS,
+            MIN_DEBOUNCE_MS
           ),
           enabled: a.enabled !== false,
-          created_at:
-            typeof a.created_at === "number" ? a.created_at : Date.now(),
-        }),
+          created_at: typeof a.created_at === "number" ? a.created_at : Date.now(),
+        })
       );
   } catch {
     return [];
@@ -61,13 +61,11 @@ function saveAlerts(alerts: Alert[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
   } catch (e) {
-    console.warn("alerts persist failed", e);
+    log.warn("alerts persist failed", e);
   }
 }
 
-export function addAlert(
-  input: Omit<Alert, "id" | "enabled" | "created_at">,
-): Alert {
+export function addAlert(input: Omit<Alert, "id" | "enabled" | "created_at">): Alert {
   const id =
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -125,10 +123,7 @@ export function compileAlerts(alerts: Alert[]): CompiledAlert[] {
 
 /// Returns Map<event.id, alertId[]> — first match wins for color, but
 /// row gets all matched ids so the inspector can list them.
-export function matchAlerts(
-  events: LogEvent[],
-  compiled: CompiledAlert[],
-): Map<number, string[]> {
+export function matchAlerts(events: LogEvent[], compiled: CompiledAlert[]): Map<number, string[]> {
   const out = new Map<number, string[]>();
   if (compiled.length === 0) return out;
   const usable = compiled.filter((c) => c.ast != null);

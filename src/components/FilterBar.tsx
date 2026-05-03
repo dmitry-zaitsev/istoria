@@ -160,7 +160,7 @@ export function FilterBar({
   const [suggestIdx, setSuggestIdx] = useState(0);
   const suggestions = useMemo(
     () => buildSuggestions(trailing, suggestKeys, suggestValuesByKey),
-    [trailing, suggestKeys, suggestValuesByKey],
+    [trailing, suggestKeys, suggestValuesByKey]
   );
   const showSuggestions = trailing.length > 0 && suggestions.items.length > 0;
   useEffect(() => setSuggestIdx(0), [trailing]);
@@ -221,7 +221,7 @@ export function FilterBar({
                   ×
                 </span>
               </span>
-            ),
+            )
           )}
         </span>
         <input
@@ -230,9 +230,7 @@ export function FilterBar({
           type="text"
           value={trailing}
           placeholder={
-            usefulTokens.length === 0
-              ? "filter — e.g. level:error AND status_code:>=400"
-              : "+ AND…"
+            usefulTokens.length === 0 ? "filter — e.g. level:error AND status_code:>=400" : "+ AND…"
           }
           onChange={(e) => {
             setAllSelected(false);
@@ -243,10 +241,7 @@ export function FilterBar({
             if (showSuggestions && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
               e.preventDefault();
               const dir = e.key === "ArrowDown" ? 1 : -1;
-              setSuggestIdx(
-                (i) =>
-                  (i + dir + suggestions.items.length) % suggestions.items.length,
-              );
+              setSuggestIdx((i) => (i + dir + suggestions.items.length) % suggestions.items.length);
               return;
             }
             if (
@@ -298,9 +293,15 @@ export function FilterBar({
               </div>
             ))}
             <div className="suggestion-hint">
-              <span><kbd>↵</kbd> apply</span>
-              <span><kbd>⌘↵</kbd> submit</span>
-              <span><kbd>⎋</kbd> close</span>
+              <span>
+                <kbd>↵</kbd> apply
+              </span>
+              <span>
+                <kbd>⌘↵</kbd> submit
+              </span>
+              <span>
+                <kbd>⎋</kbd> close
+              </span>
             </div>
           </div>
         )}
@@ -331,9 +332,7 @@ export function FilterBar({
           notify
         </button>
       )}
-      {error && (
-        <span className="filter-err">parse error: {error.message}</span>
-      )}
+      {error && <span className="filter-err">parse error: {error.message}</span>}
     </div>
   );
 }
@@ -358,7 +357,7 @@ interface SuggestionResult {
 function buildSuggestions(
   input: string,
   keys: string[],
-  valuesByKey?: Map<string, string[]>,
+  valuesByKey?: Map<string, string[]>
 ): SuggestionResult {
   // Skip suggestions when the user is typing inside an unclosed
   // function call — \`last(15 min)\`, \`percentile(50)\`, etc. Otherwise
@@ -462,13 +461,13 @@ function buildSuggestions(
       label: k,
       completion: `${k}:`,
     }));
-  const opMatches = OPERATORS.filter((o) =>
-    o.toLowerCase().startsWith(lower),
-  ).map<SuggestionItem>((o) => ({
-    kind: "op",
-    label: o,
-    completion: `${o} `,
-  }));
+  const opMatches = OPERATORS.filter((o) => o.toLowerCase().startsWith(lower)).map<SuggestionItem>(
+    (o) => ({
+      kind: "op",
+      label: o,
+      completion: `${o} `,
+    })
+  );
   return {
     replaceFrom,
     items: [...keyMatches, ...opMatches],

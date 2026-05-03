@@ -31,7 +31,7 @@ async function getActiveTab() {
 
 function canInject(tab) {
   if (!tab?.url) return false;
-  return /^https?:\/\//.test(tab.url) || /^file:\/\//.test(tab.url);
+  return /^https?:\/\//.test(tab.url) || tab.url.startsWith("file://");
 }
 
 async function refresh() {

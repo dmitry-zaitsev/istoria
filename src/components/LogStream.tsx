@@ -168,13 +168,11 @@ export function LogStream({
     const isPinned = pinnedIds.has(id);
     togglePinLocal(id);
     const op = isPinned ? unpinEvent(id) : pinEvent(id);
-    op
-      .then(() => toast(isPinned ? "Unpinned" : "Pinned"))
-      .catch((e) => {
-        // revert on failure
-        togglePinLocal(id);
-        toast(`Pin failed: ${String(e)}`);
-      });
+    op.then(() => toast(isPinned ? "Unpinned" : "Pinned")).catch((e) => {
+      // revert on failure
+      togglePinLocal(id);
+      toast(`Pin failed: ${String(e)}`);
+    });
   };
 
   // Scroll to a requested event id (from PinsPanel etc.). Defers one
@@ -200,12 +198,10 @@ export function LogStream({
     return () => cancelAnimationFrame(raf);
   }, [scrollTargetId, events, virtualizer, setScrollTarget, bottomInset]);
 
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const inField =
-        target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      const inField = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
       if (e.key === " " && paused && !inField) {
         e.preventDefault();
         resume();
@@ -222,12 +218,7 @@ export function LogStream({
           .catch(() => toast("Copy failed"));
         e.preventDefault();
       }
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.key === "a" &&
-        !inField &&
-        !target.closest(".filter-bar")
-      ) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a" && !inField && !target.closest(".filter-bar")) {
         e.preventDefault();
         onSelectIds(events.map((ev) => ev.id));
       }
@@ -254,17 +245,10 @@ export function LogStream({
   const showPill = paused && newCount > 0;
 
   return (
-    <div
-      className="stream"
-      ref={parentRef}
-      style={{ paddingBottom: bottomInset }}
-      tabIndex={0}
-    >
+    <div className="stream" ref={parentRef} style={{ paddingBottom: bottomInset }} tabIndex={0}>
       {showPill && (
         <div className="pause-pill" role="button" onClick={resume}>
-          <span style={{ color: "var(--ink)" }}>
-            {newCount.toLocaleString()} new
-          </span>
+          <span style={{ color: "var(--ink)" }}>{newCount.toLocaleString()} new</span>
           <span className="resume">resume ▶</span>
         </div>
       )}
@@ -284,12 +268,9 @@ export function LogStream({
           const isPinned = pinnedIds.has(ev.id);
           const matchedIds = alertMatches.get(ev.id);
           const alertColor =
-            matchedIds && matchedIds.length > 0
-              ? alertColorById.get(matchedIds[0]!)
-              : undefined;
+            matchedIds && matchedIds.length > 0 ? alertColorById.get(matchedIds[0]!) : undefined;
           const isRelevant =
-            relevanceRe != null &&
-            (relevanceRe.test(ev.msg) || relevanceRe.test(ev.raw));
+            relevanceRe != null && (relevanceRe.test(ev.msg) || relevanceRe.test(ev.raw));
           return (
             <div
               key={ev.id}
@@ -310,9 +291,7 @@ export function LogStream({
               onMouseDown={(e) => onRowMouseDown(ev.id, e)}
               onClick={(e) => onRowClick(ev.id, e)}
             >
-              {visibility.ts && (
-                <span className="ts">{formatTs(ev.ts)}</span>
-              )}
+              {visibility.ts && <span className="ts">{formatTs(ev.ts)}</span>}
               {visibility.lvl && (
                 <span>
                   <span className={`lvl ${cls}`} style={{ display: "block" }}>
@@ -344,9 +323,7 @@ export function LogStream({
                   </span>
                 );
               })}
-              <span className="msg">
-                {highlight(ev.msg || ev.raw, highlightTerms)}
-              </span>
+              <span className="msg">{highlight(ev.msg || ev.raw, highlightTerms)}</span>
               <button
                 type="button"
                 className={`pin-btn${isPinned ? " on" : ""}`}

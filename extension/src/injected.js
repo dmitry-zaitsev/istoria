@@ -77,7 +77,11 @@
   if (origFetch) {
     window.fetch = function (input, init) {
       const url = typeof input === "string" ? input : input?.url || "";
-      const method = (init?.method || (typeof input === "object" && input?.method) || "GET").toUpperCase();
+      const method = (
+        init?.method ||
+        (typeof input === "object" && input?.method) ||
+        "GET"
+      ).toUpperCase();
       post(srcNet(), {
         ts: Date.now(),
         level: "info",
@@ -100,7 +104,7 @@
             text: `× ${truncate(url, 180)} ${err?.message || err}`,
           });
           throw err;
-        },
+        }
       );
     };
   }
@@ -110,7 +114,10 @@
     const origOpen = XHR.open;
     const origSend = XHR.send;
     XHR.open = function (method, url) {
-      this.__istoria_meta = { method: String(method || "GET").toUpperCase(), url: String(url || "") };
+      this.__istoria_meta = {
+        method: String(method || "GET").toUpperCase(),
+        url: String(url || ""),
+      };
       return origOpen.apply(this, arguments);
     };
     XHR.send = function () {
@@ -123,10 +130,12 @@
       this.addEventListener("loadend", () => {
         if (this.readyState !== 4) return;
         const status = this.status || 0;
-        const lvl = status >= 500 ? "error" : status >= 400 ? "warn" : status === 0 ? "error" : "info";
-        const text = status === 0
-          ? `× ${truncate(meta.url, 180)}`
-          : `← ${status} ${this.statusText || ""} ${truncate(meta.url, 180)}`.trim();
+        const lvl =
+          status >= 500 ? "error" : status >= 400 ? "warn" : status === 0 ? "error" : "info";
+        const text =
+          status === 0
+            ? `× ${truncate(meta.url, 180)}`
+            : `← ${status} ${this.statusText || ""} ${truncate(meta.url, 180)}`.trim();
         post(srcNet(), { ts: Date.now(), level: lvl, text });
       });
       return origSend.apply(this, arguments);

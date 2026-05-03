@@ -71,10 +71,10 @@ export function Palette() {
       run: () => {
         // strip ts:>= / ts:<= from current filter
         const f = useStore.getState().filter;
-        let q = f.replace(/(\s+AND\s+|^)ts:(>|>=|<|<=)[\d.\-]+/g, (_, p) =>
-          p.startsWith(" AND") ? "" : "",
+        let q = f.replace(/(\s+AND\s+|^)ts:(>|>=|<|<=)[\d.-]+/g, (_, p) =>
+          p.startsWith(" AND") ? "" : ""
         );
-        q = q.replace(/ts:(>|>=|<|<=)[\d.\-]+\s+AND\s+/g, "");
+        q = q.replace(/ts:(>|>=|<|<=)[\d.-]+\s+AND\s+/g, "");
         setFilter(q.trim());
       },
     },
@@ -98,18 +98,17 @@ export function Palette() {
     },
     {
       id: "export-jsonl",
-      label: useStore.getState().selectedIds.length > 0
-        ? `Export ${useStore.getState().selectedIds.length} selected as JSONL`
-        : "Export all (filtered) as JSONL",
+      label:
+        useStore.getState().selectedIds.length > 0
+          ? `Export ${useStore.getState().selectedIds.length} selected as JSONL`
+          : "Export all (filtered) as JSONL",
       group: "Export",
       run: () => {
         const sel = new Set(useStore.getState().selectedIds);
-        const picked =
-          sel.size > 0 ? events.filter((e) => sel.has(e.id)) : events;
-        const blob = new Blob(
-          [picked.map((e) => JSON.stringify(e)).join("\n")],
-          { type: "application/x-ndjson" },
-        );
+        const picked = sel.size > 0 ? events.filter((e) => sel.has(e.id)) : events;
+        const blob = new Blob([picked.map((e) => JSON.stringify(e)).join("\n")], {
+          type: "application/x-ndjson",
+        });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `istoria-${Date.now()}.jsonl`;
@@ -120,9 +119,7 @@ export function Palette() {
   ];
 
   const ranked = [
-    ...recents
-      .map((id) => actions.find((a) => a.id === id))
-      .filter((x): x is Action => Boolean(x)),
+    ...recents.map((id) => actions.find((a) => a.id === id)).filter((x): x is Action => Boolean(x)),
     ...actions.filter((a) => !recents.includes(a.id)),
   ];
 
@@ -135,32 +132,28 @@ export function Palette() {
           <Command.Input placeholder="Jump to view, time, session…" autoFocus />
           <Command.List>
             <Command.Empty>No actions match.</Command.Empty>
-            {(["View", "Time", "Stream", "Session", "Export"] as const).map(
-              (group) => {
-                const items = ranked.filter((a) => a.group === group);
-                if (items.length === 0) return null;
-                return (
-                  <Command.Group key={group} heading={group}>
-                    {items.map((a) => (
-                      <Command.Item
-                        key={a.id}
-                        value={a.label}
-                        onSelect={() => {
-                          void a.run();
-                          recordRecent(a.id);
-                          setOpen(false);
-                        }}
-                      >
-                        <span>{a.label}</span>
-                        {a.shortcut && (
-                          <span className="palette-kbd">{a.shortcut}</span>
-                        )}
-                      </Command.Item>
-                    ))}
-                  </Command.Group>
-                );
-              },
-            )}
+            {(["View", "Time", "Stream", "Session", "Export"] as const).map((group) => {
+              const items = ranked.filter((a) => a.group === group);
+              if (items.length === 0) return null;
+              return (
+                <Command.Group key={group} heading={group}>
+                  {items.map((a) => (
+                    <Command.Item
+                      key={a.id}
+                      value={a.label}
+                      onSelect={() => {
+                        void a.run();
+                        recordRecent(a.id);
+                        setOpen(false);
+                      }}
+                    >
+                      <span>{a.label}</span>
+                      {a.shortcut && <span className="palette-kbd">{a.shortcut}</span>}
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              );
+            })}
           </Command.List>
         </Command>
       </div>

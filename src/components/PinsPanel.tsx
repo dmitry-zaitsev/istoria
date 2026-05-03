@@ -63,7 +63,9 @@ export function PinsPanel({ events, open, onClose }: PinsPanelProps) {
         <span style={{ color: "var(--muted-2)" }}>{pinnedIds.size}</span>
       </div>
       {pinnedIds.size === 0 && (
-        <div className="pins-empty">No pins yet. Click ☆ on a row, or press <kbd>p</kbd> on the selected row.</div>
+        <div className="pins-empty">
+          No pins yet. Click ☆ on a row, or press <kbd>p</kbd> on the selected row.
+        </div>
       )}
       {present.length > 0 && (
         <div className="pins-list">
@@ -97,7 +99,8 @@ export function PinsPanel({ events, open, onClose }: PinsPanelProps) {
       )}
       {absent.length > 0 && (
         <div className="pins-absent">
-          {absent.length} pinned event{absent.length === 1 ? "" : "s"} not in current view (cleared from buffer or filtered out).
+          {absent.length} pinned event{absent.length === 1 ? "" : "s"} not in current view (cleared
+          from buffer or filtered out).
         </div>
       )}
     </div>

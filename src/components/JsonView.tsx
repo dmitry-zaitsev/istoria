@@ -106,39 +106,26 @@ function Node({
   if (value === null) return <span className="p">null</span>;
   if (typeof value === "string")
     return (
-      <Filterable
-        path={path}
-        value={value}
-        openPopover={openPopover}
-        canFilter={canFilterValue}
-      >
+      <Filterable path={path} value={value} openPopover={openPopover} canFilter={canFilterValue}>
         <span className="s">
-          "{highlightTerms && highlightTerms.length > 0
+          "
+          {highlightTerms && highlightTerms.length > 0
             ? highlight(escape(value), highlightTerms)
-            : escape(value)}"
+            : escape(value)}
+          "
         </span>
       </Filterable>
     );
   if (typeof value === "number") {
     return (
-      <Filterable
-        path={path}
-        value={value}
-        openPopover={openPopover}
-        canFilter={canFilterValue}
-      >
+      <Filterable path={path} value={value} openPopover={openPopover} canFilter={canFilterValue}>
         <NumberNode value={value} keyName={keyName} />
       </Filterable>
     );
   }
   if (typeof value === "boolean")
     return (
-      <Filterable
-        path={path}
-        value={value}
-        openPopover={openPopover}
-        canFilter={canFilterValue}
-      >
+      <Filterable path={path} value={value} openPopover={openPopover} canFilter={canFilterValue}>
         <span className="b">{String(value)}</span>
       </Filterable>
     );
@@ -204,10 +191,7 @@ function Filterable({
 
 function NumberNode({ value, keyName }: { value: number; keyName?: string }) {
   const isTs =
-    keyName != null &&
-    TS_KEYS.has(keyName) &&
-    Number.isFinite(value) &&
-    value >= TS_MS_FLOOR;
+    keyName != null && TS_KEYS.has(keyName) && Number.isFinite(value) && value >= TS_MS_FLOOR;
   if (!isTs) return <span className="n">{String(value)}</span>;
   return (
     <>
@@ -227,7 +211,7 @@ function formatIso(unixMs: number): string {
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(
       d.getMilliseconds(),
-      3,
+      3
     )}`
   );
 }
@@ -402,17 +386,10 @@ function ValuePopover({
   };
 
   const items: { label: string; onClick: () => void; danger?: boolean }[] = [];
-  const display =
-    state.kind === "value"
-      ? formatValuePreview(state.value)
-      : state.path;
+  const display = state.kind === "value" ? formatValuePreview(state.value) : state.path;
 
   const columnLabel =
-    onToggleColumn != null
-      ? isColumn?.(state.path)
-        ? "Hide column"
-        : "Show as column"
-      : null;
+    onToggleColumn != null ? (isColumn?.(state.path) ? "Hide column" : "Show as column") : null;
 
   if (state.kind === "value") {
     if (onFilter) {
@@ -476,9 +453,7 @@ function ValuePopover({
     >
       <div className="json-popover-header" title={display}>
         <span className="json-popover-path">{state.path}</span>
-        {state.kind === "value" && (
-          <span className="json-popover-value">{display}</span>
-        )}
+        {state.kind === "value" && <span className="json-popover-value">{display}</span>}
       </div>
       {items.map((it, i) => (
         <button

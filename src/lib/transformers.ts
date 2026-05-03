@@ -24,8 +24,7 @@ export interface TransformerRule {
 
 // Rules live in transformer_rules.json at the repo root so the Rust
 // coalescer can read the same spec. See transformer_rules.README.md.
-export const BUILTIN_TRANSFORMERS: TransformerRule[] =
-  rulesJson as TransformerRule[];
+export const BUILTIN_TRANSFORMERS: TransformerRule[] = rulesJson as TransformerRule[];
 
 export interface CompiledRule {
   rule: TransformerRule;
@@ -36,7 +35,7 @@ export interface CompiledRule {
 export function compileRules(rules: TransformerRule[]): CompiledRule[] {
   return rules
     .slice()
-    .sort((a, b) => a.order - b.order)
+    .toSorted((a, b) => a.order - b.order)
     .map((rule) => {
       try {
         const re = new RegExp(rule.pattern, rule.flags ?? "");
@@ -47,17 +46,9 @@ export function compileRules(rules: TransformerRule[]): CompiledRule[] {
     });
 }
 
-export const COMPILED_BUILTINS: CompiledRule[] = compileRules(
-  BUILTIN_TRANSFORMERS,
-);
+export const COMPILED_BUILTINS: CompiledRule[] = compileRules(BUILTIN_TRANSFORMERS);
 
-const LEVELS: ReadonlySet<Level> = new Set([
-  "error",
-  "warn",
-  "info",
-  "debug",
-  "trace",
-]);
+const LEVELS: ReadonlySet<Level> = new Set(["error", "warn", "info", "debug", "trace"]);
 
 function normalizeLevel(s: string): Level | null {
   const lc = s.toLowerCase().trim();
@@ -87,10 +78,7 @@ function normalizeLevel(s: string): Level | null {
   }
 }
 
-function substitute(
-  template: string,
-  caps: Record<string, string>,
-): string {
+function substitute(template: string, caps: Record<string, string>): string {
   return template.replace(/\$\{(\w+)\}/g, (_, name) => caps[name] ?? "");
 }
 
@@ -99,10 +87,7 @@ function looksLikeJson(s: string): boolean {
   return t.startsWith("{") || t.startsWith("[");
 }
 
-export function applyTransformers(
-  ev: LogEvent,
-  compiled: CompiledRule[],
-): LogEvent {
+export function applyTransformers(ev: LogEvent, compiled: CompiledRule[]): LogEvent {
   if (compiled.length === 0) return ev;
   let mutated = false;
   let out: LogEvent = ev;
@@ -167,9 +152,7 @@ export function applyTransformers(
           try {
             const parsed = JSON.parse(v);
             if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-              for (const [k, val] of Object.entries(
-                parsed as Record<string, unknown>,
-              )) {
+              for (const [k, val] of Object.entries(parsed as Record<string, unknown>)) {
                 base[k] = val;
               }
             }
@@ -201,10 +184,7 @@ export function applyTransformers(
   return out;
 }
 
-export function applyAll(
-  events: LogEvent[],
-  compiled: CompiledRule[],
-): LogEvent[] {
+export function applyAll(events: LogEvent[], compiled: CompiledRule[]): LogEvent[] {
   if (compiled.length === 0) return events;
   return events.map((e) => applyTransformers(e, compiled));
 }

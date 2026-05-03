@@ -26,16 +26,7 @@ const TOP_N_VALUES = 50;
 // Top-level event fields are mirrored into facet groups
 // (Level / Source / Branch) explicitly. Skip them in auto-discovery so
 // they don't show up twice when the JSON payload also carries the value.
-const MIRRORED_KEYS = new Set([
-  "level",
-  "source",
-  "branch",
-  "msg",
-  "raw",
-  "ts",
-  "id",
-  "timestamp",
-]);
+const MIRRORED_KEYS = new Set(["level", "source", "branch", "msg", "raw", "ts", "id", "timestamp"]);
 
 // Heuristic priority list for auto-discovered keys. Lower index =
 // higher priority. Anything not listed inherits Infinity and falls
@@ -70,9 +61,7 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
   // present, even when there's only one — branch is identity-level
   // metadata users want visible, not a "filter only when ambiguous"
   // facet like Source.
-  const branchGroup = group("branch", "Branch", events, (e) =>
-    e.branch ? [e.branch] : [],
-  );
+  const branchGroup = group("branch", "Branch", events, (e) => (e.branch ? [e.branch] : []));
   if (branchGroup.values.length > 0) groups.push(branchGroup);
 
   const keyStats = new Map<string, Set<string>>();
@@ -99,7 +88,7 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
     // cardinality. So method/status_code/path land at the top
     // regardless of how many distinct values they have, while
     // unknown keys still fall back to cardinality.
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       const ra = PRIORITY_RANK.get(a[0]) ?? Number.POSITIVE_INFINITY;
       const rb = PRIORITY_RANK.get(b[0]) ?? Number.POSITIVE_INFINITY;
       if (ra !== rb) return ra - rb;
@@ -114,7 +103,7 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
         const v = lookupPath(e.fields, key);
         if (v == null) return [];
         return [String(v)];
-      }),
+      })
     );
   }
 
@@ -127,7 +116,7 @@ function group(
   key: string,
   label: string,
   events: LogEvent[],
-  pluck: (e: LogEvent) => string[],
+  pluck: (e: LogEvent) => string[]
 ): FacetGroup {
   const counts = new Map<string, number>();
   for (const e of events) {
@@ -137,7 +126,7 @@ function group(
   }
   const values: FacetValue[] = [...counts.entries()]
     .map(([value, count]) => ({ value, count }))
-    .sort((a, b) => b.count - a.count)
+    .toSorted((a, b) => b.count - a.count)
     .slice(0, TOP_N_VALUES);
   return { key, label, values };
 }
@@ -145,7 +134,7 @@ function group(
 function walkPaths(
   obj: Record<string, unknown>,
   prefix: string,
-  emit: (path: string, value: unknown) => void,
+  emit: (path: string, value: unknown) => void
 ): void {
   for (const [k, v] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${k}` : k;
@@ -160,8 +149,7 @@ function walkPaths(
 function lookupPath(fields: unknown, path: string): unknown {
   let cur = fields;
   for (const part of path.split(".")) {
-    if (cur && typeof cur === "object")
-      cur = (cur as Record<string, unknown>)[part];
+    if (cur && typeof cur === "object") cur = (cur as Record<string, unknown>)[part];
     else return undefined;
   }
   return cur;
@@ -218,11 +206,7 @@ function walk(ast: Ast, out: Map<string, Set<string>>): void {
 /// top-level OR-chain of `key:vN` bindings. NOT clauses are exclusion
 /// and don't count. Use this anywhere the UI needs to highlight a
 /// term as "currently being filtered for".
-export function isFacetActive(
-  query: string,
-  key: string,
-  value: string,
-): boolean {
+export function isFacetActive(query: string, key: string, value: string): boolean {
   const ast = parse(query);
   if (isError(ast)) return false;
   if (ast.kind === "free" && ast.term === "") return false;
@@ -268,11 +252,7 @@ function formatClause(key: string, value: string): string {
 /// as OR. Existing nodes for the same key (bare or OR-chain of
 /// \`key:v\`) are merged with the toggle target; everything else stays
 /// AND-joined. Empty selection drops the clause entirely.
-export function toggleFacetOr(
-  query: string,
-  key: string,
-  value: string,
-): string {
+export function toggleFacetOr(query: string, key: string, value: string): string {
   const ast = parse(query);
   // Empty / unparseable: just emit the bare clause.
   if (isError(ast)) return formatClause(key, value);
@@ -374,7 +354,7 @@ function extractRanges(ast: Ast, key: string): { lo: number; hi: number }[] {
 /// did NOT contribute (foreign clauses to keep AND-joined).
 function partitionConjuncts(
   conjuncts: Ast[],
-  key: string,
+  key: string
 ): { ranges: { lo: number; hi: number }[]; others: Ast[] } {
   const ranges: { lo: number; hi: number }[] = [];
   const partials: { lo: number; hi: number }[] = [];
@@ -411,11 +391,7 @@ function partitionConjuncts(
 /// Toggle a percentile bucket selection for a numeric facet. Multiple
 /// active buckets are OR-joined; clearing the last bucket drops the
 /// clause entirely. Cross-key clauses stay AND-joined.
-export function toggleFacetRange(
-  query: string,
-  key: string,
-  bucket: RangeBucket,
-): string {
+export function toggleFacetRange(query: string, key: string, bucket: RangeBucket): string {
   const ast = parse(query);
   const isEmpty = !isError(ast) && ast.kind === "free" && ast.term === "";
   if (isError(ast) || isEmpty) {
@@ -433,9 +409,7 @@ export function toggleFacetRange(
   const rangeText =
     collected.length === 1
       ? formatRangeClause(key, collected[0]!.lo, collected[0]!.hi)
-      : `(${collected
-          .map((r) => formatRangeClause(key, r.lo, r.hi))
-          .join(" OR ")})`;
+      : `(${collected.map((r) => formatRangeClause(key, r.lo, r.hi)).join(" OR ")})`;
   if (!otherText) return rangeText;
   return `${otherText} AND ${rangeText}`;
 }
@@ -444,11 +418,7 @@ export function toggleFacetRange(
 /// \`query\`? Used to render checked state in the UI.
 /// Toggle a percentile threshold clause for \`key\`. Multi-select OR-
 /// joined as \`(key:>=percentile(p1) OR key:>=percentile(p2))\`.
-export function toggleFacetPct(
-  query: string,
-  key: string,
-  p: number,
-): string {
+export function toggleFacetPct(query: string, key: string, p: number): string {
   const ast = parse(query);
   const isEmpty = !isError(ast) && ast.kind === "free" && ast.term === "";
   const seed = `${key}:>=percentile(${p})`;
@@ -465,10 +435,9 @@ export function toggleFacetPct(
   else collected.add(p);
   const otherText = others.map(renderAst).join(" AND ");
   if (collected.size === 0) return otherText;
-  const sorted = [...collected].sort((a, b) => a - b);
+  const sorted = [...collected].toSorted((a, b) => a - b);
   const clauses = sorted.map((x) => `${key}:>=percentile(${x})`);
-  const joined =
-    clauses.length === 1 ? clauses[0]! : `(${clauses.join(" OR ")})`;
+  const joined = clauses.length === 1 ? clauses[0]! : `(${clauses.join(" OR ")})`;
   return otherText ? `${otherText} AND ${joined}` : joined;
 }
 
@@ -500,11 +469,7 @@ export function activePctSet(query: string, key: string): Set<number> {
   return out;
 }
 
-export function activeBuckets(
-  query: string,
-  key: string,
-  buckets: RangeBucket[],
-): Set<string> {
+export function activeBuckets(query: string, key: string, buckets: RangeBucket[]): Set<string> {
   const out = new Set<string>();
   const ast = parse(query);
   if (isError(ast)) return out;
