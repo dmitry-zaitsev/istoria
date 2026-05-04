@@ -93,7 +93,7 @@ export function LogStream({
     scrollToNewest();
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
-  const applyRange = (anchorId: number, endId: number) => {
+  const applyRange = (anchorId: number, endId: number, base?: number[]) => {
     const a = events.findIndex((x) => x.id === anchorId);
     const b = events.findIndex((x) => x.id === endId);
     if (a < 0 || b < 0) {
@@ -102,23 +102,72 @@ export function LogStream({
     }
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
-    const ids = events.slice(lo, hi + 1).map((x) => x.id);
-    onSelectIds(ids);
+    if (base && base.length > 0) {
+      const set = new Set(base);
+      for (let i = lo; i <= hi; i++) set.add(events[i].id);
+      onSelectIds([...set]);
+    } else {
+      onSelectIds(events.slice(lo, hi + 1).map((x) => x.id));
+    }
   };
 
-  const dragRef = useRef<{ anchor: number; lastEnd: number } | null>(null);
+  const applyRangeOp = (
+    anchorId: number,
+    endId: number,
+    base: number[],
+    op: "add" | "remove",
+  ) => {
+    const a = events.findIndex((x) => x.id === anchorId);
+    const b = events.findIndex((x) => x.id === endId);
+    if (a < 0 || b < 0) return;
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const set = new Set(base);
+    for (let i = lo; i <= hi; i++) {
+      const rid = events[i].id;
+      if (op === "add") set.add(rid);
+      else set.delete(rid);
+    }
+    onSelectIds([...set]);
+  };
+
+  type DragState =
+    | { mode: "bridge"; anchor: number; lastEnd: number; base: number[] }
+    | {
+        mode: "toggle";
+        anchor: number;
+        lastEnd: number;
+        base: number[];
+        op: "add" | "remove";
+      };
+
+  const dragRef = useRef<DragState | null>(null);
 
   const onRowMouseDown = (id: number, e: React.MouseEvent) => {
-    if (!e.shiftKey) return;
-    // Suppress browser text-selection on shift+click and shift+drag;
+    const shift = e.shiftKey;
+    const meta = (e.metaKey || e.ctrlKey) && !shift;
+    if (!shift && !meta) return;
+    // Suppress browser text-selection on modifier+click/drag;
     // rows aren't text first, they're targets.
     e.preventDefault();
     window.getSelection()?.removeAllRanges();
     if (!paused) setPaused(true, events.length);
-    const anchor = selectedId ?? selectedIds[selectedIds.length - 1] ?? id;
-    dragRef.current = { anchor, lastEnd: id };
-    document.body.classList.add("range-dragging");
-    applyRange(anchor, id);
+
+    const baseSet = new Set(selectedIds);
+    if (selectedId != null) baseSet.add(selectedId);
+    const base = [...baseSet];
+
+    if (shift) {
+      const anchor = selectedId ?? selectedIds[selectedIds.length - 1] ?? id;
+      dragRef.current = { mode: "bridge", anchor, lastEnd: id, base };
+      document.body.classList.add("range-dragging");
+      applyRange(anchor, id, base);
+    } else {
+      const op: "add" | "remove" = baseSet.has(id) ? "remove" : "add";
+      dragRef.current = { mode: "toggle", anchor: id, lastEnd: id, base, op };
+      document.body.classList.add("range-dragging");
+      applyRangeOp(id, id, base, op);
+    }
 
     const onMove = (ev: MouseEvent) => {
       const drag = dragRef.current;
@@ -129,7 +178,8 @@ export function LogStream({
       const rid = Number(rowEl.dataset.rowId);
       if (!Number.isFinite(rid) || rid === drag.lastEnd) return;
       drag.lastEnd = rid;
-      applyRange(drag.anchor, rid);
+      if (drag.mode === "bridge") applyRange(drag.anchor, rid, drag.base);
+      else applyRangeOp(drag.anchor, rid, drag.base, drag.op);
     };
     const onUp = () => {
       dragRef.current = null;
@@ -143,18 +193,8 @@ export function LogStream({
 
   const onRowClick = (id: number, e: React.MouseEvent) => {
     if (!paused) setPaused(true, events.length);
-    if (e.shiftKey) {
-      // Range already applied on mousedown / drag; no-op on click so we
-      // don't clobber a drag-extended selection.
-      return;
-    }
-    if (e.metaKey || e.ctrlKey) {
-      const next = new Set(selectedIds);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      onSelectIds([...next]);
-      return;
-    }
+    // shift / cmd / ctrl already handled in mousedown + drag.
+    if (e.shiftKey || e.metaKey || e.ctrlKey) return;
     onSelect(selectedSet.has(id) && selectedIds.length === 1 ? null : id);
   };
 
