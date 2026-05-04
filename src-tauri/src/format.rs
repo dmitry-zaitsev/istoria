@@ -71,6 +71,13 @@ impl Default for Detector {
 }
 
 fn event_from_json(id: u64, source: &str, branch: &str, raw: String, v: Value) -> Event {
+    // Double-piped logs: when `msg` itself parses as a JSON object,
+    // a wrapping tool stringified an inner structured log (pino,
+    // bunyan, etc). Merge inner keys up so `pid`, `reqId`, `hostname`
+    // are queryable instead of buried in a string. Inner wins on
+    // conflicting keys — it's the canonical payload; outer is just
+    // transport.
+    let v = unwrap_nested_msg_json(v);
     let obj = v.as_object().expect("filtered to objects above");
     // Try common string-level keys first, then fall back to numeric
     // (Bunyan/Pino encode level as 10/20/30/40/50/60).
@@ -112,6 +119,27 @@ fn event_from_json(id: u64, source: &str, branch: &str, raw: String, v: Value) -
         raw,
         fields: Some(v),
     }
+}
+
+/// If the outer object's `msg` (or `message`) is a string that itself
+/// parses as a JSON object, return a new object with the inner keys
+/// merged in. Inner keys overwrite outer ones on conflict. Falls back
+/// to the input untouched when there's no nested JSON or it's not an
+/// object.
+fn unwrap_nested_msg_json(v: Value) -> Value {
+    let Some(outer) = v.as_object() else { return v };
+    let inner_str = outer
+        .get("msg")
+        .or_else(|| outer.get("message"))
+        .and_then(|x| x.as_str());
+    let Some(s) = inner_str else { return v };
+    let Ok(inner) = serde_json::from_str::<Value>(s) else { return v };
+    let Some(inner_map) = inner.as_object() else { return v };
+    let mut merged = outer.clone();
+    for (k, val) in inner_map {
+        merged.insert(k.clone(), val.clone());
+    }
+    Value::Object(merged)
 }
 
 fn event_from_plain(id: u64, source: &str, branch: &str, raw: String) -> Event {
@@ -542,6 +570,52 @@ mod tests {
         // Level is inferred from full stripped text — `Exception`
         // upgrades the head-level `INFO` to Error.
         assert_eq!(ev.level, Level::Error);
+    }
+
+    #[test]
+    fn json_nested_msg_flattens_inner_keys() {
+        // Double-piped: outer wrapper stringified an inner pino log.
+        // Inner keys (pid, hostname, reqId, req) should appear at the
+        // top level of fields so they're queryable.
+        let mut d = Detector::new();
+        let raw = r#"{"id":50,"ts":1777853046862,"source":"pipe-1","level":"info","msg":"{\"level\":30,\"time\":1777853046861,\"pid\":7167,\"hostname\":\"macbookpro.lan\",\"reqId\":\"req-3\",\"req\":{\"method\":\"POST\",\"url\":\"/run/new\"},\"msg\":\"incoming request\"}"}"#;
+        let ev = d.parse(1, "src", "main", raw.to_string());
+        assert_eq!(ev.msg, "incoming request");
+        let fields = ev.fields.expect("fields set");
+        let obj = fields.as_object().expect("object");
+        assert_eq!(obj.get("pid").and_then(|v| v.as_i64()), Some(7167));
+        assert_eq!(obj.get("hostname").and_then(|v| v.as_str()), Some("macbookpro.lan"));
+        assert_eq!(obj.get("reqId").and_then(|v| v.as_str()), Some("req-3"));
+        assert_eq!(
+            obj.get("req")
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.get("method"))
+                .and_then(|v| v.as_str()),
+            Some("POST"),
+        );
+        // Outer keys preserved when not overridden.
+        assert_eq!(obj.get("source").and_then(|v| v.as_str()), Some("pipe-1"));
+    }
+
+    #[test]
+    fn json_nested_msg_inner_level_wins() {
+        // Outer says info (transport default), inner says 50 (pino
+        // error). Trust the inner — it's the real signal.
+        let mut d = Detector::new();
+        let raw = r#"{"level":"info","msg":"{\"level\":50,\"msg\":\"db down\"}"}"#;
+        let ev = d.parse(1, "src", "main", raw.to_string());
+        assert_eq!(ev.level, Level::Error);
+        assert_eq!(ev.msg, "db down");
+    }
+
+    #[test]
+    fn json_msg_not_json_left_alone() {
+        // Plain string msg — no nested parse attempt should change
+        // anything.
+        let mut d = Detector::new();
+        let ev = d.parse(1, "src", "main", r#"{"level":"warn","msg":"slow query"}"#.to_string());
+        assert_eq!(ev.msg, "slow query");
+        assert_eq!(ev.level, Level::Warn);
     }
 
     #[test]
