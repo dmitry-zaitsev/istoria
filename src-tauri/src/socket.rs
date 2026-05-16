@@ -10,11 +10,11 @@ use tokio::time::timeout;
 use crate::coalesce::Coalescer;
 use crate::event::Event;
 use crate::format::Detector;
-use crate::persistence::Store;
 use crate::ring::Ring;
 use crate::source;
 
 const SOCKET_FILE: &str = "daemon.sock";
+const DATA_DIR_NAME: &str = "istoria";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ForwarderHeader {
@@ -37,7 +37,7 @@ pub fn socket_path() -> PathBuf {
             return PathBuf::from(dir).join("istoria.sock");
         }
     }
-    let dirs = directories::ProjectDirs::from("", "", crate::persistence::DB_DIR_NAME)
+    let dirs = directories::ProjectDirs::from("", "", DATA_DIR_NAME)
         .expect("project dirs resolvable");
     let path = dirs.data_dir().join(SOCKET_FILE);
     if let Some(parent) = path.parent() {
@@ -74,17 +74,15 @@ pub async fn try_connect(path: &std::path::Path) -> Option<Stream> {
 pub async fn run_owner_listener(
     listener: Listener,
     ring: Arc<Ring>,
-    store: Option<Arc<Store>>,
     registry: Arc<source::Registry>,
 ) {
     loop {
         match listener.accept().await {
             Ok(stream) => {
                 let ring = Arc::clone(&ring);
-                let store = store.clone();
                 let registry = Arc::clone(&registry);
                 tokio::spawn(async move {
-                    if let Err(e) = handle_forwarder(stream, ring, store, registry).await {
+                    if let Err(e) = handle_forwarder(stream, ring, registry).await {
                         tracing::warn!(error = %e, "forwarder ended with error");
                     }
                 });
@@ -100,7 +98,6 @@ pub async fn run_owner_listener(
 async fn handle_forwarder(
     stream: Stream,
     ring: Arc<Ring>,
-    store: Option<Arc<Store>>,
     registry: Arc<source::Registry>,
 ) -> std::io::Result<()> {
     let mut reader = BufReader::with_capacity(64 * 1024, stream);
@@ -125,7 +122,7 @@ async fn handle_forwarder(
                 Ok(r) => r,
                 Err(_) => {
                     if let Some(ev) = coalescer.flush() {
-                        emit(&ring, &store, ev);
+                        emit(&ring, ev);
                     }
                     continue;
                 }
@@ -141,12 +138,12 @@ async fn handle_forwarder(
                 }
                 let ev = detector.parse(0, &source_name, &branch, line);
                 if let Some(out) = coalescer.push(ev) {
-                    emit(&ring, &store, out);
+                    emit(&ring, out);
                 }
             }
             Ok(None) => {
                 if let Some(ev) = coalescer.flush() {
-                    emit(&ring, &store, ev);
+                    emit(&ring, ev);
                 }
                 break;
             }
@@ -156,14 +153,11 @@ async fn handle_forwarder(
     Ok(())
 }
 
-fn emit(ring: &Arc<Ring>, store: &Option<Arc<Store>>, mut ev: Event) {
+fn emit(ring: &Arc<Ring>, mut ev: Event) {
     if ev.msg.trim().is_empty() && ev.fields.is_none() && ev.raw.trim().is_empty() {
         return;
     }
     ev.id = ring.next_id();
-    if let Some(s) = store.as_ref() {
-        s.submit(ev.clone());
-    }
     ring.push(ev);
 }
 

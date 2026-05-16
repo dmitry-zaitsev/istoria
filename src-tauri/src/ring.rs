@@ -1,5 +1,5 @@
 use parking_lot::RwLock;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Notify;
 
@@ -14,6 +14,7 @@ pub struct Ring {
     dropped: AtomicU64,
     next_id: AtomicU64,
     notify: Notify,
+    pins: RwLock<HashSet<i64>>,
 }
 
 impl Ring {
@@ -25,6 +26,7 @@ impl Ring {
             dropped: AtomicU64::new(0),
             next_id: AtomicU64::new(1),
             notify: Notify::new(),
+            pins: RwLock::new(HashSet::new()),
         }
     }
 
@@ -68,12 +70,29 @@ impl Ring {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    /// Wipe ring contents. ID counter is left intact so subsequent
-    /// events keep their monotonic order.
+    /// Wipe ring contents and pins. ID counter is left intact so
+    /// subsequent events keep their monotonic order.
     pub fn clear(&self) {
         self.inner.write().clear();
+        self.pins.write().clear();
         self.dropped.store(0, Ordering::Relaxed);
         self.notify.notify_waiters();
+    }
+
+    pub fn pin(&self, id: i64) {
+        self.pins.write().insert(id);
+    }
+
+    pub fn unpin(&self, id: i64) {
+        self.pins.write().remove(&id);
+    }
+
+    /// Pinned ids, sorted descending so newer pins sort first — the
+    /// same ordering the UI used to get from `ORDER BY pinned_at DESC`.
+    pub fn list_pins(&self) -> Vec<i64> {
+        let mut v: Vec<i64> = self.pins.read().iter().copied().collect();
+        v.sort_unstable_by(|a, b| b.cmp(a));
+        v
     }
 
     /// Most-recent-first snapshot, optionally substring-filtered on `msg`.
@@ -121,5 +140,26 @@ mod tests {
         let snap = ring.snapshot(10, Some("error"));
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].id, 1);
+    }
+
+    #[test]
+    fn pins_roundtrip_and_sort_desc() {
+        let ring = Ring::new(10);
+        ring.pin(42);
+        ring.pin(7);
+        ring.pin(42); // idempotent
+        assert_eq!(ring.list_pins(), vec![42, 7]);
+        ring.unpin(7);
+        assert_eq!(ring.list_pins(), vec![42]);
+    }
+
+    #[test]
+    fn clear_wipes_pins_too() {
+        let ring = Ring::new(10);
+        ring.pin(1);
+        ring.push(ev(1, "a"));
+        ring.clear();
+        assert!(ring.list_pins().is_empty());
+        assert_eq!(ring.len(), 0);
     }
 }

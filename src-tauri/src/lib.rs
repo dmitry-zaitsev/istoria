@@ -8,8 +8,6 @@ pub mod http;
 pub mod ingest;
 pub mod ipc;
 pub mod mcp;
-pub mod persistence;
-pub mod pins;
 pub mod query;
 pub mod relevance;
 pub mod ring;
@@ -27,7 +25,6 @@ use std::time::Duration;
 use tauri::Emitter;
 
 use ipc::EventNewPayload;
-use persistence::Store;
 use ring::Ring;
 use state::AppState;
 
@@ -75,24 +72,14 @@ pub fn run(cli: cli::Cli) {
     let registry = Arc::new(source::Registry::new());
     let source_name = registry.allocate(cli.name.as_deref());
 
-    let store = match Store::open_default(cli.clear) {
-        Ok(s) => Some(Arc::new(s)),
-        Err(e) => {
-            tracing::warn!(error = %e, "DuckDB store unavailable; running in-memory only");
-            None
-        }
-    };
-
     if stdin_piped {
         let ring_for_ingest = Arc::clone(&ring);
         let tee = !cli.silent;
         let source_for_ingest = source_name.clone();
         let branch_for_ingest = branch.clone();
-        let store_for_ingest = store.clone();
         tauri::async_runtime::spawn(async move {
             ingest::run_stdin_reader(
                 ring_for_ingest,
-                store_for_ingest,
                 source_for_ingest,
                 branch_for_ingest,
                 tee,
@@ -102,7 +89,6 @@ pub fn run(cli: cli::Cli) {
     }
 
     let ring_for_socket = Arc::clone(&ring);
-    let store_for_socket = store.clone();
     let registry_for_socket = Arc::clone(&registry);
     let socket_path_for_owner = socket_path.clone();
     tauri::async_runtime::spawn(async move {
@@ -110,7 +96,6 @@ pub fn run(cli: cli::Cli) {
             socket::run_owner_listener(
                 listener,
                 ring_for_socket,
-                store_for_socket,
                 registry_for_socket,
             )
             .await;
@@ -120,9 +105,8 @@ pub fn run(cli: cli::Cli) {
     });
 
     let ring_for_http = Arc::clone(&ring);
-    let store_for_http = store.clone();
     tauri::async_runtime::spawn(async move {
-        http::run_server(ring_for_http, store_for_http).await;
+        http::run_server(ring_for_http).await;
     });
 
     let ring_for_mcp = Arc::clone(&ring);
@@ -144,7 +128,6 @@ pub fn run(cli: cli::Cli) {
         .plugin(tauri_plugin_notification::init())
         .manage(AppState {
             ring,
-            store,
             project_root,
             code_cache,
             source_registry: registry,

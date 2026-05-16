@@ -3,7 +3,6 @@ use serde::Serialize;
 use crate::claude;
 use crate::code::{self, CodeLine, EditorEntry, EmissionSite};
 use crate::event::Event;
-use crate::pins;
 use crate::query::{self, Ast};
 use crate::relevance::{self, BranchState, RelevanceAnalysis};
 use crate::state::AppState;
@@ -35,13 +34,6 @@ pub async fn query_parse(input: String) -> Result<ParseResult, String> {
         Ok(ast) => ParseResult { ast: Some(ast), error: None },
         Err(e) => ParseResult { ast: None, error: Some(e.message) },
     })
-}
-
-fn store_or_err(state: &AppState) -> Result<&crate::persistence::Store, String> {
-    state
-        .store
-        .as_deref()
-        .ok_or_else(|| "persistent store unavailable".to_string())
 }
 
 fn project_root_or_err(state: &AppState) -> Result<&std::path::Path, String> {
@@ -98,8 +90,8 @@ pub async fn pin_event(
     state: tauri::State<'_, AppState>,
     event_id: i64,
 ) -> Result<(), String> {
-    let store = store_or_err(&state)?;
-    pins::pin(store, event_id).map_err(|e| e.to_string())
+    state.ring.pin(event_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -107,14 +99,13 @@ pub async fn unpin_event(
     state: tauri::State<'_, AppState>,
     event_id: i64,
 ) -> Result<(), String> {
-    let store = store_or_err(&state)?;
-    pins::unpin(store, event_id).map_err(|e| e.to_string())
+    state.ring.unpin(event_id);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn list_pins(state: tauri::State<'_, AppState>) -> Result<Vec<i64>, String> {
-    let store = store_or_err(&state)?;
-    pins::list(store).map_err(|e| e.to_string())
+    Ok(state.ring.list_pins())
 }
 
 #[tauri::command]
@@ -179,9 +170,6 @@ pub async fn analyze_branch_relevance(
 pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.ring.clear();
     state.source_registry.reset();
-    if let Some(store) = state.store.as_deref() {
-        store.clear_session().map_err(|e| e.to_string())?;
-    }
     Ok(())
 }
 

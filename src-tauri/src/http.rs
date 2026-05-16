@@ -13,7 +13,6 @@ use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::event::{Event, Level};
-use crate::persistence::Store;
 use crate::ring::Ring;
 
 const DEFAULT_PORT: u16 = 9787;
@@ -21,11 +20,11 @@ const PORT_FALLBACK_RANGE: u16 = 20;
 const PORT_FILE: &str = "http.port";
 const MAX_SOURCE_LEN: usize = 256;
 const ALLOWED_ORIGIN_PREFIX: &str = "chrome-extension://";
+const DATA_DIR_NAME: &str = "istoria";
 
 #[derive(Clone)]
 struct AppCtx {
     ring: Arc<Ring>,
-    store: Option<Arc<Store>>,
 }
 
 #[derive(Deserialize)]
@@ -49,8 +48,8 @@ struct IngestEvent {
     meta: Option<serde_json::Value>,
 }
 
-pub async fn run_server(ring: Arc<Ring>, store: Option<Arc<Store>>) {
-    let ctx = AppCtx { ring, store };
+pub async fn run_server(ring: Arc<Ring>) {
+    let ctx = AppCtx { ring };
 
     // CORS preflight: only echo back chrome-extension:// origins.
     // A web page on https://evil.example sending application/json
@@ -98,7 +97,7 @@ async fn bind_with_fallback(start: u16) -> Option<(TcpListener, u16)> {
 }
 
 fn data_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("", "", crate::persistence::DB_DIR_NAME)
+    directories::ProjectDirs::from("", "", DATA_DIR_NAME)
         .map(|d| d.data_dir().to_path_buf())
 }
 
@@ -151,9 +150,6 @@ async fn ingest(
             raw,
             fields: ev.meta,
         };
-        if let Some(s) = ctx.store.as_ref() {
-            s.submit(event.clone());
-        }
         ctx.ring.push(event);
     }
     Ok(StatusCode::ACCEPTED)

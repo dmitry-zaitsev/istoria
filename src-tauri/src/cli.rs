@@ -15,10 +15,6 @@ pub struct Cli {
     /// Disable tee — do not forward stdin to stdout.
     #[arg(long)]
     pub silent: bool,
-
-    /// Purge persistent store on launch. No-op until M2.
-    #[arg(long)]
-    pub clear: bool,
 }
 
 impl Cli {
