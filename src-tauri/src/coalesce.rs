@@ -17,6 +17,9 @@ use crate::transformers::extract_body;
 /// event, if `msg` starts with whitespace AND there is a pending head,
 /// the new event's `raw` is folded into the head's `raw` and the
 /// pending head's level is upgraded if the continuation outranks it.
+/// Also folds when both pending head and incoming event are Error
+/// level, even without a known frame/indent marker — multi-line errors
+/// often emit every line at Error with no continuation pattern.
 /// Otherwise the pending head is emitted and the new event becomes
 /// the next pending head.
 ///
@@ -59,7 +62,7 @@ impl Coalescer {
     /// Push an event. Returns a finalized event when one is ready
     /// (caller should assign it an id and persist it).
     pub fn push(&mut self, ev: Event) -> Option<Event> {
-        if is_continuation(&ev) {
+        if is_continuation(&ev, self.pending.as_ref()) {
             if let Some(p) = self.pending.as_mut() {
                 let new_len = p.raw.len() + 1 + ev.raw.len();
                 if new_len <= self.max_chars && self.pending_lines + 1 <= self.max_lines {
@@ -129,14 +132,24 @@ static FRAME_RE: LazyLock<Regex> = LazyLock::new(|| {
     .expect("frame regex")
 });
 
-fn is_continuation(ev: &Event) -> bool {
+fn is_continuation(ev: &Event, pending: Option<&Event>) -> bool {
     // Check original msg first so Go's `panic:` isn't over-stripped by
     // the turbo rule (`[\w./-]+:[\w-]+:` would falsely match it).
     if FRAME_RE.is_match(&ev.msg) {
         return true;
     }
     let body = extract_body(&ev.msg);
-    matches!(body.as_bytes().first(), Some(b' ' | b'\t')) || FRAME_RE.is_match(body)
+    if matches!(body.as_bytes().first(), Some(b' ' | b'\t')) || FRAME_RE.is_match(body) {
+        return true;
+    }
+    // Consecutive Error rows with no known pattern: treat as part of
+    // the same error. Multi-line error messages (driver dumps, server
+    // tracebacks without indentation, etc.) often emit each line at
+    // Error level without any frame marker.
+    if ev.level == Level::Error && pending.is_some_and(|p| p.level == Level::Error) {
+        return true;
+    }
+    false
 }
 
 fn level_rank(l: Level) -> u8 {
@@ -516,6 +529,75 @@ mod tests {
         );
         assert_eq!(out.len(), 1);
         assert!(out[0].raw.contains("/srv/app/index.php(42)"));
+    }
+
+    #[test]
+    fn consecutive_errors_coalesce_without_pattern() {
+        // Multi-line error with no frame markers and no leading
+        // whitespace — every line tagged Error. Should fold into one
+        // event because the prior head was also Error.
+        let mut c = Coalescer::new();
+        let mut d = Detector::new();
+        let out = drain(
+            &mut c,
+            &mut d,
+            &[
+                "Error: failed to connect to database",
+                "Error: retry budget exhausted, giving up",
+            ],
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].level, Level::Error);
+        assert!(out[0].raw.contains("failed to connect"));
+        assert!(out[0].raw.contains("retry budget exhausted"));
+    }
+
+    #[test]
+    fn error_followed_by_info_does_not_coalesce() {
+        let mut c = Coalescer::new();
+        let mut d = Detector::new();
+        let out = drain(
+            &mut c,
+            &mut d,
+            &[
+                "Error: failed to connect to database",
+                "starting retry loop",
+            ],
+        );
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].level, Level::Error);
+    }
+
+    #[test]
+    fn info_followed_by_error_does_not_coalesce() {
+        let mut c = Coalescer::new();
+        let mut d = Detector::new();
+        let out = drain(
+            &mut c,
+            &mut d,
+            &[
+                "request received from client",
+                "Error: handler panicked",
+            ],
+        );
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn three_consecutive_errors_fold_into_one() {
+        let mut c = Coalescer::new();
+        let mut d = Detector::new();
+        let out = drain(
+            &mut c,
+            &mut d,
+            &[
+                "Error: primary connection lost",
+                "Error: failover target unreachable",
+                "Error: aborting transaction",
+            ],
+        );
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].raw.matches('\n').count(), 2);
     }
 
     #[test]
