@@ -144,3 +144,57 @@ export function matchAlerts(events: LogEvent[], compiled: CompiledAlert[]): Map<
   }
   return out;
 }
+
+/// True iff any compiled alert references an aggregation function
+/// (percentile, last, etc). Aggregation thresholds depend on the
+/// full event distribution, so a delta-only match would be wrong —
+/// caller must fall back to `matchAlerts(allEvents, compiled)`.
+export function compiledHasAggregation(compiled: CompiledAlert[]): boolean {
+  return compiled.some((c) => (c.ast ? astHasAggregation(c.ast) : false));
+}
+
+/// True iff the AST contains a `key_cmp_fn` node (percentile / last).
+/// Used by alert + filter incremental paths to decide whether a
+/// delta-only re-eval is safe.
+export function astHasAggregation(ast: Ast): boolean {
+  switch (ast.kind) {
+    case "key_cmp_fn":
+      return true;
+    case "and":
+    case "or":
+      return astHasAggregation(ast.left) || astHasAggregation(ast.right);
+    case "not":
+      return astHasAggregation(ast.expr);
+    default:
+      return false;
+  }
+}
+
+/// Incremental variant. Evaluates `compiled` against `deltaEvents` only
+/// and merges hits into `existing`. Safe only when no compiled alert
+/// uses an aggregation function — check via `compiledHasAggregation`
+/// first; otherwise call `matchAlerts(allEvents, compiled)`.
+export function matchAlertsDelta(
+  deltaEvents: LogEvent[],
+  compiled: CompiledAlert[],
+  existing: Map<number, string[]>
+): void {
+  if (deltaEvents.length === 0 || compiled.length === 0) return;
+  const usable = compiled.filter((c) => c.ast != null);
+  if (usable.length === 0) return;
+  // No aggregations → resolveAst is a no-op; pass [] to skip its scan.
+  const resolved = usable.map((c) => ({
+    alert: c.alert,
+    ast: resolveAst(c.ast as Ast, []),
+  }));
+  for (const ev of deltaEvents) {
+    let hits: string[] | undefined;
+    for (const r of resolved) {
+      if (evalAst(r.ast, ev)) {
+        if (!hits) hits = [];
+        hits.push(r.alert.id);
+      }
+    }
+    if (hits) existing.set(ev.id, hits);
+  }
+}

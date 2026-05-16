@@ -134,6 +134,7 @@ pub fn run(cli: cli::Cli) {
         })
         .invoke_handler(tauri::generate_handler![
             ipc::query_recent,
+            ipc::query_since,
             ipc::query_parse,
             ipc::pin_event,
             ipc::unpin_event,

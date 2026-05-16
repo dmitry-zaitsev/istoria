@@ -23,6 +23,27 @@ export async function queryRecent(limit: number, filter?: string): Promise<LogEv
   return invoke<LogEvent[]>("query_recent", { limit, filter: filter ?? null });
 }
 
+export interface QuerySincePayload {
+  events: LogEvent[];
+  /// Lowest id still in the ring, or null when empty. If
+  /// `minId > lastId + 1` the caller's cursor fell off the back of the
+  /// ring and the caller must fall back to `queryRecent` + reset.
+  minId: number | null;
+  /// Total events currently in the ring.
+  len: number;
+}
+
+interface RawQuerySincePayload {
+  events: LogEvent[];
+  min_id: number | null;
+  len: number;
+}
+
+export async function querySince(lastId: number, limit: number): Promise<QuerySincePayload> {
+  const raw = await invoke<RawQuerySincePayload>("query_since", { lastId, limit });
+  return { events: raw.events, minId: raw.min_id, len: raw.len };
+}
+
 export async function subscribeEvents(cb: (payload: EventNewPayload) => void): Promise<UnlistenFn> {
   return listen<EventNewPayload>("event-new", (e) => cb(e.payload));
 }

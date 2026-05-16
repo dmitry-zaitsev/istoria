@@ -23,6 +23,32 @@ pub async fn query_recent(
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct QuerySincePayload {
+    pub events: Vec<Event>,
+    /// Lowest id still in the ring. The frontend compares this against
+    /// its `lastSeenId`: if `min_id > lastSeenId + 1`, the ring evicted
+    /// past the cursor and the caller must fall back to `query_recent`.
+    pub min_id: Option<u64>,
+    /// Total events currently in the ring. Cheap to compute; useful
+    /// for UI counters without a second IPC round-trip.
+    pub len: usize,
+}
+
+#[tauri::command]
+pub async fn query_since(
+    state: tauri::State<'_, AppState>,
+    last_id: u64,
+    limit: usize,
+) -> Result<QuerySincePayload, String> {
+    let events = state.ring.snapshot_since(last_id, limit);
+    Ok(QuerySincePayload {
+        events,
+        min_id: state.ring.min_id(),
+        len: state.ring.len(),
+    })
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct ParseResult {
     pub ast: Option<Ast>,
     pub error: Option<String>,

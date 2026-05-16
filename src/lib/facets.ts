@@ -46,6 +46,108 @@ const KEY_PRIORITY = [
 ];
 const PRIORITY_RANK = new Map(KEY_PRIORITY.map((k, i) => [k, i]));
 
+/// Incremental facet store. The full-array `computeFacets()` below
+/// stays for cold-start / tests, but the live UI maintains a single
+/// `FacetIndex` and feeds it per-event deltas. Snapshot then assembles
+/// `FacetGroup[]` in the same shape `computeFacets()` returns, so
+/// consumers don't need to know which path produced it.
+///
+/// Counts of distinct field paths are bounded by event payload shape,
+/// not by the ring size — adding/removing one event is O(payload
+/// depth), not O(n).
+export class FacetIndex {
+  private levelCounts = new Map<string, number>();
+  private sourceCounts = new Map<string, number>();
+  private branchCounts = new Map<string, number>();
+  /// Auto-discovered fields: path → (value → count).
+  private fieldCounts = new Map<string, Map<string, number>>();
+
+  add(e: LogEvent): void {
+    bump(this.levelCounts, e.level);
+    bump(this.sourceCounts, e.source);
+    if (e.branch) bump(this.branchCounts, e.branch);
+    const fields = e.fields as Record<string, unknown> | undefined;
+    if (fields && typeof fields === "object") {
+      walkPaths(fields, "", (path, value) => {
+        if (MIRRORED_KEYS.has(path)) return;
+        let m = this.fieldCounts.get(path);
+        if (!m) {
+          m = new Map();
+          this.fieldCounts.set(path, m);
+        }
+        bump(m, String(value ?? ""));
+      });
+    }
+  }
+
+  remove(e: LogEvent): void {
+    drop(this.levelCounts, e.level);
+    drop(this.sourceCounts, e.source);
+    if (e.branch) drop(this.branchCounts, e.branch);
+    const fields = e.fields as Record<string, unknown> | undefined;
+    if (fields && typeof fields === "object") {
+      walkPaths(fields, "", (path, value) => {
+        if (MIRRORED_KEYS.has(path)) return;
+        const m = this.fieldCounts.get(path);
+        if (!m) return;
+        drop(m, String(value ?? ""));
+        if (m.size === 0) this.fieldCounts.delete(path);
+      });
+    }
+  }
+
+  clear(): void {
+    this.levelCounts.clear();
+    this.sourceCounts.clear();
+    this.branchCounts.clear();
+    this.fieldCounts.clear();
+  }
+
+  snapshot(): FacetGroup[] {
+    const groups: FacetGroup[] = [];
+    groups.push(materialize("level", "Level", this.levelCounts));
+    const src = materialize("source", "Source", this.sourceCounts);
+    if (src.values.length > 1) groups.push(src);
+    const br = materialize("branch", "Branch", this.branchCounts);
+    if (br.values.length > 0) groups.push(br);
+
+    const ranked = [...this.fieldCounts.entries()]
+      .filter(([, m]) => m.size > 1)
+      .toSorted((a, b) => {
+        const ra = PRIORITY_RANK.get(a[0]) ?? Number.POSITIVE_INFINITY;
+        const rb = PRIORITY_RANK.get(b[0]) ?? Number.POSITIVE_INFINITY;
+        if (ra !== rb) return ra - rb;
+        return b[1].size - a[1].size;
+      })
+      .slice(0, ALL_KEYS_CAP)
+      .map(([k]) => k);
+
+    for (const key of ranked) {
+      groups.push(materialize(key, prettyKey(key), this.fieldCounts.get(key)!));
+    }
+    return groups;
+  }
+}
+
+function bump(m: Map<string, number>, key: string): void {
+  m.set(key, (m.get(key) ?? 0) + 1);
+}
+
+function drop(m: Map<string, number>, key: string): void {
+  const n = m.get(key);
+  if (n == null) return;
+  if (n <= 1) m.delete(key);
+  else m.set(key, n - 1);
+}
+
+function materialize(key: string, label: string, counts: Map<string, number>): FacetGroup {
+  const values: FacetValue[] = [...counts.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .toSorted((a, b) => b.count - a.count)
+    .slice(0, TOP_N_VALUES);
+  return { key, label, values };
+}
+
 /// Compute facet groups from a list of events. Always emits Level
 /// and Source first; then auto-discovered JSON keys ordered by
 /// cardinality (count of distinct values × frequency). Returns

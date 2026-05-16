@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { highlight, type HighlightTerm } from "../lib/highlight";
 import { pinEvent, unpinEvent, type Level, type LogEvent } from "../lib/ipc";
@@ -39,9 +39,17 @@ export function LogStream({
   alertMatches,
   relevanceRe,
 }: LogStreamProps) {
-  const selectedSet = new Set(selectedIds);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const alerts = useStore((s) => s.alerts);
-  const alertColorById = new Map(alerts.map((a) => [a.id, a.color]));
+  const alertColorById = useMemo(() => new Map(alerts.map((a) => [a.id, a.color])), [alerts]);
+  // O(1) id → index lookup. Rebuilt only when `events` ref changes
+  // (i.e. on actual delta arrival, not every render). Replaces the
+  // O(n) `events.findIndex` calls in drag-select and scroll-to-id.
+  const idToIndex = useMemo(() => {
+    const m = new Map<number, number>();
+    for (let i = 0; i < events.length; i++) m.set(events[i]!.id, i);
+    return m;
+  }, [events]);
   const parentRef = useRef<HTMLDivElement | null>(null);
   const stickToNewest = useRef(true);
   const paused = useStore((s) => s.paused);
@@ -94,8 +102,8 @@ export function LogStream({
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
   const applyRange = (anchorId: number, endId: number, base?: number[]) => {
-    const a = events.findIndex((x) => x.id === anchorId);
-    const b = events.findIndex((x) => x.id === endId);
+    const a = idToIndex.get(anchorId) ?? -1;
+    const b = idToIndex.get(endId) ?? -1;
     if (a < 0 || b < 0) {
       onSelect(endId);
       return;
@@ -104,27 +112,22 @@ export function LogStream({
     const hi = Math.max(a, b);
     if (base && base.length > 0) {
       const set = new Set(base);
-      for (let i = lo; i <= hi; i++) set.add(events[i].id);
+      for (let i = lo; i <= hi; i++) set.add(events[i]!.id);
       onSelectIds([...set]);
     } else {
       onSelectIds(events.slice(lo, hi + 1).map((x) => x.id));
     }
   };
 
-  const applyRangeOp = (
-    anchorId: number,
-    endId: number,
-    base: number[],
-    op: "add" | "remove",
-  ) => {
-    const a = events.findIndex((x) => x.id === anchorId);
-    const b = events.findIndex((x) => x.id === endId);
+  const applyRangeOp = (anchorId: number, endId: number, base: number[], op: "add" | "remove") => {
+    const a = idToIndex.get(anchorId) ?? -1;
+    const b = idToIndex.get(endId) ?? -1;
     if (a < 0 || b < 0) return;
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
     const set = new Set(base);
     for (let i = lo; i <= hi; i++) {
-      const rid = events[i].id;
+      const rid = events[i]!.id;
       if (op === "add") set.add(rid);
       else set.delete(rid);
     }
@@ -222,7 +225,7 @@ export function LogStream({
   // the inspector overlay.
   useEffect(() => {
     if (scrollTargetId == null) return;
-    const idx = events.findIndex((e) => e.id === scrollTargetId);
+    const idx = idToIndex.get(scrollTargetId) ?? -1;
     if (idx < 0) {
       setScrollTarget(null);
       return;

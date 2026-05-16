@@ -1,18 +1,16 @@
 import { useMemo, useState } from "react";
 
-import {
-  computeFacets,
-  pinnedFromAst,
-  TOP_N_FACET_GROUPS,
-  toggleFacetOr,
-  type FacetGroup,
-} from "../lib/facets";
+import { pinnedFromAst, TOP_N_FACET_GROUPS, toggleFacetOr, type FacetGroup } from "../lib/facets";
 import type { LogEvent } from "../lib/ipc";
 import { isError, parse, type Ast } from "../lib/query";
 import { RangeSlider, detectNumericFacets } from "./RangeSlider";
 
 interface FacetsProps {
   events: LogEvent[];
+  /// Pre-computed facet groups from App.tsx, which maintains a
+  /// `FacetIndex` incrementally as events arrive. Avoids a second
+  /// O(n × payload-depth) walk inside this component.
+  groups: FacetGroup[];
   filter: string;
   onFilterChange: (q: string) => void;
 }
@@ -20,8 +18,7 @@ interface FacetsProps {
 const VISIBLE_CAP = 8;
 const SEARCH_OVERFLOW = 10;
 
-export function Facets({ events, filter, onFilterChange }: FacetsProps) {
-  const groups = useMemo(() => computeFacets(events), [events]);
+export function Facets({ events, groups, filter, onFilterChange }: FacetsProps) {
   const numericKeys = useMemo(() => new Set(detectNumericFacets(events)), [events]);
   const ast: Ast | null = useMemo(() => {
     const r = parse(filter);

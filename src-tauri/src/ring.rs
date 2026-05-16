@@ -5,7 +5,7 @@ use tokio::sync::Notify;
 
 use crate::event::Event;
 
-pub const DEFAULT_CAPACITY: usize = 100_000;
+pub const DEFAULT_CAPACITY: usize = 500_000;
 pub const RING_SIZE_ENV: &str = "ISTORIA_RING_SIZE";
 
 pub struct Ring {
@@ -109,6 +109,24 @@ impl Ring {
             .cloned()
             .collect()
     }
+
+    /// Delta snapshot — events with `id > last_id`, oldest-first,
+    /// capped at `limit`. Ids are monotonic, so we seek to the first
+    /// matching index via `partition_point` (O(log n)) and clone the
+    /// suffix forward. Returns an empty vec when nothing new.
+    pub fn snapshot_since(&self, last_id: u64, limit: usize) -> Vec<Event> {
+        let q = self.inner.read();
+        let start = q.partition_point(|e| e.id <= last_id);
+        q.iter().skip(start).take(limit).cloned().collect()
+    }
+
+    /// Lowest live id in the ring, or `None` when empty. The frontend
+    /// compares this against its `lastSeenId`: if it's greater, the
+    /// ring has evicted past the caller's cursor and a full `snapshot`
+    /// is needed to re-sync.
+    pub fn min_id(&self) -> Option<u64> {
+        self.inner.read().front().map(|e| e.id)
+    }
 }
 
 #[cfg(test)]
@@ -161,5 +179,45 @@ mod tests {
         ring.clear();
         assert!(ring.list_pins().is_empty());
         assert_eq!(ring.len(), 0);
+    }
+
+    #[test]
+    fn snapshot_since_returns_delta_oldest_first() {
+        let ring = Ring::new(10);
+        ring.push(ev(1, "a"));
+        ring.push(ev(2, "b"));
+        ring.push(ev(3, "c"));
+        let delta = ring.snapshot_since(1, 10);
+        assert_eq!(delta.iter().map(|e| e.id).collect::<Vec<_>>(), vec![2, 3]);
+    }
+
+    #[test]
+    fn snapshot_since_empty_when_caller_is_current() {
+        let ring = Ring::new(10);
+        ring.push(ev(1, "a"));
+        ring.push(ev(2, "b"));
+        assert!(ring.snapshot_since(2, 10).is_empty());
+        assert!(ring.snapshot_since(99, 10).is_empty());
+    }
+
+    #[test]
+    fn snapshot_since_respects_limit() {
+        let ring = Ring::new(10);
+        for i in 1..=5 {
+            ring.push(ev(i, "x"));
+        }
+        let delta = ring.snapshot_since(0, 3);
+        assert_eq!(delta.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn min_id_tracks_eviction_floor() {
+        let ring = Ring::new(2);
+        assert_eq!(ring.min_id(), None);
+        ring.push(ev(1, "a"));
+        assert_eq!(ring.min_id(), Some(1));
+        ring.push(ev(2, "b"));
+        ring.push(ev(3, "c")); // evicts id=1
+        assert_eq!(ring.min_id(), Some(2));
     }
 }

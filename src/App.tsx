@@ -16,17 +16,32 @@ import { StatusBar } from "./components/StatusBar";
 import { StreamHeader } from "./components/StreamHeader";
 import { Tabs } from "./components/Tabs";
 import { Facets } from "./components/Facets";
-import { computeFacets } from "./lib/facets";
+import { FacetIndex, computeFacets, type FacetGroup } from "./lib/facets";
 import { Histogram } from "./components/Histogram";
 import { Toast } from "./components/Toast";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { compileAlerts, loadAlerts, matchAlerts, MIN_DEBOUNCE_MS } from "./lib/alerts";
-import { branchState, listPins, queryRecent, subscribeEvents, type LogEvent } from "./lib/ipc";
+import {
+  astHasAggregation,
+  compileAlerts,
+  compiledHasAggregation,
+  loadAlerts,
+  matchAlerts,
+  matchAlertsDelta,
+  MIN_DEBOUNCE_MS,
+} from "./lib/alerts";
+import {
+  branchState,
+  listPins,
+  queryRecent,
+  querySince,
+  subscribeEvents,
+  type LogEvent,
+} from "./lib/ipc";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
 import { onSessionCleared } from "./lib/sessionBus";
 import { toast } from "./lib/toast";
-import { applyAll, COMPILED_BUILTINS } from "./lib/transformers";
+import { applyAllCached, COMPILED_BUILTINS } from "./lib/transformers";
 import { loadActiveViewId, loadViews } from "./lib/views";
 import { useStore, type ColKey, type SortKey } from "./store";
 
@@ -63,46 +78,91 @@ export default function App() {
     prevSelectedRef.current = selectedId;
   }, [selectedId, setScrollTarget]);
 
+  // ----- live event ingestion (append-only) -----
+  //
+  // unfilteredEvents is the canonical backend payload with built-in
+  // transformer rules applied. Grows append-only across ticks; full
+  // replace only on cold start, ring eviction, or session clear.
+  const [unfilteredEvents, setUnfilteredEvents] = useState<LogEvent[]>([]);
   const [unfilteredCount, setUnfilteredCount] = useState(0);
-  const [canonicalEvents, setCanonicalEvents] = useState<LogEvent[]>([]);
-  // Derived: canonical events with built-in transformer rules applied.
-  // Downstream (filter, alerts, facets, inspector) sees the transformed
-  // shape; the original `raw` is preserved on every row for the raw tab.
-  const unfilteredEvents = useMemo(
-    () => applyAll(canonicalEvents, COMPILED_BUILTINS),
-    [canonicalEvents]
-  );
+  // Maintained in lockstep with unfilteredEvents. Per-event work is
+  // O(payload-depth) not O(n), so facet snapshots stay cheap.
+  const facetIndexRef = useRef<FacetIndex>(new FacetIndex());
+  const [facetVersion, setFacetVersion] = useState(0);
+  // Per-id transform memo. Keeps applyAll cost O(delta) across ticks.
+  const transformCacheRef = useRef<Map<number, LogEvent>>(new Map());
+  // Cursor into the ring. Bumped to the last ingested event id; the
+  // next refresh passes it to query_since.
+  const lastSeenIdRef = useRef<number>(0);
+  // Last delta batch. Drives the notification + delta-alert effects so
+  // they don't have to scan the full array for "what's new".
+  const [pendingDelta, setPendingDelta] = useState<LogEvent[]>([]);
 
   // Wipe local state the moment the user clears the session, even if
   // we're paused or mid-throttle. Backend wipe runs in parallel.
   useEffect(
     () =>
       onSessionCleared(() => {
-        setCanonicalEvents([]);
+        setUnfilteredEvents([]);
         setUnfilteredCount(0);
-        setPausedSrc(null);
+        facetIndexRef.current.clear();
+        transformCacheRef.current.clear();
+        alertMatchesRef.current = new Map();
+        lastSeenIdRef.current = 0;
+        setFacetVersion((v) => v + 1);
+        setAlertMatchesVersion((v) => v + 1);
+        setPendingDelta([]);
+        setPausedAtId(null);
         setPaused(false);
         setSelected(null);
         setPinnedIds(new Set());
       }),
     []
   );
-  // Snapshot of unfilteredEvents at pause time. While set, all
-  // downstream derivations operate on this frozen slice instead of
-  // the live array, so rows under the user's cursor never shift.
+
+  // Pause snapshot: hold the id of the newest event at pause time.
+  // Downstream derivations clip at that id, so the visible list
+  // freezes mid-scroll without allocating a frozen slice each tick.
   const paused = useStore((s) => s.paused);
   const setPaused = useStore((s) => s.setPaused);
-  const [pausedSrc, setPausedSrc] = useState<LogEvent[] | null>(null);
+  const [pausedAtId, setPausedAtId] = useState<number | null>(null);
   useEffect(() => {
     if (paused) {
-      setPausedSrc((prev) => prev ?? unfilteredEvents);
+      setPausedAtId((prev) => {
+        if (prev != null) return prev;
+        return unfilteredEvents.length > 0
+          ? unfilteredEvents[unfilteredEvents.length - 1]!.id
+          : null;
+      });
     } else {
-      setPausedSrc(null);
+      setPausedAtId(null);
     }
     // intentionally only react to `paused` — capturing on enter only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paused]);
-  const sourceEvents = pausedSrc ?? unfilteredEvents;
+
+  // sourceEvents = unfilteredEvents clipped at pausedAtId. While
+  // paused, returns a stable reference even as new events arrive, so
+  // downstream useMemos don't fire.
+  const sourceEventsRef = useRef<LogEvent[]>([]);
+  const sourceEvents = useMemo(() => {
+    if (pausedAtId == null) {
+      sourceEventsRef.current = unfilteredEvents;
+      return unfilteredEvents;
+    }
+    const cut = bisectRightById(unfilteredEvents, pausedAtId);
+    const prev = sourceEventsRef.current;
+    if (
+      prev.length === cut &&
+      prev.length > 0 &&
+      prev[prev.length - 1]!.id === unfilteredEvents[cut - 1]!.id
+    ) {
+      return prev;
+    }
+    const clipped = unfilteredEvents.slice(0, cut);
+    sourceEventsRef.current = clipped;
+    return clipped;
+  }, [unfilteredEvents, pausedAtId]);
 
   const parsed = useMemo(() => parse(filter), [filter]);
   const filterValid = !isError(parsed);
@@ -148,20 +208,32 @@ export default function App() {
     if (isError(parsed)) return { lo: -Infinity, hi: Infinity };
     return collectTsBounds(parsed);
   }, [parsed]);
-  const tsScopedEvents = useMemo(
-    () => unfilteredEvents.filter((e) => e.ts >= tsBounds.lo && e.ts <= tsBounds.hi),
-    [unfilteredEvents, tsBounds.lo, tsBounds.hi]
-  );
+  const tsBoundsUnbounded = !Number.isFinite(tsBounds.lo) && !Number.isFinite(tsBounds.hi);
+  const tsScopedEvents = useMemo(() => {
+    if (tsBoundsUnbounded) return unfilteredEvents;
+    return unfilteredEvents.filter((e) => e.ts >= tsBounds.lo && e.ts <= tsBounds.hi);
+  }, [unfilteredEvents, tsBounds.lo, tsBounds.hi, tsBoundsUnbounded]);
+
+  // Single source of facet groups. When ts bounds are unset (common
+  // case) we read from the maintained index — O(distinct values), not
+  // O(events). When ts bounds are set, fall back to a cold recompute
+  // over the filtered subset.
+  const facetGroups: FacetGroup[] = useMemo(() => {
+    if (tsBoundsUnbounded) return facetIndexRef.current.snapshot();
+    return computeFacets(tsScopedEvents);
+    // facetVersion bumps on each ingest tick so the index path
+    // refreshes; the cold path depends on tsScopedEvents only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tsScopedEvents, tsBoundsUnbounded, facetVersion]);
+
   const suggestKeys = useMemo(() => {
-    const groups = computeFacets(tsScopedEvents);
     const base = ["msg", "raw", "ts", "pinned", "stack", "hasStackTrace"];
     if (relevance) base.push("relevant");
-    return [...base, ...groups.map((g) => g.key)];
-  }, [tsScopedEvents, relevance]);
+    return [...base, ...facetGroups.map((g) => g.key)];
+  }, [facetGroups, relevance]);
   const suggestValuesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
-    const groups = computeFacets(tsScopedEvents);
-    for (const g of groups) {
+    for (const g of facetGroups) {
       m.set(
         g.key,
         g.values.slice(0, 50).map((v) => v.value)
@@ -172,20 +244,25 @@ export default function App() {
     m.set("hasStackTrace", ["true", "false"]);
     if (relevance) m.set("relevant", ["true", "false"]);
     return m;
-  }, [tsScopedEvents, relevance]);
+  }, [facetGroups, relevance]);
+  const availableFieldKeys = useMemo(
+    () =>
+      facetGroups
+        .map((g) => g.key)
+        .filter((k) => k !== "level" && k !== "source" && k !== "branch"),
+    [facetGroups]
+  );
 
+  // Sources/branches derive from the facet groups — same single pass.
   const sources = useMemo(() => {
-    const seen = new Set<string>();
-    for (const e of unfilteredEvents) seen.add(e.source);
-    return [...seen].toSorted();
-  }, [unfilteredEvents]);
+    const g = facetGroups.find((x) => x.key === "source");
+    return g ? g.values.map((v) => v.value).toSorted() : [];
+  }, [facetGroups]);
   const branches = useMemo(() => {
-    const seen = new Set<string>();
-    for (const e of unfilteredEvents) {
-      if (e.branch) seen.add(e.branch);
-    }
-    return [...seen].toSorted();
-  }, [unfilteredEvents]);
+    const g = facetGroups.find((x) => x.key === "branch");
+    return g ? g.values.map((v) => v.value).toSorted() : [];
+  }, [facetGroups]);
+
   const columnVisibility = useStore((s) => s.columnVisibility);
   const fieldColumns = useStore((s) => s.fieldColumns);
   const effectiveVisibility: Record<ColKey, boolean> = {
@@ -194,12 +271,7 @@ export default function App() {
     src: columnVisibility.src ?? sources.length > 1,
     br: columnVisibility.br ?? branches.length > 1,
   };
-  const availableFieldKeys = useMemo(() => {
-    const groups = computeFacets(tsScopedEvents);
-    return groups
-      .map((g) => g.key)
-      .filter((k) => k !== "level" && k !== "source" && k !== "branch");
-  }, [tsScopedEvents]);
+
   const setSources = useStore((s) => s.setSources);
   useEffect(() => {
     setSources(sources);
@@ -223,13 +295,13 @@ export default function App() {
   }, [setPinnedIds]);
 
   // Bootstrap alerts on mount. Synchronous localStorage read — no
-  // DuckDB round trip; alerts are tiny configuration, not log data.
+  // backend round trip; alerts are tiny configuration, not log data.
   useEffect(() => {
     setAlerts(loadAlerts());
   }, [setAlerts]);
 
   // Bootstrap views + active id from localStorage. Synchronous —
-  // no DuckDB round trip, so it can't be wedged by a broken store.
+  // no backend round trip, so it can't be wedged by a broken store.
   useEffect(() => {
     const all = loadViews();
     setViews(all);
@@ -241,23 +313,71 @@ export default function App() {
     }
   }, [setViews, setActiveViewId, setFilter]);
 
+  // ----- ingest loop -----
+  //
+  // Cold start does one queryRecent + reverses to oldest-first; after
+  // that we subscribe to `event-new` and pull deltas via query_since.
+  // Eviction (ring floor passed our cursor) drops back to the cold
+  // path. Throttled to ~10 refreshes/sec so bursts coalesce.
   useEffect(() => {
     let cancelled = false;
     let pending: ReturnType<typeof setTimeout> | null = null;
-    const refresh = async () => {
+
+    const ingestBatch = (incoming: LogEvent[], replace: boolean) => {
+      if (cancelled) return;
+      if (replace) {
+        transformCacheRef.current.clear();
+        facetIndexRef.current.clear();
+      }
+      const transformed = applyAllCached(incoming, COMPILED_BUILTINS, transformCacheRef.current);
+      for (const ev of transformed) facetIndexRef.current.add(ev);
+      if (replace) {
+        setUnfilteredEvents(transformed);
+      } else {
+        setUnfilteredEvents((prev) => prev.concat(transformed));
+      }
+      if (transformed.length > 0) {
+        lastSeenIdRef.current = transformed[transformed.length - 1]!.id;
+      }
+      setFacetVersion((v) => v + 1);
+      setPendingDelta(transformed);
+    };
+
+    const bootstrap = async () => {
       try {
         const all = await queryRecent(QUERY_LIMIT);
         if (cancelled) return;
-        const ordered = all.slice().toReversed() as LogEvent[];
-        setCanonicalEvents(ordered);
+        const ordered = all.toReversed() as LogEvent[];
+        ingestBatch(ordered, true);
         setUnfilteredCount(ordered.length);
       } catch (e) {
         log.warn("queryRecent failed", e);
       }
     };
-    // Throttle: under heavy ingest we'd otherwise rebuild the
-    // event array (and re-derive facets/histogram/sort) on every
-    // backend tick. Coalesce notifications into ≤10 refreshes/s.
+
+    const refresh = async () => {
+      try {
+        const since = lastSeenIdRef.current;
+        const payload = await querySince(since, QUERY_LIMIT);
+        if (cancelled) return;
+        // Ring evicted past our cursor → fall back to a fresh snapshot.
+        // `since === 0` is the bootstrap path; minId > 1 there is
+        // expected (ring already had content before we started).
+        if (since > 0 && payload.minId != null && payload.minId > since + 1) {
+          const all = await queryRecent(QUERY_LIMIT);
+          if (cancelled) return;
+          ingestBatch(all.toReversed() as LogEvent[], true);
+          setUnfilteredCount(payload.len);
+          return;
+        }
+        setUnfilteredCount(payload.len);
+        if (payload.events.length === 0) return;
+        ingestBatch(payload.events, false);
+      } catch (e) {
+        log.warn("querySince failed", e);
+      }
+    };
+
     const scheduleRefresh = () => {
       if (pending) return;
       pending = setTimeout(() => {
@@ -265,7 +385,8 @@ export default function App() {
         void refresh();
       }, 100);
     };
-    refresh();
+
+    void bootstrap();
     let unlisten: (() => void) | undefined;
     subscribeEvents(scheduleRefresh).then((u) => {
       if (cancelled) u();
@@ -321,36 +442,58 @@ export default function App() {
     };
   }, [relevance, setRelevanceStale]);
 
-  // Compile alert queries once per alerts change, then derive matches
-  // for displayed (downstream) events. Map: event.id → alertId[].
+  // ----- alert matching (incremental) -----
+  //
+  // Compiled alerts change rarely (user edits the alert list). When
+  // they do, rebuild the match map from scratch. On each delta, merge
+  // the delta-only matches into the existing map. Aggregation alerts
+  // need full recompute because their threshold shifts with each new
+  // event.
   const compiledAlerts = useMemo(() => compileAlerts(alerts), [alerts]);
-  const alertMatches = useMemo(
-    () => matchAlerts(unfilteredEvents, compiledAlerts),
-    [unfilteredEvents, compiledAlerts]
-  );
+  const alertMatchesRef = useRef<Map<number, string[]>>(new Map());
+  const [alertMatchesVersion, setAlertMatchesVersion] = useState(0);
 
-  // Notification: per-alert debounce + suppressed-match counter so a
-  // flood doesn't spam the user. lastFiredRef gates the cooldown;
-  // suppressedRef counts matches that landed during it. On the next
-  // fire we surface the count as "+N more" in the body, then reset.
-  // Skipped entirely when the istoria window is currently focused.
+  // Full recompute when the alert set changes.
+  useEffect(() => {
+    alertMatchesRef.current = matchAlerts(unfilteredEvents, compiledAlerts);
+    setAlertMatchesVersion((v) => v + 1);
+    // We deliberately only re-run on compiledAlerts change here. The
+    // delta-merge effect below handles new events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compiledAlerts]);
+
+  // Delta merge on each ingest batch.
+  useEffect(() => {
+    if (pendingDelta.length === 0) return;
+    if (compiledHasAggregation(compiledAlerts)) {
+      alertMatchesRef.current = matchAlerts(unfilteredEvents, compiledAlerts);
+    } else {
+      matchAlertsDelta(pendingDelta, compiledAlerts, alertMatchesRef.current);
+    }
+    setAlertMatchesVersion((v) => v + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDelta]);
+
+  // Exposed to children via the version dep; ref stays stable but
+  // children get a fresh useMemo result whenever the map changes.
+  const alertMatches = useMemo(() => alertMatchesRef.current, [alertMatchesVersion]);
+
+  // ----- notifications -----
+  //
+  // Drives off pendingDelta directly — no per-tick O(n) scan against
+  // unfilteredEvents to find "new" events.
   const lastFiredRef = useRef<Map<string, number>>(new Map());
   const suppressedRef = useRef<Map<string, number>>(new Map());
-  const lastSeenIdRef = useRef<number>(-1);
   const notifyPermitRef = useRef<boolean | null>(null);
   const notifyPermitInflightRef = useRef<Promise<boolean> | null>(null);
   // Global floor: regardless of per-alert debounce_ms, never fire
   // more than one notification across all alerts inside a 5s window.
   const globalLastFireRef = useRef<number>(0);
   useEffect(() => {
+    if (pendingDelta.length === 0) return;
     const notifying = alerts.filter((a) => a.notify);
-    if (notifying.length === 0) {
-      lastSeenIdRef.current =
-        unfilteredEvents.length > 0 ? unfilteredEvents[unfilteredEvents.length - 1]!.id : -1;
-      return;
-    }
+    if (notifying.length === 0) return;
     const now = Date.now();
-    const newEvents = unfilteredEvents.filter((e) => e.id > lastSeenIdRef.current);
     void (async () => {
       let focused = false;
       try {
@@ -358,8 +501,8 @@ export default function App() {
       } catch {
         // running outside Tauri (e.g. vite preview) — assume not focused
       }
-      for (const ev of newEvents) {
-        const ids = alertMatches.get(ev.id);
+      for (const ev of pendingDelta) {
+        const ids = alertMatchesRef.current.get(ev.id);
         if (!ids) continue;
         for (const id of ids) {
           const a = notifying.find((x) => x.id === id);
@@ -425,46 +568,84 @@ export default function App() {
         }
       }
     })();
-    if (unfilteredEvents.length > 0) {
-      lastSeenIdRef.current = unfilteredEvents[unfilteredEvents.length - 1]!.id;
-    }
-  }, [unfilteredEvents, alertMatches, alerts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDelta, alerts]);
 
-  // Derive displayed events from sourceEvents (snapshot when paused),
-  // so the visible list freezes mid-scroll.
-  const displayedEvents = useMemo(() => {
-    if (!filterValid) return applySort(sourceEvents, sort);
-    // Resolve aggregation functions (\`percentile(N)\`) against the
-    // current event set before walking the AST per row.
-    const resolved = resolveAst(parsed as Ast, sourceEvents);
-    const ctx = { pinnedIds, relevanceRe };
-    const filtered = sourceEvents.filter((ev) => evalAst(resolved, ev, ctx));
-    return applySort(filtered, sort);
-  }, [sourceEvents, parsed, filterValid, sort, pinnedIds, relevanceRe]);
+  // ----- displayed events (incremental) -----
+  //
+  // displayedEvents is what LogStream actually renders. Kept oldest-
+  // first internally; sort=`newest-top` reverses at the view layer.
+  // Re-evaluated incrementally on each delta when filter inputs are
+  // unchanged and the filter has no aggregation; otherwise rebuilt.
+  const [displayedEvents, setDisplayedEvents] = useState<LogEvent[]>([]);
+  const prevSourceRef = useRef<LogEvent[]>([]);
+  const filterUsesAggregation = filterValid && astHasAggregation(parsed as Ast);
 
   useEffect(() => {
-    setEvents(displayedEvents);
-  }, [displayedEvents, setEvents]);
+    const prevSrc = prevSourceRef.current;
+    prevSourceRef.current = sourceEvents;
 
-  // Filter-aware: only count new events that would actually appear in
-  // the displayed list once the user resumes. Otherwise the pill lies
-  // about new matches when the active filter excludes the new arrivals.
-  const newCount = useMemo(() => {
-    if (!pausedSrc) return 0;
-    const cutoff = pausedSrc.length > 0 ? pausedSrc[pausedSrc.length - 1]!.id : -Infinity;
-    if (!filterValid) {
-      let n = 0;
-      for (const ev of unfilteredEvents) if (ev.id > cutoff) n++;
-      return n;
+    // Detect "this is just an extension of the previous source array".
+    // Same first id + same length-1 entry means we appended. We compare
+    // by event identity (refs are stable after applyAllCached), so a
+    // single equality check is enough.
+    const isExtension =
+      prevSrc.length > 0 &&
+      sourceEvents.length > prevSrc.length &&
+      sourceEvents[0] === prevSrc[0] &&
+      sourceEvents[prevSrc.length - 1] === prevSrc[prevSrc.length - 1];
+
+    // Full rebuild when filter inputs changed OR aggregation is used
+    // OR source identity broke (replace path).
+    if (!isExtension || filterUsesAggregation) {
+      setDisplayedEvents(
+        rebuildDisplayed(sourceEvents, parsed, filterValid, pinnedIds, relevanceRe)
+      );
+      return;
     }
+
+    const delta = sourceEvents.slice(prevSrc.length);
+    if (!filterValid) {
+      setDisplayedEvents((prev) => prev.concat(delta));
+      return;
+    }
+    const ctx = { pinnedIds, relevanceRe };
+    const filteredDelta = delta.filter((ev) => evalAst(parsed as Ast, ev, ctx));
+    if (filteredDelta.length === 0) return;
+    setDisplayedEvents((prev) => prev.concat(filteredDelta));
+  }, [sourceEvents, parsed, filterValid, pinnedIds, relevanceRe, filterUsesAggregation]);
+
+  // Sort view. Internal storage is oldest-first; expose a reversed
+  // copy for `newest-top`. Only materializes when the source or sort
+  // actually changes.
+  const renderedEvents = useMemo(() => {
+    if (sort === "newest-bottom") return displayedEvents;
+    return displayedEvents.toReversed();
+  }, [displayedEvents, sort]);
+
+  // Mirror into the Zustand store so downstream components (StreamHeader)
+  // can read filtered events without prop-drilling.
+  useEffect(() => {
+    setEvents(renderedEvents);
+  }, [renderedEvents, setEvents]);
+
+  // Filter-aware new-events counter for the pause pill. Counts events
+  // that landed *after* pausedAtId and would actually appear if the
+  // user resumed. Cheap when paused (only walks events past the
+  // cutoff).
+  const newCount = useMemo(() => {
+    if (pausedAtId == null) return 0;
+    const cutIdx = bisectRightById(unfilteredEvents, pausedAtId);
+    if (cutIdx >= unfilteredEvents.length) return 0;
+    if (!filterValid) return unfilteredEvents.length - cutIdx;
     const resolved = resolveAst(parsed as Ast, unfilteredEvents);
     const ctx = { pinnedIds, relevanceRe };
     let n = 0;
-    for (const ev of unfilteredEvents) {
-      if (ev.id > cutoff && evalAst(resolved, ev, ctx)) n++;
+    for (let i = cutIdx; i < unfilteredEvents.length; i++) {
+      if (evalAst(resolved, unfilteredEvents[i]!, ctx)) n++;
     }
     return n;
-  }, [pausedSrc, unfilteredEvents, filterValid, parsed, pinnedIds, relevanceRe]);
+  }, [pausedAtId, unfilteredEvents, filterValid, parsed, pinnedIds, relevanceRe]);
 
   const setNewCount = useStore((s) => s.setNewCount);
   useEffect(() => {
@@ -504,7 +685,12 @@ export default function App() {
       />
       <Histogram events={events} filter={filter} onFilterChange={setFilter} />
       <div className="main">
-        <Facets events={tsScopedEvents} filter={filter} onFilterChange={setFilter} />
+        <Facets
+          events={tsScopedEvents}
+          groups={facetGroups}
+          filter={filter}
+          onFilterChange={setFilter}
+        />
         <div className="stream-col" style={colVars}>
           <StreamHeader
             total={unfilteredCount}
@@ -546,6 +732,32 @@ export default function App() {
   );
 }
 
+function rebuildDisplayed(
+  src: LogEvent[],
+  parsed: ReturnType<typeof parse>,
+  filterValid: boolean,
+  pinnedIds: Set<number>,
+  relevanceRe: RegExp | null
+): LogEvent[] {
+  if (!filterValid) return src.slice();
+  const resolved = resolveAst(parsed as Ast, src);
+  const ctx = { pinnedIds, relevanceRe };
+  return src.filter((ev) => evalAst(resolved, ev, ctx));
+}
+
+/// Binary search for the first index where `events[i].id > target`.
+/// Events are assumed monotonically non-decreasing in id.
+function bisectRightById(events: LogEvent[], target: number): number {
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (events[mid]!.id <= target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /// Claude is asked NOT to wrap regexes in `/.../flags`, but sometimes
 /// does anyway. Strip the surrounding slashes (and any trailing flag
 /// letters) so `new RegExp(p)` doesn't choke. Leaves a non-wrapped
@@ -582,10 +794,6 @@ function collectTsBounds(ast: Ast): { lo: number; hi: number } {
   return { lo, hi };
 }
 
-function applySort(events: LogEvent[], sort: SortKey): LogEvent[] {
-  // events arrive oldest-first (queryRecent reversed). The live-tail
-  // default keeps that order so LogStream's scroll-to-bottom places
-  // newest at the bottom.
-  if (sort === "newest-bottom") return events;
-  return events.slice().toSorted((a, b) => b.ts - a.ts || b.id - a.id);
-}
+// SortKey type is imported but not used here directly; kept for the
+// signature compatibility with the store. Sort is applied at render.
+export type { SortKey };

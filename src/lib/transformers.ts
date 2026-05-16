@@ -188,3 +188,31 @@ export function applyAll(events: LogEvent[], compiled: CompiledRule[]): LogEvent
   if (compiled.length === 0) return events;
   return events.map((e) => applyTransformers(e, compiled));
 }
+
+/// Incremental variant. Transforms each event at most once across
+/// repeated calls — the cache is keyed by event id. Lets the hot
+/// ingest path stay O(delta) instead of O(n) per refresh tick.
+///
+/// Caller owns the cache (typically a `useRef<Map<number, LogEvent>>`)
+/// and is responsible for `cache.delete(id)` on ring eviction to keep
+/// the map size bounded.
+export function applyAllCached(
+  events: LogEvent[],
+  compiled: CompiledRule[],
+  cache: Map<number, LogEvent>
+): LogEvent[] {
+  if (compiled.length === 0) return events;
+  const out: LogEvent[] = Array.from({ length: events.length });
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i]!;
+    const hit = cache.get(ev.id);
+    if (hit) {
+      out[i] = hit;
+    } else {
+      const transformed = applyTransformers(ev, compiled);
+      cache.set(ev.id, transformed);
+      out[i] = transformed;
+    }
+  }
+  return out;
+}
