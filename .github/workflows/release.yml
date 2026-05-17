@@ -88,8 +88,8 @@ jobs:
           workspaces: . -> target
           key: aarch64-apple-darwin
 
-      - name: Install sccache + lld
-        run: brew install sccache lld
+      - name: Install sccache + lld + create-dmg
+        run: brew install sccache lld create-dmg
 
       - name: Import Apple cert
         env:
@@ -113,17 +113,66 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | tr -d '"')
           rm "$RUNNER_TEMP/cert.p12"
 
-      - name: Build (signed + notarized)
+      - name: Build .app (signed + notarized + stapled)
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri -- build --target $TARGET --bundles app,dmg
+        # `--bundles app` only — DMG is built separately below via
+        # create-dmg (tauri's DMG bundler uses AppleScript and can't
+        # write .DS_Store in headless CI). Updater tarballs are also
+        # built manually below so we control the on-disk layout
+        # (unwrapped for the updater plugin, wrapped for brew).
+        run: npm run tauri -- build --target $TARGET --bundles app
 
-      - name: Package + sign updater tarball
+      - name: Build + sign + notarize + staple DMG
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
+          DMG_OUT="istoria-${VERSION}-${TARGET}.dmg"
+          DMG_STABLE="istoria.dmg"
+          STAGE_DMG="$(mktemp -d)/src"
+          mkdir -p "$STAGE_DMG"
+          cp -R "$BUNDLE_DIR/istoria.app" "$STAGE_DMG/"
+          # Pre-warm Finder so create-dmg's AppleScript step can drive
+          # it. Both tauri's DMG bundler and create-dmg use osascript to
+          # set window bg + icon positions, which silently no-ops if
+          # Finder isn't running (this is why v1.3.1 shipped without a
+          # background — tauri's bundler ran but the AppleScript half
+          # was a no-op).
+          osascript -e 'tell application "Finder" to activate' >/dev/null 2>&1 || true
+          create-dmg \
+            --volname istoria \
+            --background src-tauri/icons/dmg-background.png \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 110 \
+            --icon istoria.app 180 200 \
+            --app-drop-link 480 200 \
+            --no-internet-enable \
+            "dist/${DMG_OUT}" "$STAGE_DMG/"
+          # Verify .DS_Store landed — without it the DMG has no bg or
+          # icon positions, which is the regression we're fixing.
+          MOUNT=$(hdiutil attach -nobrowse -readonly "dist/${DMG_OUT}" | tail -1 | awk '{print $NF}')
+          test -f "$MOUNT/.DS_Store" || { echo "::error::DMG missing .DS_Store — Finder layout not applied"; hdiutil detach "$MOUNT"; exit 1; }
+          hdiutil detach "$MOUNT"
+          codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "dist/${DMG_OUT}"
+          xcrun notarytool submit "dist/${DMG_OUT}" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "dist/${DMG_OUT}"
+          cp "dist/${DMG_OUT}" "dist/${DMG_STABLE}"
+
+      - name: Package brew + updater tarballs, emit latest.json
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -131,31 +180,30 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
-          ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
-          # Wrap istoria.app in a parent dir so Homebrew's extract-and-
-          # chdir strips the wrapper, not the .app itself. Without this
-          # brew enters istoria.app/ and the formula's `prefix.install
+
+          # Brew tarball: istoria.app wrapped in a parent dir so brew's
+          # extract-and-chdir strips the wrapper, not the .app itself.
+          # Without this brew enters istoria.app/ and `prefix.install
           # "istoria.app"` fails with ENOENT.
+          BREW_ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
           STAGE="$(mktemp -d)"
           mkdir "$STAGE/istoria-${VERSION}"
           cp -R "$BUNDLE_DIR/istoria.app" "$STAGE/istoria-${VERSION}/"
-          tar -czf "dist/${ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
+          tar -czf "dist/${BREW_ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
 
-          DMG_SRC="$(ls target/${TARGET}/release/bundle/dmg/*.dmg | head -1)"
+          # Updater tarball: same .app, but with istoria.app at the
+          # tarball root — that's the layout tauri-plugin-updater expects
+          # on extract. The wrapped brew layout corrupts the updater
+          # install (v1.3.1 bug).
+          UPDATER_ARTIFACT="istoria-${VERSION}-${TARGET}.updater.tar.gz"
+          UPSTAGE="$(mktemp -d)"
+          cp -R "$BUNDLE_DIR/istoria.app" "$UPSTAGE/"
+          tar -czf "dist/${UPDATER_ARTIFACT}" -C "$UPSTAGE" "istoria.app"
+          npm run tauri -- signer sign "dist/${UPDATER_ARTIFACT}"
+          SIG_CONTENT="$(cat "dist/${UPDATER_ARTIFACT}.sig")"
+
           DMG_OUT="istoria-${VERSION}-${TARGET}.dmg"
-          # Stable-named copy so landing page can deep-link via
-          # /releases/latest/download/istoria.dmg without rewriting
-          # the URL on every release.
           DMG_STABLE="istoria.dmg"
-          cp "$DMG_SRC" "dist/${DMG_OUT}"
-          cp "$DMG_SRC" "dist/${DMG_STABLE}"
-
-          # Sign our wrapped tarball (tauri build's own sig signs the
-          # unwrapped .app.tar.gz, which we rebuild — sig must match the
-          # exact bytes the updater downloads). Key + password come
-          # from env (TAURI_SIGNING_PRIVATE_KEY / *_PASSWORD).
-          npm run tauri -- signer sign "dist/${ARTIFACT}"
-          SIG_CONTENT="$(cat "dist/${ARTIFACT}.sig")"
 
           PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           cat > dist/latest.json <<EOF
@@ -166,13 +214,17 @@ jobs:
             "platforms": {
               "darwin-aarch64": {
                 "signature": "${SIG_CONTENT}",
-                "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${ARTIFACT}"
+                "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${UPDATER_ARTIFACT}"
               }
             }
           }
           EOF
 
-          (cd dist && shasum -a 256 "$ARTIFACT" "${ARTIFACT}.sig" "$DMG_OUT" "$DMG_STABLE" latest.json > SHA256SUMS)
+          (cd dist && shasum -a 256 \
+            "$BREW_ARTIFACT" \
+            "$UPDATER_ARTIFACT" "${UPDATER_ARTIFACT}.sig" \
+            "$DMG_OUT" "$DMG_STABLE" \
+            latest.json > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4
         with:
