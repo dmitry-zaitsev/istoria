@@ -521,7 +521,25 @@ function walkAnd(ast: Ast, out: Token[]): void {
 }
 
 const TS_KEYS = new Set(["ts", "timestamp", "time", "created_at", "updated_at"]);
-const TS_MS_FLOOR = 1_000_000_000_000;
+const TS_MS_FLOOR = 1_000_000_000_000; // 2001-09-09
+const TS_MS_CEIL = 5_000_000_000_000; // ~2128 — upper bound for plausible unix-ms.
+const TS_SKIP_KEY_RE = /(id|count|size|bytes|len|length|port|pid|status|code)$/i;
+
+/// Detect whether a key/value pair denotes a unix-ms timestamp.
+/// Returns the parsed ms value, or null. Triggers when the leaf key
+/// is a known timestamp name (ts, timestamp, time, created_at, …) OR
+/// when the value falls in plausible ms range (~2001–2128) and the
+/// key isn't an obvious id/count/size shape that would magnitude-
+/// collide with timestamps.
+export function detectTimestampMs(key: string, value: string | number): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return null;
+  if (n < TS_MS_FLOOR || n > TS_MS_CEIL) return null;
+  const leaf = key.includes(".") ? key.slice(key.lastIndexOf(".") + 1) : key;
+  if (TS_KEYS.has(leaf)) return n;
+  if (TS_SKIP_KEY_RE.test(leaf)) return null;
+  return n;
+}
 const MONTHS_SHORT = [
   "Jan",
   "Feb",

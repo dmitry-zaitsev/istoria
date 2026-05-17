@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { highlight, type HighlightTerm } from "../lib/highlight";
+import { detectTimestampMs } from "../lib/query";
 
 interface JsonViewProps {
   value: unknown;
@@ -12,17 +13,6 @@ interface JsonViewProps {
   isColumn?: (path: string) => boolean;
   highlightTerms?: HighlightTerm[];
 }
-
-const TS_KEYS = new Set([
-  "ts",
-  "timestamp",
-  "time",
-  "created_at",
-  "updated_at",
-  "ended_at",
-  "started_at",
-]);
-const TS_MS_FLOOR = 1_000_000_000_000; // 2001-09-09 — anything above this is plausibly Unix-ms.
 
 type PopoverState =
   | {
@@ -190,15 +180,14 @@ function Filterable({
 }
 
 function NumberNode({ value, keyName }: { value: number; keyName?: string }) {
-  const isTs =
-    keyName != null && TS_KEYS.has(keyName) && Number.isFinite(value) && value >= TS_MS_FLOOR;
-  if (!isTs) return <span className="n">{String(value)}</span>;
+  const ms = detectTimestampMs(keyName ?? "", value);
+  if (ms == null) return <span className="n">{String(value)}</span>;
   return (
     <>
       <span className="n">{String(value)}</span>
       <span className="p" title="ISO local time">
         {" · "}
-        {formatIso(value)}
+        {formatIso(ms)}
       </span>
     </>
   );

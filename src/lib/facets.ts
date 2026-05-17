@@ -1,4 +1,5 @@
 import {
+  detectTimestampMs,
   extractKeyOrValues,
   flattenAnd,
   isError,
@@ -43,6 +44,34 @@ const PER_FIELD_VALUE_CAP = 1000;
 // (Level / Source / Branch) explicitly. Skip them in auto-discovery so
 // they don't show up twice when the JSON payload also carries the value.
 const MIRRORED_KEYS = new Set(["level", "source", "branch", "msg", "raw", "ts", "id", "timestamp"]);
+
+/// A field whose values are timestamps is useless as a facet — every
+/// event lands in its own bucket. Detect at index time (cheap leaf-key
+/// check) and skip indexing entirely. A value-shape backstop in
+/// `snapshot()` catches anything that slips through under a custom
+/// key name.
+const TS_DIM_LEAVES = new Set([
+  "ts",
+  "timestamp",
+  "time",
+  "created_at",
+  "updated_at",
+  "started_at",
+  "ended_at",
+  "expires_at",
+  "deleted_at",
+]);
+const TS_DIM_SUFFIX = /(^|_)(at|ts|time)$/i;
+
+function leafOf(path: string): string {
+  const i = path.lastIndexOf(".");
+  return i < 0 ? path : path.slice(i + 1);
+}
+
+function isTimestampDimensionKey(path: string): boolean {
+  const leaf = leafOf(path);
+  return TS_DIM_LEAVES.has(leaf) || TS_DIM_SUFFIX.test(leaf);
+}
 
 // Heuristic priority list for auto-discovered keys. Lower index =
 // higher priority. Anything not listed inherits Infinity and falls
@@ -107,6 +136,7 @@ export class FacetIndex {
     if (fields && typeof fields === "object") {
       walkPaths(fields, "", (path, value) => {
         if (MIRRORED_KEYS.has(path)) return;
+        if (isTimestampDimensionKey(path)) return;
         let m = this.fieldCounts.get(path);
         if (!m) {
           m = new Map();
@@ -140,6 +170,7 @@ export class FacetIndex {
     if (fields && typeof fields === "object") {
       walkPaths(fields, "", (path, value) => {
         if (MIRRORED_KEYS.has(path)) return;
+        if (isTimestampDimensionKey(path)) return;
         const m = this.fieldCounts.get(path);
         if (!m) return;
         drop(m, String(value ?? ""));
@@ -301,7 +332,7 @@ export class FacetIndex {
     if (br.values.length > 0) groups.push(br);
 
     const ranked = [...this.fieldCounts.entries()]
-      .filter(([, m]) => m.size > 1)
+      .filter(([k, m]) => m.size > 1 && !groupLooksLikeTimestamps(k, m))
       .toSorted((a, b) => {
         const ra = PRIORITY_RANK.get(a[0]) ?? Number.POSITIVE_INFINITY;
         const rb = PRIORITY_RANK.get(b[0]) ?? Number.POSITIVE_INFINITY;
@@ -316,6 +347,23 @@ export class FacetIndex {
     }
     return groups;
   }
+}
+
+/// Backstop for custom-named fields that carry timestamp values. The
+/// leaf-key check in `isTimestampDimensionKey` covers conventional
+/// names; this peeks at one sample value and treats the group as time
+/// if it parses as plausible unix-ms.
+function groupLooksLikeTimestamps(key: string, counts: Map<string, number>): boolean {
+  if (isTimestampDimensionKey(key)) return true;
+  const first = counts.keys().next().value;
+  if (first == null) return false;
+  return detectTimestampMs(key, first) != null;
+}
+
+function setLooksLikeTimestamps(key: string, set: Set<string>): boolean {
+  const first = set.values().next().value;
+  if (first == null) return false;
+  return detectTimestampMs(key, first) != null;
 }
 
 function bump(m: Map<string, number>, key: string): void {
@@ -374,7 +422,15 @@ export function computeFacets(events: LogEvent[]): FacetGroup[] {
     // Numeric / high-cardinality keys (status_code, dur_ms, ids) are
     // surfaced too — the cardinality cap previously dropped them
     // outright, which hid useful range facets like dur_ms.
-    .filter(([k, set]) => set.size > 1 && !MIRRORED_KEYS.has(k))
+    // Timestamp-dimension fields are also dropped — every value is a
+    // unique bucket, useless to filter on.
+    .filter(
+      ([k, set]) =>
+        set.size > 1 &&
+        !MIRRORED_KEYS.has(k) &&
+        !isTimestampDimensionKey(k) &&
+        !setLooksLikeTimestamps(k, set)
+    )
     // Two-stage sort: KEY_PRIORITY heuristic first, then by raw
     // cardinality. So method/status_code/path land at the top
     // regardless of how many distinct values they have, while
