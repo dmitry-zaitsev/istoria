@@ -34,12 +34,15 @@ impl Detector {
     }
 
     pub fn parse(&mut self, id: u64, source: &str, branch: &str, raw: String) -> Event {
-        let try_json = !matches!(self.locked, Some(LineFormat::Plain));
-        let parsed: Option<(Option<String>, Value)> = if try_json {
-            try_object_from_raw(&raw)
-        } else {
-            None
-        };
+        // Always attempt JSON extraction. The lock is sticky for the
+        // diagnostic log line (`ingest.rs`), but does *not* gate per-line
+        // parsing — otherwise a stream that opens with non-JSON noise
+        // (startup banners, build prelude) locks Plain and silently
+        // drops all later bracket-tagged JSON into the plain path,
+        // burying inner pino keys inside `msg`. `serde_json::from_str`
+        // short-circuits on the first non-JSON byte, so per-line cost
+        // on plain streams is negligible.
+        let parsed: Option<(Option<String>, Value)> = try_object_from_raw(&raw);
 
         if self.locked.is_none() {
             self.seen += 1;
@@ -685,6 +688,29 @@ mod tests {
                 .and_then(|v| v.as_i64()),
             Some(200),
         );
+    }
+
+    #[test]
+    fn bracket_tagged_json_unwraps_even_after_plain_lock() {
+        // Real-world stream: 20 lines of plain startup banner lock the
+        // detector to Plain, then bracket-tagged pino JSON arrives.
+        // Without per-line JSON attempts, every later `[be] {...}` line
+        // hits event_from_plain and the inner pino fields stay buried
+        // in msg as a string. Regression test for the user's case.
+        let mut d = Detector::new();
+        for i in 0..SNIFF_WINDOW {
+            d.parse(i as u64, "src", "main", format!("plain banner {i}"));
+        }
+        assert_eq!(d.locked_format(), Some(LineFormat::Plain));
+        let raw = r#"[be] {"level":30,"pid":7138,"reqId":"req-1","msg":"incoming request"}"#;
+        let ev = d.parse(99, "src", "main", raw.to_string());
+        assert_eq!(ev.msg, "incoming request");
+        assert_eq!(ev.level, Level::Info);
+        let fields = ev.fields.expect("fields set");
+        let obj = fields.as_object().expect("object");
+        assert_eq!(obj.get("pid").and_then(|v| v.as_i64()), Some(7138));
+        assert_eq!(obj.get("reqId").and_then(|v| v.as_str()), Some("req-1"));
+        assert_eq!(obj.get("tag").and_then(|v| v.as_str()), Some("be"));
     }
 
     #[test]
