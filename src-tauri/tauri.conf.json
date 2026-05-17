@@ -37,6 +37,22 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 200 },
+        "applicationFolderPosition": { "x": 480, "y": 200 }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/dmitry-zaitsev/istoria-releases/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU2Q0M0MkZEQjg0MTZCNDEKUldSQmEwRzQvVUxNNXB6b3lGd0tpYnFzakIyalFnS2Y4VDZoRFF3Rmh3QlBWL2ovRmNMa0FOMTMK"
+    }
   }
 }

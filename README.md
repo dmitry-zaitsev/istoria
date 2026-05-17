@@ -27,9 +27,19 @@ the same timeline as your backend logs.
 
 ## Install
 
+Preferred: grab the signed `.dmg` and drag `istoria.app` to `/Applications`.
+
+[Download istoria.dmg](https://github.com/dmitry-zaitsev/istoria-releases/releases/latest/download/istoria.dmg)
+
+The app verifies its own signature and one-click auto-updates itself going forward.
+
+Alternative — Homebrew:
+
 ```sh
 brew install dmitry-zaitsev/tap/istoria
 ```
+
+Brew users update via `brew upgrade`.
 
 macOS Apple Silicon only. See [`RELEASING.md`](RELEASING.md) for why.
 

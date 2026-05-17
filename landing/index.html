@@ -198,6 +198,94 @@
       .cmd button.ok::before {
         content: "✓ ";
       }
+
+      /* Apple-style DMG download pill (hero CTA) */
+      .dmg-btn {
+        display: inline-flex;
+        align-self: flex-start;
+        align-items: center;
+        gap: 10px;
+        background: #000;
+        color: #fff;
+        text-decoration: none;
+        padding: 8px 18px 8px 16px;
+        border-radius: 999px;
+        font-family: var(--sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        line-height: 1.15;
+        transition: background 0.15s;
+        border: 1px solid #000;
+      }
+      .dmg-btn:hover {
+        background: #1d1d1f;
+      }
+      .dmg-btn svg {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 auto;
+        margin-top: -2px;
+      }
+      .dmg-btn .dmg-btn-text {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .dmg-btn .dmg-btn-top {
+        font-size: 10px;
+        opacity: 0.72;
+        letter-spacing: 0.02em;
+      }
+      .dmg-btn .dmg-btn-bot {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      /* Download bar in step 01 — mirrors .cmd-dark rhythm */
+      a.dl-bar {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        background: #0f1113;
+        border-radius: 6px;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: #e6e6e3;
+        text-decoration: none;
+        border: 1px solid transparent;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      a.dl-bar:hover {
+        border-color: #2a2d31;
+        background: #14171a;
+      }
+      a.dl-bar .dl-icon {
+        width: 16px;
+        height: 16px;
+        color: #9aa0a6;
+        flex: 0 0 auto;
+      }
+      a.dl-bar .dl-name b {
+        color: #e6e6e3;
+        font-weight: 500;
+      }
+      a.dl-bar .dl-name .dl-sub {
+        color: #9aa0a6;
+      }
+      a.dl-bar .dl-cta {
+        font-size: 11px;
+        color: #9aa0a6;
+        border: 1px solid #2a2d31;
+        padding: 4px 9px;
+        border-radius: 4px;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      a.dl-bar:hover .dl-cta {
+        color: #e6e6e3;
+        border-color: #e6e6e3;
+      }
       .alt {
         font-family: var(--mono);
         font-size: 12.5px;
@@ -512,13 +600,18 @@
         </p>
 
         <div class="install-row">
-          <div class="cmd">
-            <span class="pr">$</span>
-            <code id="hero-cmd">brew install dmitry-zaitsev/tap/istoria</code>
-            <button type="button" id="hero-btn" data-copy="brew install dmitry-zaitsev/tap/istoria">
-              copy
-            </button>
-          </div>
+          <a
+            class="dmg-btn"
+            href="https://github.com/dmitry-zaitsev/istoria-releases/releases/latest/download/istoria.dmg"
+          >
+            <svg viewBox="0 0 384 512" aria-hidden="true" fill="currentColor">
+              <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zM256.8 100.7c30.5-36.2 27.7-69.2 26.8-81.1-26.9 1.6-58 18.3-75.7 38.9-19.5 22.1-31 49.4-28.5 80.5 29.1 2.2 55.7-12.7 77.4-38.3z"/>
+            </svg>
+            <span class="dmg-btn-text">
+              <span class="dmg-btn-top">Download for</span>
+              <span class="dmg-btn-bot">Apple Silicon</span>
+            </span>
+          </a>
         </div>
 
         <div class="shot">
@@ -568,12 +661,17 @@
         <ol class="steps">
           <li>
             <div class="body">
-              <p>Install via Homebrew. <span class="sub">macOS and Linux.</span></p>
-              <div class="cmd-dark">
-                <span class="pr">$</span>
-                <code id="step-1-cmd">brew install dmitry-zaitsev/tap/istoria</code>
-                <button type="button" data-copy-target="step-1-cmd">copy</button>
-              </div>
+              <p>Install istoria.</p>
+              <a
+                class="dl-bar"
+                href="https://github.com/dmitry-zaitsev/istoria-releases/releases/latest/download/istoria.dmg"
+              >
+                <svg class="dl-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 2v9M4 8l4 4 4-4M2.5 13.5h11"/>
+                </svg>
+                <span class="dl-name"><b>istoria.dmg</b> <span class="dl-sub">· macOS Apple Silicon</span></span>
+                <span class="dl-cta">download</span>
+              </a>
             </div>
           </li>
           <li>

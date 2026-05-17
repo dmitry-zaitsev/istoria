@@ -119,9 +119,14 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run tauri -- build --target $TARGET --bundles app
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri -- build --target $TARGET --bundles app,dmg
 
-      - name: Package
+      - name: Package + sign updater tarball
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -135,7 +140,39 @@ jobs:
           mkdir "$STAGE/istoria-${VERSION}"
           cp -R "$BUNDLE_DIR/istoria.app" "$STAGE/istoria-${VERSION}/"
           tar -czf "dist/${ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
-          (cd dist && shasum -a 256 "$ARTIFACT" > SHA256SUMS)
+
+          DMG_SRC="$(ls target/${TARGET}/release/bundle/dmg/*.dmg | head -1)"
+          DMG_OUT="istoria-${VERSION}-${TARGET}.dmg"
+          # Stable-named copy so landing page can deep-link via
+          # /releases/latest/download/istoria.dmg without rewriting
+          # the URL on every release.
+          DMG_STABLE="istoria.dmg"
+          cp "$DMG_SRC" "dist/${DMG_OUT}"
+          cp "$DMG_SRC" "dist/${DMG_STABLE}"
+
+          # Sign our wrapped tarball (tauri build's own sig signs the
+          # unwrapped .app.tar.gz, which we rebuild — sig must match the
+          # exact bytes the updater downloads). Key + password come
+          # from env (TAURI_SIGNING_PRIVATE_KEY / *_PASSWORD).
+          npm run tauri -- signer sign "dist/${ARTIFACT}"
+          SIG_CONTENT="$(cat "dist/${ARTIFACT}.sig")"
+
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cat > dist/latest.json <<EOF
+          {
+            "version": "v${VERSION}",
+            "notes": "Release v${VERSION}",
+            "pub_date": "${PUB_DATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "signature": "${SIG_CONTENT}",
+                "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${ARTIFACT}"
+              }
+            }
+          }
+          EOF
+
+          (cd dist && shasum -a 256 "$ARTIFACT" "${ARTIFACT}.sig" "$DMG_OUT" "$DMG_STABLE" latest.json > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -185,7 +222,7 @@ jobs:
             --repo dmitry-zaitsev/istoria-releases \
             --title "v${VERSION}" \
             --notes "Release v${VERSION}" \
-            *.tar.gz SHA256SUMS
+            *.tar.gz *.tar.gz.sig *.dmg latest.json SHA256SUMS
 
       - name: Compute formula sha
         id: formula

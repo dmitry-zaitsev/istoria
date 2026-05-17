@@ -37,6 +37,7 @@ pub fn current_version() -> &'static str {
 /// path lands inside `/Cellar/` for any brew install. Anything else
 /// (a local `cargo run`, a copied `.app`) falls through to `Other` —
 /// for those we can't `brew upgrade`, so we point at the release page.
+#[tauri::command]
 pub fn detect_install_method() -> InstallMethod {
     let exe = match std::env::current_exe()
         .ok()

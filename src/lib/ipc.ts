@@ -140,6 +140,25 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
   return invoke<UpdateInfo>("check_for_updates");
 }
 
+export async function detectInstallMethod(): Promise<InstallMethod> {
+  return invoke<InstallMethod>("detect_install_method");
+}
+
+export interface CliLinkStatus {
+  needed: boolean;
+  installed: boolean;
+  linkPath: string;
+  binaryPath: string | null;
+}
+
+export async function cliLinkStatus(): Promise<CliLinkStatus> {
+  return invoke<CliLinkStatus>("cli_link_status");
+}
+
+export async function installCliLink(): Promise<void> {
+  return invoke<void>("install_cli_link");
+}
+
 export interface BranchState {
   branch: string;
   head_sha: string;

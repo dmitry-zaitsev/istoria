@@ -1,9 +1,15 @@
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { useEffect, useState } from "react";
 
-import { checkForUpdates, openTerminal, type UpdateInfo } from "../lib/ipc";
+import { checkForUpdates, detectInstallMethod, openTerminal } from "../lib/ipc";
 import { log } from "../lib/logger";
 
 const DISMISS_KEY = "update.dismissed.v1";
+
+type BannerState =
+  | { kind: "brew"; latest: string; brewFormula: string }
+  | { kind: "plugin"; latest: string; update: Update };
 
 function loadDismissed(): string | null {
   try {
@@ -22,23 +28,30 @@ function saveDismissed(version: string) {
 }
 
 export function UpdateBanner() {
-  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [info, setInfo] = useState<BannerState | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    checkForUpdates()
-      .then((u) => {
-        if (cancelled) return;
-        if (!u.hasUpdate) return;
+    (async () => {
+      const method = await detectInstallMethod();
+      if (method === "homebrew") {
+        const u = await checkForUpdates();
+        if (cancelled || !u.hasUpdate) return;
         if (loadDismissed() === u.latest) return;
-        setInfo(u);
-      })
-      .catch((e) => {
-        // Offline, GitHub rate-limit, or proxy block — silent.
-        // The banner is a courtesy; never escalate to the user.
-        log.warn("update check failed", e);
-      });
+        setInfo({ kind: "brew", latest: u.latest, brewFormula: u.brewFormula });
+      } else {
+        const upd = await check();
+        if (cancelled || !upd) return;
+        if (loadDismissed() === upd.version) return;
+        setInfo({ kind: "plugin", latest: upd.version, update: upd });
+      }
+    })().catch((e) => {
+      // Offline, GitHub rate-limit, signature endpoint down — silent.
+      // The banner is a courtesy; never escalate to the user.
+      log.warn("update check failed", e);
+    });
     return () => {
       cancelled = true;
     };
@@ -51,13 +64,22 @@ export function UpdateBanner() {
     setDismissed(true);
   };
 
-  // Istoria ships exclusively via Homebrew (see RELEASING.md), so the
-  // install action always runs `brew upgrade` in a Terminal window.
-  // Terminal output stays visible so the user can confirm the upgrade
-  // landed (or see brew errors) instead of the app silently shelling out.
-  const update = () => {
-    void openTerminal(`brew upgrade ${info.brewFormula}`);
+  const update = async () => {
+    if (info.kind === "brew") {
+      void openTerminal(`brew upgrade ${info.brewFormula}`);
+      return;
+    }
+    try {
+      setInstalling(true);
+      await info.update.downloadAndInstall();
+      await relaunch();
+    } catch (e) {
+      log.warn("update install failed", e);
+      setInstalling(false);
+    }
   };
+
+  const cta = info.kind === "brew" ? "Update" : installing ? "Installing…" : "Install update";
 
   return (
     <div className="update-toast" role="status">
@@ -77,14 +99,15 @@ export function UpdateBanner() {
         <div className="update-toast-title">Update available</div>
         <div className="update-toast-version">v{info.latest}</div>
       </div>
-      <button type="button" className="update-toast-cta" onClick={update}>
-        Update
+      <button type="button" className="update-toast-cta" onClick={update} disabled={installing}>
+        {cta}
       </button>
       <button
         type="button"
         className="update-toast-dismiss"
         aria-label="Dismiss update notice"
         onClick={dismiss}
+        disabled={installing}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path

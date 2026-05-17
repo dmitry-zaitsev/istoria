@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod cli;
+pub mod cli_link;
 pub mod coalesce;
 pub mod code;
 pub mod event;
@@ -125,6 +126,8 @@ pub fn run(cli: cli::Cli) {
     let code_cache = Arc::new(code::CodeCache::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .manage(AppState {
             ring,
@@ -151,6 +154,9 @@ pub fn run(cli: cli::Cli) {
             claude::claude_status,
             claude::codex_status,
             update::check_for_updates,
+            update::detect_install_method,
+            cli_link::cli_link_status,
+            cli_link::install_cli_link,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

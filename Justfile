@@ -68,15 +68,34 @@ icon:
     npm run tauri -- icon src-tauri/icons/icon.png
     touch src-tauri/build.rs
 
+# Re-render src-tauri/icons/dmg-background.svg → dmg-background.png
+# at native window size (660×400). Finder displays DMG backgrounds at
+# native pixel size — a 2x retina PNG would get cropped to its top-left
+# quadrant, hiding everything past x=660/y=400. Slight softness on
+# retina is the tradeoff; the design is simple enough that degradation
+# is minimal.
+dmg-bg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v rsvg-convert >/dev/null || { echo "install: brew install librsvg" >&2; exit 1; }
+    rsvg-convert --width=660 --height=400 --format=png \
+        src-tauri/icons/dmg-background.svg \
+        -o src-tauri/icons/dmg-background.png
+    echo "✓ src-tauri/icons/dmg-background.png"
+
 # Build a signed + notarized macOS .app for the host arch and pack
 # it as dist/istoria-<version>-<target>.app.tar.gz with a sha256.
-# Mirrors the CI release job for local smoke tests before tagging.
+# Also emits a .dmg, an updater signature, and latest.json — the full
+# set of artifacts CI publishes. Mirrors the CI release job for local
+# smoke tests before tagging.
 #
 # Required env (load from a gitignored .envrc / direnv or export inline):
-#   APPLE_SIGNING_IDENTITY  e.g. "Developer ID Application: Name (TEAMID)"
-#   APPLE_ID                Apple ID email
-#   APPLE_PASSWORD          app-specific password
-#   APPLE_TEAM_ID           Apple Developer team ID
+#   APPLE_SIGNING_IDENTITY               "Developer ID Application: Name (TEAMID)"
+#   APPLE_ID                             Apple ID email
+#   APPLE_PASSWORD                       app-specific password
+#   APPLE_TEAM_ID                        Apple Developer team ID
+#   TAURI_SIGNING_PRIVATE_KEY            updater private key (file contents)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   password for that key
 #
 # Signing cert must already be in your login keychain. No .p12 import
 # is done locally — that path is only for CI.
@@ -87,6 +106,8 @@ release-mac:
     : "${APPLE_ID:?missing — see recipe comment}"
     : "${APPLE_PASSWORD:?missing — see recipe comment}"
     : "${APPLE_TEAM_ID:?missing — see recipe comment}"
+    : "${TAURI_SIGNING_PRIVATE_KEY:?missing — see recipe comment}"
+    : "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:?missing — see recipe comment}"
     if [[ "$(uname -s)" != "Darwin" ]]; then
         echo "release-mac only runs on macOS" >&2
         exit 1
@@ -98,23 +119,53 @@ release-mac:
     esac
     VERSION="$(node -p "require('./package.json').version")"
     rustup target add "$TARGET" >/dev/null
-    npm run tauri -- build --target "$TARGET" --bundles app
+    npm run tauri -- build --target "$TARGET" --bundles app,dmg
     BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
     APP="${BUNDLE_DIR}/istoria.app"
-    echo "[verify] codesign…"
+    DMG_SRC="$(ls target/${TARGET}/release/bundle/dmg/*.dmg | head -1)"
+    echo "[verify] codesign (.app)…"
     codesign --verify --deep --strict --verbose=2 "$APP"
-    echo "[verify] gatekeeper…"
+    echo "[verify] gatekeeper (.app)…"
     spctl --assess --type execute --verbose=2 "$APP" || \
         echo "::warning:: spctl assess failed — notarization may not have stapled"
+    echo "[verify] gatekeeper + staple (.dmg)…"
+    spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_SRC" || \
+        echo "::warning:: dmg spctl assess failed — notarization may not have stapled"
+    stapler validate "$DMG_SRC" || \
+        echo "::warning:: stapler validate failed on dmg"
     mkdir -p dist
     ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
+    DMG_OUT="istoria-${VERSION}-${TARGET}.dmg"
     # Wrap in parent dir so brew strips the wrapper, not the .app.
     STAGE="$(mktemp -d)"
     mkdir "$STAGE/istoria-${VERSION}"
     cp -R "$BUNDLE_DIR/istoria.app" "$STAGE/istoria-${VERSION}/"
     tar -czf "dist/${ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
-    (cd dist && shasum -a 256 "$ARTIFACT" | tee "${ARTIFACT}.sha256")
+    cp "$DMG_SRC" "dist/${DMG_OUT}"
+    cp "$DMG_SRC" "dist/istoria.dmg"
+    # Sign our wrapped tarball (the bytes the updater downloads).
+    npm run tauri -- signer sign "dist/${ARTIFACT}"
+    SIG_CONTENT="$(cat "dist/${ARTIFACT}.sig")"
+    PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    cat > dist/latest.json <<EOF
+    {
+      "version": "v${VERSION}",
+      "notes": "Release v${VERSION}",
+      "pub_date": "${PUB_DATE}",
+      "platforms": {
+        "darwin-aarch64": {
+          "signature": "${SIG_CONTENT}",
+          "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${ARTIFACT}"
+        }
+      }
+    }
+    EOF
+    (cd dist && shasum -a 256 "$ARTIFACT" "${ARTIFACT}.sig" "$DMG_OUT" istoria.dmg latest.json | tee "istoria-${VERSION}-${TARGET}.sha256")
     echo "✓ dist/${ARTIFACT}"
+    echo "✓ dist/${ARTIFACT}.sig"
+    echo "✓ dist/${DMG_OUT}"
+    echo "✓ dist/istoria.dmg"
+    echo "✓ dist/latest.json"
 
 # Same as `release-mac` but pulls Apple secrets from 1Password
 # (vault Private, item "istoria release") so you don't have to
@@ -128,4 +179,6 @@ release-mac-op:
     export APPLE_ID="$(op read "${ITEM}/APPLE_ID")"
     export APPLE_PASSWORD="$(op read "${ITEM}/APPLE_PASSWORD")"
     export APPLE_TEAM_ID="$(op read "${ITEM}/APPLE_TEAM_ID")"
+    export TAURI_SIGNING_PRIVATE_KEY="$(op read "${ITEM}/TAURI_SIGNING_PRIVATE_KEY")"
+    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(op read "${ITEM}/TAURI_SIGNING_PRIVATE_KEY_PASSWORD")"
     exec just release-mac
