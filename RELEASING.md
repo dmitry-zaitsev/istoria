@@ -17,11 +17,12 @@ Currently macOS Apple Silicon only. Intel and Linux dropped to keep CI simple; r
 The workflow handles everything:
 
 1. Computes next version from `package.json` (or uses your override)
-2. Builds, signs, notarizes for `aarch64-apple-darwin` — produces both `istoria.app` and a branded `.dmg`
-3. Ed25519-signs the wrapped `.app.tar.gz` for the in-app updater and emits `latest.json`
-4. Bumps `package.json` + root `Cargo.toml` + `src-tauri/tauri.conf.json` to that version, commits as `release: vX.Y.Z`, tags `vX.Y.Z`, pushes to `main`
-5. Publishes `.app.tar.gz`, `.app.tar.gz.sig`, `.dmg`, `latest.json`, and `SHA256SUMS` to `dmitry-zaitsev/istoria-releases` as release `vX.Y.Z`
-6. Bumps `Formula/istoria.rb` in `dmitry-zaitsev/homebrew-tap` (formula tracks the tarball; the `.dmg` is the parallel drag-install artifact; `latest.json` powers in-app updates for DMG users)
+2. Builds + signs + notarizes + staples `istoria.app` for `aarch64-apple-darwin`
+3. Builds the branded `.dmg` via `create-dmg` (not tauri's bundler — that relies on AppleScript and silently skips `.DS_Store` in headless CI, which leaves the window with no background or icon positions). Then signs, notarizes, and staples the DMG itself so Gatekeeper doesn't warn "downloaded from the internet".
+4. Emits two `.app.tar.gz` artifacts: a **wrapped** one for Homebrew (`istoria-X.Y.Z/istoria.app/…`, so brew's extract-and-chdir strips the wrapper, not the `.app`) and an **unwrapped** one for the in-app updater (`istoria.app/…` at root, which is what tauri-plugin-updater extracts). Ed25519-signs the updater tarball and points `latest.json` at it.
+5. Bumps `package.json` + root `Cargo.toml` + `src-tauri/tauri.conf.json` to that version, commits as `release: vX.Y.Z`, tags `vX.Y.Z`, pushes to `main`
+6. Publishes `.app.tar.gz` (brew), `.updater.tar.gz` + `.sig` (updater), `.dmg`, `latest.json`, and `SHA256SUMS` to `dmitry-zaitsev/istoria-releases` as release `vX.Y.Z`
+7. Bumps `Formula/istoria.rb` in `dmitry-zaitsev/homebrew-tap` (formula tracks the wrapped tarball; the `.dmg` is the parallel drag-install artifact; `latest.json` powers in-app updates for DMG users)
 
 After the run finishes:
 
@@ -81,11 +82,15 @@ Workflow pushes the version-bump commit + tag back to `main` using the default `
 
 ## Local sanity check
 
-`just release-mac-op` runs the same sign + notarize pipeline locally (uses your login keychain + 1Password). Use it to validate signing config without burning a CI run. Does not bump versions or push anything. Produces the full release artifact set in `dist/`: `.app.tar.gz`, `.app.tar.gz.sig`, `.dmg`, and `latest.json`. Mount the dmg to eyeball the window layout; `cat dist/*.app.tar.gz.sig` should match the `signature` field in `dist/latest.json`.
+`just release-mac-op` runs the same sign + notarize pipeline locally (uses your login keychain + 1Password). Use it to validate signing config without burning a CI run. Does not bump versions or push anything. Produces the full release artifact set in `dist/`: `.app.tar.gz` (brew, wrapped), `.updater.tar.gz` + `.sig` (updater, unwrapped), `.dmg`, and `latest.json`. Mount the dmg to eyeball the window layout; `cat dist/*.updater.tar.gz.sig` should match the `signature` field in `dist/latest.json`.
+
+Requires `create-dmg` locally (`brew install create-dmg`) — same tool CI uses.
 
 ## DMG window appearance
 
-The Finder window that opens when a user mounts the `.dmg` is configured in `src-tauri/tauri.conf.json` under `bundle.macOS.dmg`. The background image lives at `src-tauri/icons/dmg-background.png` and is rendered from `src-tauri/icons/dmg-background.svg` at 2× (1320×800 px source for a 660×400 window).
+The Finder window that opens when a user mounts the `.dmg` is configured by `create-dmg` flags in the release recipe (`.github/workflows/release.yml` and `Justfile` → `release-mac`). The background image lives at `src-tauri/icons/dmg-background.png` and is rendered from `src-tauri/icons/dmg-background.svg` at native window size (660×400).
+
+We don't use tauri's built-in DMG bundler because it shells out to AppleScript to write the Finder layout into `.DS_Store`, and AppleScript silently no-ops in headless CI — the DMG ships with a blank background and default icon positions. `create-dmg` writes `.DS_Store` directly, no GUI session needed.
 
 The SVG is shape-only — no text, no fonts — so it renders identically anywhere. To re-render after editing:
 

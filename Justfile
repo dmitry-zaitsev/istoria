@@ -112,6 +112,7 @@ release-mac:
         echo "release-mac only runs on macOS" >&2
         exit 1
     fi
+    command -v create-dmg >/dev/null || { echo "install: brew install create-dmg" >&2; exit 1; }
     case "$(uname -m)" in
         arm64)  TARGET="aarch64-apple-darwin" ;;
         x86_64) TARGET="x86_64-apple-darwin"  ;;
@@ -119,33 +120,65 @@ release-mac:
     esac
     VERSION="$(node -p "require('./package.json').version")"
     rustup target add "$TARGET" >/dev/null
-    npm run tauri -- build --target "$TARGET" --bundles app,dmg
+    # `--bundles app` only — DMG built below via create-dmg (tauri's
+    # DMG bundler uses AppleScript and silently drops .DS_Store when
+    # run headless; create-dmg writes it directly).
+    npm run tauri -- build --target "$TARGET" --bundles app
     BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
     APP="${BUNDLE_DIR}/istoria.app"
-    DMG_SRC="$(ls target/${TARGET}/release/bundle/dmg/*.dmg | head -1)"
     echo "[verify] codesign (.app)…"
     codesign --verify --deep --strict --verbose=2 "$APP"
     echo "[verify] gatekeeper (.app)…"
     spctl --assess --type execute --verbose=2 "$APP" || \
         echo "::warning:: spctl assess failed — notarization may not have stapled"
-    echo "[verify] gatekeeper + staple (.dmg)…"
-    spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_SRC" || \
-        echo "::warning:: dmg spctl assess failed — notarization may not have stapled"
-    stapler validate "$DMG_SRC" || \
-        echo "::warning:: stapler validate failed on dmg"
     mkdir -p dist
-    ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
+    BREW_ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
+    UPDATER_ARTIFACT="istoria-${VERSION}-${TARGET}.updater.tar.gz"
     DMG_OUT="istoria-${VERSION}-${TARGET}.dmg"
-    # Wrap in parent dir so brew strips the wrapper, not the .app.
+    # Brew tarball: wrapped so brew strips the wrapper, not the .app.
     STAGE="$(mktemp -d)"
     mkdir "$STAGE/istoria-${VERSION}"
-    cp -R "$BUNDLE_DIR/istoria.app" "$STAGE/istoria-${VERSION}/"
-    tar -czf "dist/${ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
-    cp "$DMG_SRC" "dist/${DMG_OUT}"
-    cp "$DMG_SRC" "dist/istoria.dmg"
-    # Sign our wrapped tarball (the bytes the updater downloads).
-    npm run tauri -- signer sign "dist/${ARTIFACT}"
-    SIG_CONTENT="$(cat "dist/${ARTIFACT}.sig")"
+    cp -R "$APP" "$STAGE/istoria-${VERSION}/"
+    tar -czf "dist/${BREW_ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
+    # Updater tarball: unwrapped — istoria.app at root.
+    UPSTAGE="$(mktemp -d)"
+    cp -R "$APP" "$UPSTAGE/"
+    tar -czf "dist/${UPDATER_ARTIFACT}" -C "$UPSTAGE" "istoria.app"
+    npm run tauri -- signer sign "dist/${UPDATER_ARTIFACT}"
+    SIG_CONTENT="$(cat "dist/${UPDATER_ARTIFACT}.sig")"
+    # DMG: build, sign, notarize, staple.
+    DMG_STAGE="$(mktemp -d)/src"
+    mkdir -p "$DMG_STAGE"
+    cp -R "$APP" "$DMG_STAGE/"
+    # Pre-warm Finder so create-dmg's AppleScript step can drive it
+    # (it sets window bg + icon positions via osascript, which silently
+    # no-ops if Finder isn't running).
+    osascript -e 'tell application "Finder" to activate' >/dev/null 2>&1 || true
+    create-dmg \
+        --volname istoria \
+        --background src-tauri/icons/dmg-background.png \
+        --window-pos 200 120 \
+        --window-size 660 400 \
+        --icon-size 110 \
+        --icon istoria.app 180 200 \
+        --app-drop-link 480 200 \
+        --no-internet-enable \
+        "dist/${DMG_OUT}" "$DMG_STAGE/"
+    # Verify .DS_Store landed — without it the DMG has no bg or icon
+    # positions (the v1.3.1 regression).
+    MOUNT=$(hdiutil attach -nobrowse -readonly "dist/${DMG_OUT}" | tail -1 | awk '{print $NF}')
+    test -f "$MOUNT/.DS_Store" || { echo "DMG missing .DS_Store — Finder layout not applied" >&2; hdiutil detach "$MOUNT"; exit 1; }
+    hdiutil detach "$MOUNT"
+    codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "dist/${DMG_OUT}"
+    xcrun notarytool submit "dist/${DMG_OUT}" \
+        --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+        --team-id "$APPLE_TEAM_ID" --wait
+    xcrun stapler staple "dist/${DMG_OUT}"
+    echo "[verify] gatekeeper + staple (.dmg)…"
+    spctl --assess --type open --context context:primary-signature --verbose=2 "dist/${DMG_OUT}" || \
+        echo "::warning:: dmg spctl assess failed — notarization may not have stapled"
+    stapler validate "dist/${DMG_OUT}"
+    cp "dist/${DMG_OUT}" "dist/istoria.dmg"
     PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     cat > dist/latest.json <<EOF
     {
@@ -155,14 +188,19 @@ release-mac:
       "platforms": {
         "darwin-aarch64": {
           "signature": "${SIG_CONTENT}",
-          "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${ARTIFACT}"
+          "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${UPDATER_ARTIFACT}"
         }
       }
     }
     EOF
-    (cd dist && shasum -a 256 "$ARTIFACT" "${ARTIFACT}.sig" "$DMG_OUT" istoria.dmg latest.json | tee "istoria-${VERSION}-${TARGET}.sha256")
-    echo "✓ dist/${ARTIFACT}"
-    echo "✓ dist/${ARTIFACT}.sig"
+    (cd dist && shasum -a 256 \
+        "$BREW_ARTIFACT" \
+        "$UPDATER_ARTIFACT" "${UPDATER_ARTIFACT}.sig" \
+        "$DMG_OUT" istoria.dmg \
+        latest.json | tee "istoria-${VERSION}-${TARGET}.sha256")
+    echo "✓ dist/${BREW_ARTIFACT}"
+    echo "✓ dist/${UPDATER_ARTIFACT}"
+    echo "✓ dist/${UPDATER_ARTIFACT}.sig"
     echo "✓ dist/${DMG_OUT}"
     echo "✓ dist/istoria.dmg"
     echo "✓ dist/latest.json"
