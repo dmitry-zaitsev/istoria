@@ -4,7 +4,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { log } from "./lib/logger";
 import { Chrome } from "./components/Chrome";
@@ -251,6 +251,16 @@ export default function App() {
         .map((g) => g.key)
         .filter((k) => k !== "level" && k !== "source" && k !== "branch"),
     [facetGroups]
+  );
+
+  // Cross-cutting substring autocomplete. Memoized on facetVersion so
+  // the closure sees the freshest FacetIndex state on every keystroke
+  // after ingest, while staying stable between ticks to avoid churn in
+  // FilterBar's useMemo.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const suggestFn = useCallback(
+    (q: string) => facetIndexRef.current.suggest(q, 10),
+    [facetVersion]
   );
 
   // Sources/branches derive from the facet groups — same single pass.
@@ -682,6 +692,7 @@ export default function App() {
         onChange={setFilter}
         suggestKeys={suggestKeys}
         suggestValuesByKey={suggestValuesByKey}
+        suggest={suggestFn}
       />
       <Histogram events={events} filter={filter} onFilterChange={setFilter} />
       <div className="main">

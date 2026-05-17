@@ -20,9 +20,25 @@ export interface FacetGroup {
   values: FacetValue[];
 }
 
+/// Cross-cutting autocomplete match. Emitted by `FacetIndex.suggest()`
+/// when the user types a bare substring in the filter input.
+export interface SuggestionMatch {
+  kind: "key" | "kv" | "msg";
+  key?: string;
+  value?: string;
+  msg?: string;
+  score: number;
+}
+
 const TOP_N_KEYS = 5;
 const ALL_KEYS_CAP = 50;
 const TOP_N_VALUES = 50;
+/// At suggest time, ignore field paths whose value Map exceeds this.
+/// Fields like request_id / trace_id grow ~1:1 with events and aren't
+/// useful for substring autocomplete — they'd flood the dropdown and
+/// dominate the scan. Mirrored top-level fields are already excluded
+/// from `fieldCounts` via `MIRRORED_KEYS` below.
+const PER_FIELD_VALUE_CAP = 1000;
 // Top-level event fields are mirrored into facet groups
 // (Level / Source / Branch) explicitly. Skip them in auto-discovery so
 // they don't show up twice when the JSON payload also carries the value.
@@ -61,6 +77,27 @@ export class FacetIndex {
   private branchCounts = new Map<string, number>();
   /// Auto-discovered fields: path → (value → count).
   private fieldCounts = new Map<string, Map<string, number>>();
+  /// Trigram inverted index over distinct msg strings.
+  /// `msgRefs` is the refcount per distinct msg (events alive with that
+  /// msg); when it drops to 0 the trigrams are released. `msgTrigrams`
+  /// maps each lowercased length-3 ngram to the set of msgs containing
+  /// it, supporting O(query) substring autocomplete across the full
+  /// ring without scanning every event.
+  private msgRefs = new Map<string, number>();
+  private msgTrigrams = new Map<string, Set<string>>();
+  /// Queries shorter than this skip the trigram path and fall back to a
+  /// linear scan over `msgRefs.keys()` (bounded by distinct-msg count,
+  /// not event count).
+  private readonly MSG_FALLBACK_LEN = 3;
+
+  private *trigramsOf(s: string): Iterable<string> {
+    const lower = s.toLowerCase();
+    if (lower.length < 3) {
+      yield `short:${lower}`;
+      return;
+    }
+    for (let i = 0; i <= lower.length - 3; i++) yield lower.slice(i, i + 3);
+  }
 
   add(e: LogEvent): void {
     bump(this.levelCounts, e.level);
@@ -78,6 +115,21 @@ export class FacetIndex {
         bump(m, String(value ?? ""));
       });
     }
+    const msg = e.msg ?? "";
+    if (msg.length > 0) {
+      const prev = this.msgRefs.get(msg) ?? 0;
+      this.msgRefs.set(msg, prev + 1);
+      if (prev === 0) {
+        for (const tg of this.trigramsOf(msg)) {
+          let s = this.msgTrigrams.get(tg);
+          if (!s) {
+            s = new Set();
+            this.msgTrigrams.set(tg, s);
+          }
+          s.add(msg);
+        }
+      }
+    }
   }
 
   remove(e: LogEvent): void {
@@ -94,6 +146,23 @@ export class FacetIndex {
         if (m.size === 0) this.fieldCounts.delete(path);
       });
     }
+    const msg = e.msg ?? "";
+    if (msg.length > 0) {
+      const prev = this.msgRefs.get(msg);
+      if (prev !== undefined) {
+        if (prev <= 1) {
+          this.msgRefs.delete(msg);
+          for (const tg of this.trigramsOf(msg)) {
+            const s = this.msgTrigrams.get(tg);
+            if (!s) continue;
+            s.delete(msg);
+            if (s.size === 0) this.msgTrigrams.delete(tg);
+          }
+        } else {
+          this.msgRefs.set(msg, prev - 1);
+        }
+      }
+    }
   }
 
   clear(): void {
@@ -101,6 +170,126 @@ export class FacetIndex {
     this.sourceCounts.clear();
     this.branchCounts.clear();
     this.fieldCounts.clear();
+    this.msgRefs.clear();
+    this.msgTrigrams.clear();
+  }
+
+  /// Return msgs matching `q` as substring. Length-3+ queries use the
+  /// trigram index; shorter queries linear-scan the distinct msg set.
+  /// Caller-provided `cap` bounds the candidate harvest (the result is
+  /// usually further ranked + trimmed by `suggest`).
+  private queryMsgs(q: string, cap: number): string[] {
+    const ql = q.toLowerCase();
+    if (ql.length === 0) return [];
+    if (ql.length < this.MSG_FALLBACK_LEN) {
+      const out: string[] = [];
+      for (const msg of this.msgRefs.keys()) {
+        if (msg.toLowerCase().includes(ql)) {
+          out.push(msg);
+          if (out.length >= cap) break;
+        }
+      }
+      return out;
+    }
+    const tgs = [...new Set(this.trigramsOf(ql))];
+    const lists: Set<string>[] = [];
+    for (const tg of tgs) {
+      const s = this.msgTrigrams.get(tg);
+      if (!s) return []; // any missing trigram → no possible match
+      lists.push(s);
+    }
+    lists.sort((a, b) => a.size - b.size);
+    // Trigram membership is necessary but not sufficient for substring
+    // (e.g., q="abcd" → trigrams "abc","bcd" both appear in "abc-bcd"
+    // without "abcd" as substring), so final .includes() verify runs.
+    const out: string[] = [];
+    for (const candidate of lists[0]!) {
+      let inAll = true;
+      for (let i = 1; i < lists.length; i++) {
+        if (!lists[i]!.has(candidate)) {
+          inAll = false;
+          break;
+        }
+      }
+      if (!inAll) continue;
+      if (!candidate.toLowerCase().includes(ql)) continue;
+      out.push(candidate);
+      if (out.length >= cap) break;
+    }
+    return out;
+  }
+
+  /// Cross-cutting autocomplete: given a bare substring (no key:),
+  /// surface matching keys, key:value pairs, and msg strings. Returns
+  /// up to `limit` items already ranked and merged in render order.
+  ///
+  /// Returns `[]` for queries shorter than 2 chars — caller falls back
+  /// to the existing prefix-key suggestion path.
+  suggest(query: string, limit = 8): SuggestionMatch[] {
+    const q = query.toLowerCase();
+    if (q.length < 2) return [];
+
+    // ── Keys ─────────────────────────────────────────────────────
+    // Walk the union of mirrored top-level keys and discovered field
+    // paths. Prefix match scores highest; substring at a `.`-segment
+    // boundary beats mid-segment substring.
+    const allKeys = new Set<string>();
+    for (const k of ["msg", "raw", "ts", "level", "source", "branch"]) allKeys.add(k);
+    for (const k of this.fieldCounts.keys()) allKeys.add(k);
+    const keyHits: SuggestionMatch[] = [];
+    for (const k of allKeys) {
+      const lk = k.toLowerCase();
+      const idx = lk.indexOf(q);
+      if (idx < 0) continue;
+      let score = 5;
+      if (idx === 0) score = 20;
+      else if (lk[idx - 1] === ".") score = 10;
+      keyHits.push({ kind: "key", key: k, score });
+    }
+    keyHits.sort((a, b) => b.score - a.score || a.key!.localeCompare(b.key!));
+
+    // ── Key:value ────────────────────────────────────────────────
+    // For each field path with bounded cardinality, find values whose
+    // lowercased form contains `q`. Keep top-2 per path so one chatty
+    // path (e.g. `path`, `endpoint`) can't drown the dropdown.
+    const kvHits: SuggestionMatch[] = [];
+    for (const [path, valueMap] of this.fieldCounts) {
+      if (valueMap.size > PER_FIELD_VALUE_CAP) continue;
+      const perKey: SuggestionMatch[] = [];
+      for (const [value, count] of valueMap) {
+        const lv = value.toLowerCase();
+        const idx = lv.indexOf(q);
+        if (idx < 0) continue;
+        const score = Math.log1p(count) + 3 + (idx === 0 ? 10 : 0);
+        perKey.push({ kind: "kv", key: path, value, score });
+      }
+      perKey.sort((a, b) => b.score - a.score || a.value!.localeCompare(b.value!));
+      for (let i = 0; i < Math.min(2, perKey.length); i++) kvHits.push(perKey[i]!);
+    }
+    kvHits.sort(
+      (a, b) => b.score - a.score || `${a.key}:${a.value}`.localeCompare(`${b.key}:${b.value}`)
+    );
+
+    // ── Msg ──────────────────────────────────────────────────────
+    const msgs = this.queryMsgs(q, limit * 4);
+    const msgHits: SuggestionMatch[] = [];
+    for (const m of msgs) {
+      const startsWith = m.toLowerCase().startsWith(q);
+      const refs = this.msgRefs.get(m) ?? 0;
+      const score = Math.log1p(refs) + (startsWith ? 6 : 2);
+      msgHits.push({ kind: "msg", msg: m, score });
+    }
+    msgHits.sort((a, b) => b.score - a.score || a.msg!.localeCompare(b.msg!));
+
+    // ── Merge by category ────────────────────────────────────────
+    const out: SuggestionMatch[] = [];
+    const keyCap = Math.min(keyHits.length, 3);
+    const kvCap = Math.min(kvHits.length, Math.max(2, limit - keyCap - 3));
+    const msgCap = Math.min(msgHits.length, 3);
+    for (let i = 0; i < keyCap; i++) out.push(keyHits[i]!);
+    for (let i = 0; i < kvCap; i++) out.push(kvHits[i]!);
+    for (let i = 0; i < msgCap; i++) out.push(msgHits[i]!);
+    return out.slice(0, limit);
   }
 
   snapshot(): FacetGroup[] {

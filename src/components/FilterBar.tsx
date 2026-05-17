@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { addAlert, hashColor, loadAlerts } from "../lib/alerts";
+import type { SuggestionMatch } from "../lib/facets";
 import { registerFilterFocus } from "../lib/filterFocus";
 import { isError, parse, renderValue, tokenize, type Token } from "../lib/query";
 import { toast } from "../lib/toast";
@@ -11,7 +12,16 @@ interface FilterBarProps {
   onChange: (value: string) => void;
   suggestKeys?: string[];
   suggestValuesByKey?: Map<string, string[]>;
+  /// Cross-cutting substring autocomplete. When provided and the user
+  /// is typing a bare token of length ≥ 2 with no colon yet, the result
+  /// list replaces the prefix-keys-only suggestions with a merged set
+  /// of key / key:value / msg matches.
+  suggest?: (query: string) => SuggestionMatch[];
 }
+
+/// Cap displayed msg label width so a giant log line doesn't blow up
+/// the dropdown. The full msg is still used in the completion string.
+const MSG_LABEL_MAX = 80;
 
 const OPERATORS = ["AND", "OR", "NOT"] as const;
 
@@ -20,6 +30,7 @@ export function FilterBar({
   onChange,
   suggestKeys = [],
   suggestValuesByKey,
+  suggest,
 }: FilterBarProps) {
   const parsed = useMemo(() => parse(value), [value]);
   const error = isError(parsed) ? parsed : null;
@@ -159,8 +170,8 @@ export function FilterBar({
   // ── Autocomplete ─────────────────────────────────────────────
   const [suggestIdx, setSuggestIdx] = useState(0);
   const suggestions = useMemo(
-    () => buildSuggestions(trailing, suggestKeys, suggestValuesByKey),
-    [trailing, suggestKeys, suggestValuesByKey]
+    () => buildSuggestions(trailing, suggestKeys, suggestValuesByKey, suggest),
+    [trailing, suggestKeys, suggestValuesByKey, suggest]
   );
   const showSuggestions = trailing.length > 0 && suggestions.items.length > 0;
   useEffect(() => setSuggestIdx(0), [trailing]);
@@ -357,7 +368,8 @@ interface SuggestionResult {
 function buildSuggestions(
   input: string,
   keys: string[],
-  valuesByKey?: Map<string, string[]>
+  valuesByKey?: Map<string, string[]>,
+  suggest?: (q: string) => SuggestionMatch[]
 ): SuggestionResult {
   // Skip suggestions when the user is typing inside an unclosed
   // function call — \`last(15 min)\`, \`percentile(50)\`, etc. Otherwise
@@ -450,9 +462,49 @@ function buildSuggestions(
     return { replaceFrom, items };
   }
 
-  // Bare token → suggest keys (and operators if the token looks like
-  // an operator prefix).
+  // Bare token → cross-cutting substring suggest (keys + kv + msg) if
+  // available and the partial is ≥ 2 chars. Falls back to legacy
+  // prefix-key matching when `suggest` is absent or the partial is too
+  // short to scan meaningfully.
   const lower = tail.toLowerCase();
+  const opMatches = OPERATORS.filter((o) => o.toLowerCase().startsWith(lower)).map<SuggestionItem>(
+    (o) => ({
+      kind: "op",
+      label: o,
+      completion: `${o} `,
+    })
+  );
+
+  if (suggest && tail.length >= 2) {
+    const matches = suggest(tail);
+    if (matches.length > 0) {
+      const items = matches.map<SuggestionItem>((m) => {
+        if (m.kind === "key") {
+          return { kind: "key", label: m.key!, completion: `${m.key}:` };
+        }
+        if (m.kind === "kv") {
+          return {
+            kind: "value",
+            label: `${m.key}:${m.value}`,
+            completion: `${m.key}:${renderValue(m.value!)} `,
+            commit: true,
+          };
+        }
+        // msg: label is truncated for display; completion stays full.
+        const full = m.msg!;
+        const label =
+          full.length > MSG_LABEL_MAX ? `msg:${full.slice(0, MSG_LABEL_MAX)}…` : `msg:${full}`;
+        return {
+          kind: "value",
+          label,
+          completion: `msg:${renderValue(full)} `,
+          commit: true,
+        };
+      });
+      return { replaceFrom, items: [...items, ...opMatches] };
+    }
+  }
+
   const keyMatches = keys
     .filter((k) => k.toLowerCase().startsWith(lower))
     .slice(0, 8)
@@ -461,13 +513,6 @@ function buildSuggestions(
       label: k,
       completion: `${k}:`,
     }));
-  const opMatches = OPERATORS.filter((o) => o.toLowerCase().startsWith(lower)).map<SuggestionItem>(
-    (o) => ({
-      kind: "op",
-      label: o,
-      completion: `${o} `,
-    })
-  );
   return {
     replaceFrom,
     items: [...keyMatches, ...opMatches],
