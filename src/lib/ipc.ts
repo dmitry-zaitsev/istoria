@@ -159,22 +159,32 @@ export async function installCliLink(): Promise<void> {
   return invoke<void>("install_cli_link");
 }
 
-export interface BranchState {
-  branch: string;
-  head_sha: string;
-  has_uncommitted: boolean;
-  default_branch: string;
+export type PatternKind = { kind: "direct" } | { kind: "indirect"; via_files: string[] };
+
+export interface RelevanceSite {
+  source: string;
+  rel_path: string;
+  abs_path: string;
+  line: number;
+  raw_call: string;
+  snippet: CodeLine[];
+  emitted_count: number;
+  kind: PatternKind;
 }
 
-export interface RelevanceAnalysis {
-  regexes: string[];
-  branch_state: BranchState;
+export interface RelevanceSnapshot {
+  ids: number[];
+  sites: RelevanceSite[];
 }
 
-export async function branchState(): Promise<BranchState> {
-  return invoke<BranchState>("branch_state");
+export async function relevanceSnapshot(): Promise<RelevanceSnapshot> {
+  return invoke<RelevanceSnapshot>("relevance_snapshot");
 }
 
-export async function analyzeBranchRelevance(): Promise<RelevanceAnalysis> {
-  return invoke<RelevanceAnalysis>("analyze_branch_relevance");
+export async function focusChanged(focused: boolean): Promise<void> {
+  return invoke("focus_changed", { focused });
+}
+
+export async function subscribeRelevance(cb: () => void): Promise<UnlistenFn> {
+  return listen("relevance-updated", () => cb());
 }

@@ -10,6 +10,7 @@ use tokio::time::timeout;
 use crate::coalesce::Coalescer;
 use crate::event::Event;
 use crate::format::Detector;
+use crate::relevance::SourceRoots;
 use crate::ring::Ring;
 use crate::source;
 
@@ -29,6 +30,13 @@ pub struct ForwarderHeader {
     #[serde(default)]
     pub branch: String,
     pub pid: i32,
+    /// Canonical absolute cwd of the forwarder, captured at attach
+    /// time. Branch-relevance analysis routes `git diff` calls against
+    /// this directory (the owner's own cwd is wrong when istoria is
+    /// shared across projects). `None` for older forwarders — those
+    /// sources just get no relevance treatment.
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
 }
 
 pub fn socket_path() -> PathBuf {
@@ -75,14 +83,16 @@ pub async fn run_owner_listener(
     listener: Listener,
     ring: Arc<Ring>,
     registry: Arc<source::Registry>,
+    source_roots: Arc<SourceRoots>,
 ) {
     loop {
         match listener.accept().await {
             Ok(stream) => {
                 let ring = Arc::clone(&ring);
                 let registry = Arc::clone(&registry);
+                let roots = Arc::clone(&source_roots);
                 tokio::spawn(async move {
-                    if let Err(e) = handle_forwarder(stream, ring, registry).await {
+                    if let Err(e) = handle_forwarder(stream, ring, registry, roots).await {
                         tracing::warn!(error = %e, "forwarder ended with error");
                     }
                 });
@@ -99,6 +109,7 @@ async fn handle_forwarder(
     stream: Stream,
     ring: Arc<Ring>,
     registry: Arc<source::Registry>,
+    source_roots: Arc<SourceRoots>,
 ) -> std::io::Result<()> {
     let mut reader = BufReader::with_capacity(64 * 1024, stream);
     let mut header_line = String::new();
@@ -111,6 +122,9 @@ async fn handle_forwarder(
     })?;
     let source_name = registry.allocate(header.name_override.as_deref());
     let branch = header.branch.clone();
+    if let Some(cwd) = header.cwd.clone() {
+        source_roots.register(&source_name, cwd);
+    }
     tracing::info!(name = %source_name, branch = %branch, pid = header.pid, "forwarder attached");
 
     let mut detector = Detector::new();
@@ -169,10 +183,14 @@ pub async fn run_forwarder(
     branch: String,
 ) -> std::io::Result<()> {
     let mut writer = stream;
+    let cwd = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.canonicalize().ok());
     let header = ForwarderHeader {
         name_override,
         branch,
         pid: std::process::id() as i32,
+        cwd,
     };
     let mut header_bytes = serde_json::to_vec(&header).map_err(|e| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, format!("encode header: {e}"))

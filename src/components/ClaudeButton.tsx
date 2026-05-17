@@ -14,9 +14,6 @@ type Mode = "closed" | "connect" | "panel";
 export function ClaudeButton() {
   const connected = useStore((s) => s.claudeConnected);
   const setConnected = useStore((s) => s.setClaudeConnected);
-  const relevance = useStore((s) => s.relevance);
-  const relevanceStale = useStore((s) => s.relevanceStale);
-  const analyzing = useStore((s) => s.relevanceAnalyzing);
   const [probe, setProbe] = useState<Probe>({ state: "loading" });
   const [mode, setMode] = useState<Mode>("closed");
 
@@ -54,20 +51,7 @@ export function ClaudeButton() {
         ? "Claude Code not installed — click to learn more"
         : !connected
           ? "Connect Claude Code for advanced analysis"
-          : analyzing
-            ? "Analyzing branch…"
-            : relevanceStale
-              ? "Branch changed — re-run analysis"
-              : relevance
-                ? `AI · ${relevance.regexes.length} relevance pattern${
-                    relevance.regexes.length === 1 ? "" : "s"
-                  }`
-                : "AI — MCP & branch relevance";
-
-  // Orange dot signals: branch drifted since last analysis, OR connected
-  // but no analysis run yet. Hidden while a run is in flight (the
-  // breathing animation already says "busy").
-  const showDot = connected && !analyzing && (relevanceStale || !relevance);
+          : "AI — MCP integration";
 
   const handleClick = () => {
     setMode(connected ? "panel" : "connect");
@@ -87,16 +71,13 @@ export function ClaudeButton() {
     <>
       <button
         type="button"
-        className={`icon-btn tabs-claude-btn${connected ? " on" : ""}${
-          analyzing ? " analyzing" : ""
-        }`}
+        className={`icon-btn tabs-claude-btn${connected ? " on" : ""}`}
         onClick={handleClick}
         title={tooltip}
         aria-label="AI integration"
         aria-pressed={connected}
       >
         <SparkleIcon />
-        {showDot && <span className="claude-dot" aria-hidden="true" />}
       </button>
       {mode === "connect" && (
         <ConnectDialog probe={probe} onClose={() => setMode("closed")} onConfirm={handleConnect} />

@@ -17,7 +17,7 @@ interface LogStreamProps {
   fieldColumns: FieldColumn[];
   highlightTerms: HighlightTerm[];
   alertMatches: Map<number, string[]>;
-  relevanceRe: RegExp | null;
+  relevantIds: Set<number>;
 }
 
 const ROW_PX = 26;
@@ -37,7 +37,7 @@ export function LogStream({
   fieldColumns,
   highlightTerms,
   alertMatches,
-  relevanceRe,
+  relevantIds,
 }: LogStreamProps) {
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const alerts = useStore((s) => s.alerts);
@@ -312,8 +312,7 @@ export function LogStream({
           const matchedIds = alertMatches.get(ev.id);
           const alertColor =
             matchedIds && matchedIds.length > 0 ? alertColorById.get(matchedIds[0]!) : undefined;
-          const isRelevant =
-            relevanceRe != null && (relevanceRe.test(ev.msg) || relevanceRe.test(ev.raw));
+          const isRelevant = relevantIds.has(ev.id);
           return (
             <div
               key={ev.id}

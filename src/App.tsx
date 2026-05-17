@@ -30,11 +30,13 @@ import {
   MIN_DEBOUNCE_MS,
 } from "./lib/alerts";
 import {
-  branchState,
+  focusChanged,
   listPins,
   queryRecent,
   querySince,
+  relevanceSnapshot,
   subscribeEvents,
+  subscribeRelevance,
   type LogEvent,
 } from "./lib/ipc";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
@@ -65,8 +67,9 @@ export default function App() {
   const setScrollTarget = useStore((s) => s.setScrollTarget);
   const alerts = useStore((s) => s.alerts);
   const setAlerts = useStore((s) => s.setAlerts);
-  const relevance = useStore((s) => s.relevance);
-  const setRelevanceStale = useStore((s) => s.setRelevanceStale);
+  const relevantIds = useStore((s) => s.relevantIds);
+  const setRelevantIds = useStore((s) => s.setRelevantIds);
+  const setRelevanceSites = useStore((s) => s.setRelevanceSites);
 
   // When inspector opens (selectedId transitions null → non-null), scroll
   // the row into view above the inspector overlay so it's not occluded.
@@ -171,35 +174,7 @@ export default function App() {
     [parsed, filterValid]
   );
 
-  // Compile the relevance regex list into a single OR-joined RegExp so
-  // each row only pays one .test() call. Patterns are wrapped in `(?:..)`
-  // to keep alternation safe even when individual patterns contain
-  // top-level alternatives. Strip `/.../flags` wrappers if Claude
-  // returned them despite the prompt. Invalid patterns are dropped
-  // with a console warning so the cause is visible in devtools.
-  const relevanceRe = useMemo(() => {
-    if (!relevance || relevance.regexes.length === 0) return null;
-    const safe: string[] = [];
-    for (const raw of relevance.regexes) {
-      const normalized = stripRegexWrapper(raw);
-      try {
-        new RegExp(normalized);
-        safe.push(`(?:${normalized})`);
-      } catch (e) {
-        log.warn("relevance: dropped invalid regex", raw, e);
-      }
-    }
-    if (safe.length === 0) {
-      log.warn("relevance: all patterns were invalid; nothing will match", relevance.regexes);
-      return null;
-    }
-    try {
-      return new RegExp(safe.join("|"), "i");
-    } catch (e) {
-      log.warn("relevance: failed to compile combined regex", safe, e);
-      return null;
-    }
-  }, [relevance]);
+  const hasRelevance = relevantIds.size > 0;
 
   // Facets only respect the ts: bounds (if any), not the full query —
   // so changing a level filter doesn't shrink the source list to one
@@ -228,9 +203,9 @@ export default function App() {
 
   const suggestKeys = useMemo(() => {
     const base = ["msg", "raw", "ts", "pinned", "stack", "hasStackTrace"];
-    if (relevance) base.push("relevant");
+    if (hasRelevance) base.push("relevant");
     return [...base, ...facetGroups.map((g) => g.key)];
-  }, [facetGroups, relevance]);
+  }, [facetGroups, hasRelevance]);
   const suggestValuesByKey = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const g of facetGroups) {
@@ -242,9 +217,9 @@ export default function App() {
     m.set("pinned", ["true", "false"]);
     m.set("stack", ["true", "false"]);
     m.set("hasStackTrace", ["true", "false"]);
-    if (relevance) m.set("relevant", ["true", "false"]);
+    if (hasRelevance) m.set("relevant", ["true", "false"]);
     return m;
-  }, [facetGroups, relevance]);
+  }, [facetGroups, hasRelevance]);
   const availableFieldKeys = useMemo(
     () =>
       facetGroups
@@ -409,48 +384,52 @@ export default function App() {
     };
   }, []);
 
-  // Whenever the window regains focus, re-probe the project's git
-  // state. If HEAD or the working-tree dirty flag differs from what
-  // we analyzed against, mark the relevance result as stale so the
-  // Claude button can prompt for a re-run. Skipped silently when no
-  // analysis is stored (nothing to compare against) or when git is
-  // unavailable for the project root.
+  // Branch relevance: pull a fresh snapshot on mount and whenever the
+  // backend emits relevance-updated. Window focus pokes the backend so
+  // a freshly-saved file picks up before the next 15s tick.
   useEffect(() => {
-    if (!relevance) return;
     let cancelled = false;
-    const check = () => {
-      branchState()
-        .then((bs) => {
-          if (cancelled || !relevance) return;
-          const stored = relevance.branch_state;
-          const changed =
-            bs.head_sha !== stored.head_sha ||
-            bs.has_uncommitted !== stored.has_uncommitted ||
-            bs.branch !== stored.branch;
-          if (changed) setRelevanceStale(true);
+    const refresh = () => {
+      relevanceSnapshot()
+        .then((snap) => {
+          if (cancelled) return;
+          setRelevantIds(new Set(snap.ids));
+          setRelevanceSites(snap.sites);
         })
         .catch(() => {
-          // git unavailable / not a repo — leave stale flag alone
+          // backend may be starting up; next emit will retry
         });
     };
-    let unlisten: (() => void) | undefined;
-    getCurrentWindow()
-      .onFocusChanged(({ payload: focused }) => {
-        if (focused) check();
-      })
+    refresh();
+    let unlistenRelevance: (() => void) | undefined;
+    subscribeRelevance(refresh)
       .then((u) => {
         if (cancelled) u();
-        else unlisten = u;
+        else unlistenRelevance = u;
       })
       .catch(() => {
         // not running under Tauri (e.g. vite preview) — skip
       });
-    check();
+
+    let unlistenFocus: (() => void) | undefined;
+    getCurrentWindow()
+      .onFocusChanged(({ payload: focused }) => {
+        focusChanged(focused).catch(() => {});
+      })
+      .then((u) => {
+        if (cancelled) u();
+        else unlistenFocus = u;
+      })
+      .catch(() => {
+        // not under Tauri
+      });
+
     return () => {
       cancelled = true;
-      unlisten?.();
+      unlistenRelevance?.();
+      unlistenFocus?.();
     };
-  }, [relevance, setRelevanceStale]);
+  }, [setRelevantIds, setRelevanceSites]);
 
   // ----- alert matching (incremental) -----
   //
@@ -589,17 +568,38 @@ export default function App() {
   // unchanged and the filter has no aggregation; otherwise rebuilt.
   const [displayedEvents, setDisplayedEvents] = useState<LogEvent[]>([]);
   const prevSourceRef = useRef<LogEvent[]>([]);
+  const prevFilterInputsRef = useRef<{
+    parsed: ReturnType<typeof parse>;
+    filterValid: boolean;
+    pinnedIds: Set<number>;
+    relevantIds: Set<number>;
+  } | null>(null);
   const filterUsesAggregation = filterValid && astHasAggregation(parsed as Ast);
 
   useEffect(() => {
     const prevSrc = prevSourceRef.current;
     prevSourceRef.current = sourceEvents;
 
+    // Track filter inputs separately. The delta optimization below is
+    // only valid when none of them changed — if the filter or one of
+    // its set-membership inputs (pinned, relevant) moved, the
+    // previously-displayed rows were filtered against a stale
+    // predicate and have to be rebuilt from source.
+    const prevFilter = prevFilterInputsRef.current;
+    const filterInputsChanged =
+      prevFilter == null ||
+      prevFilter.parsed !== parsed ||
+      prevFilter.filterValid !== filterValid ||
+      prevFilter.pinnedIds !== pinnedIds ||
+      prevFilter.relevantIds !== relevantIds;
+    prevFilterInputsRef.current = { parsed, filterValid, pinnedIds, relevantIds };
+
     // Detect "this is just an extension of the previous source array".
     // Same first id + same length-1 entry means we appended. We compare
     // by event identity (refs are stable after applyAllCached), so a
     // single equality check is enough.
     const isExtension =
+      !filterInputsChanged &&
       prevSrc.length > 0 &&
       sourceEvents.length > prevSrc.length &&
       sourceEvents[0] === prevSrc[0] &&
@@ -609,7 +609,7 @@ export default function App() {
     // OR source identity broke (replace path).
     if (!isExtension || filterUsesAggregation) {
       setDisplayedEvents(
-        rebuildDisplayed(sourceEvents, parsed, filterValid, pinnedIds, relevanceRe)
+        rebuildDisplayed(sourceEvents, parsed, filterValid, pinnedIds, relevantIds)
       );
       return;
     }
@@ -619,11 +619,11 @@ export default function App() {
       setDisplayedEvents((prev) => prev.concat(delta));
       return;
     }
-    const ctx = { pinnedIds, relevanceRe };
+    const ctx = { pinnedIds, relevantIds };
     const filteredDelta = delta.filter((ev) => evalAst(parsed as Ast, ev, ctx));
     if (filteredDelta.length === 0) return;
     setDisplayedEvents((prev) => prev.concat(filteredDelta));
-  }, [sourceEvents, parsed, filterValid, pinnedIds, relevanceRe, filterUsesAggregation]);
+  }, [sourceEvents, parsed, filterValid, pinnedIds, relevantIds, filterUsesAggregation]);
 
   // Sort view. Internal storage is oldest-first; expose a reversed
   // copy for `newest-top`. Only materializes when the source or sort
@@ -649,13 +649,13 @@ export default function App() {
     if (cutIdx >= unfilteredEvents.length) return 0;
     if (!filterValid) return unfilteredEvents.length - cutIdx;
     const resolved = resolveAst(parsed as Ast, unfilteredEvents);
-    const ctx = { pinnedIds, relevanceRe };
+    const ctx = { pinnedIds, relevantIds };
     let n = 0;
     for (let i = cutIdx; i < unfilteredEvents.length; i++) {
       if (evalAst(resolved, unfilteredEvents[i]!, ctx)) n++;
     }
     return n;
-  }, [pausedAtId, unfilteredEvents, filterValid, parsed, pinnedIds, relevanceRe]);
+  }, [pausedAtId, unfilteredEvents, filterValid, parsed, pinnedIds, relevantIds]);
 
   const setNewCount = useStore((s) => s.setNewCount);
   useEffect(() => {
@@ -725,7 +725,7 @@ export default function App() {
             fieldColumns={fieldColumns}
             highlightTerms={highlightTerms}
             alertMatches={alertMatches}
-            relevanceRe={relevanceRe}
+            relevantIds={relevantIds}
           />
           {selected && (
             <Inspector
@@ -748,11 +748,11 @@ function rebuildDisplayed(
   parsed: ReturnType<typeof parse>,
   filterValid: boolean,
   pinnedIds: Set<number>,
-  relevanceRe: RegExp | null
+  relevantIds: Set<number>
 ): LogEvent[] {
   if (!filterValid) return src.slice();
   const resolved = resolveAst(parsed as Ast, src);
-  const ctx = { pinnedIds, relevanceRe };
+  const ctx = { pinnedIds, relevantIds };
   return src.filter((ev) => evalAst(resolved, ev, ctx));
 }
 
@@ -767,15 +767,6 @@ function bisectRightById(events: LogEvent[], target: number): number {
     else hi = mid;
   }
   return lo;
-}
-
-/// Claude is asked NOT to wrap regexes in `/.../flags`, but sometimes
-/// does anyway. Strip the surrounding slashes (and any trailing flag
-/// letters) so `new RegExp(p)` doesn't choke. Leaves a non-wrapped
-/// pattern untouched.
-function stripRegexWrapper(p: string): string {
-  const m = p.match(/^\/(.+)\/([gimsuy]*)$/s);
-  return m ? m[1]! : p;
 }
 
 function collectTsBounds(ast: Ast): { lo: number; hi: number } {

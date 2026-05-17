@@ -1,10 +1,9 @@
 use serde::Serialize;
 
-use crate::claude;
 use crate::code::{self, CodeLine, EditorEntry, EmissionSite};
 use crate::event::Event;
 use crate::query::{self, Ast};
-use crate::relevance::{self, BranchState, RelevanceAnalysis};
+use crate::relevance::RelevanceSnapshot;
 use crate::state::AppState;
 
 #[derive(Clone, Debug, Serialize)]
@@ -164,32 +163,29 @@ pub async fn open_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn branch_state(
+pub async fn relevance_snapshot(
     state: tauri::State<'_, AppState>,
-) -> Result<BranchState, String> {
-    let root = project_root_or_err(&state)?;
-    let cache = std::sync::Arc::clone(&state.code_cache);
-    relevance::branch_state(root, &cache)
+) -> Result<RelevanceSnapshot, String> {
+    let engine = std::sync::Arc::clone(&state.relevance);
+    Ok(tauri::async_runtime::spawn_blocking(move || engine.snapshot())
+        .await
+        .map_err(|e| format!("snapshot task panicked: {e}"))?)
 }
 
 #[tauri::command]
-pub async fn analyze_branch_relevance(
+pub async fn focus_changed(
     state: tauri::State<'_, AppState>,
-) -> Result<RelevanceAnalysis, String> {
-    let root = project_root_or_err(&state)?.to_path_buf();
-    let cache = std::sync::Arc::clone(&state.code_cache);
-    let claude_status = claude::detect();
-    let claude_path = claude_status
-        .path
-        .ok_or_else(|| "claude code not installed".to_string())?;
-    // Move heavy work (git + claude subprocess) off the tauri command
-    // worker so the UI stays responsive while analysis runs.
-    tauri::async_runtime::spawn_blocking(move || {
-        let bs = relevance::branch_state(&root, &cache)?;
-        relevance::analyze(&root, &claude_path, &bs)
-    })
-    .await
-    .map_err(|e| format!("analysis task panicked: {e}"))?
+    focused: bool,
+) -> Result<(), String> {
+    if !focused {
+        return Ok(());
+    }
+    let engine = std::sync::Arc::clone(&state.relevance);
+    // Fire-and-forget: don't make the focus handler wait on git +
+    // file walks. The next `relevance-updated` emit picks up the
+    // new state.
+    tauri::async_runtime::spawn_blocking(move || engine.force_recompute_all());
+    Ok(())
 }
 
 #[tauri::command]

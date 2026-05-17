@@ -201,11 +201,12 @@ pub fn allowed_schemes() -> Vec<&'static str> {
 
 /// In-memory caches: shared across IPC calls. Bounded by use:
 /// emission-site grep is bounded per call, and the cache means a repeat
-/// click on the same row is free.
+/// click on the same row is free. Keys include the project root so the
+/// same message text from two different repos doesn't collide.
 pub struct CodeCache {
-    emission: Mutex<HashMap<String, Option<(PathBuf, u32)>>>,
-    blame: Mutex<HashMap<(PathBuf, u32), bool>>,
-    default_branch: Mutex<Option<String>>,
+    emission: Mutex<HashMap<(PathBuf, String), Option<(PathBuf, u32)>>>,
+    blame: Mutex<HashMap<(PathBuf, PathBuf, u32), bool>>,
+    default_branch: Mutex<HashMap<PathBuf, String>>,
 }
 
 impl CodeCache {
@@ -213,7 +214,7 @@ impl CodeCache {
         Self {
             emission: Mutex::new(HashMap::new()),
             blame: Mutex::new(HashMap::new()),
-            default_branch: Mutex::new(None),
+            default_branch: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -383,27 +384,20 @@ pub fn find_emission_site(
     if msg.trim().is_empty() {
         return Ok(None);
     }
+    let key = (project_root.to_path_buf(), msg.to_string());
     {
         let g = cache.emission.lock().unwrap();
-        if let Some(hit) = g.get(msg) {
+        if let Some(hit) = g.get(&key) {
             return Ok(hit.clone());
         }
     }
     let Some(needle) = extract_needle(msg) else {
-        cache
-            .emission
-            .lock()
-            .unwrap()
-            .insert(msg.to_string(), None);
+        cache.emission.lock().unwrap().insert(key, None);
         return Ok(None);
     };
     let mut budget = SCAN_DIR_BUDGET;
     let result = scan_dir(project_root, &needle, &mut budget);
-    cache
-        .emission
-        .lock()
-        .unwrap()
-        .insert(msg.to_string(), result.clone());
+    cache.emission.lock().unwrap().insert(key, result.clone());
     Ok(result)
 }
 
@@ -477,7 +471,7 @@ fn grep_first(path: &Path, needle: &str) -> Option<u32> {
 pub fn default_branch(project_root: &Path, cache: &CodeCache) -> String {
     {
         let g = cache.default_branch.lock().unwrap();
-        if let Some(b) = g.as_ref() {
+        if let Some(b) = g.get(project_root) {
             return b.clone();
         }
     }
@@ -494,7 +488,11 @@ pub fn default_branch(project_root: &Path, cache: &CodeCache) -> String {
         }
         _ => "main".into(),
     };
-    *cache.default_branch.lock().unwrap() = Some(branch.clone());
+    cache
+        .default_branch
+        .lock()
+        .unwrap()
+        .insert(project_root.to_path_buf(), branch.clone());
     branch
 }
 
@@ -504,7 +502,7 @@ pub fn is_local_change(
     file: &Path,
     line: u32,
 ) -> bool {
-    let key = (file.to_path_buf(), line);
+    let key = (project_root.to_path_buf(), file.to_path_buf(), line);
     {
         let g = cache.blame.lock().unwrap();
         if let Some(v) = g.get(&key) {

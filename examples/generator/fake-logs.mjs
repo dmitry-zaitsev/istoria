@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable no-console -- this file's whole job is to emit console output as fake log data */
 // Random log emitter for dogfooding istoria.
 // Usage: `node examples/generator/fake-logs.mjs [--rate 50] [--burst 5]`
 //   --rate  events per second (default 30)
@@ -143,12 +144,49 @@ function makePlainLine() {
   return `[${ts}] ${level.padEnd(5)} ${src.padEnd(4)} ${pick(PATHS)} ${pick(STATUS_CODES)}`;
 }
 
+// Branch-relevance demo emissions. These live as actual log calls in
+// this source file, so when fake-logs.mjs is part of the current
+// branch's diff, the relevance pill picks each one up as a Direct
+// pattern and the runtime messages below light up in the log stream.
+// Mix of concat, template literal, and printf-style format so each
+// extraction path is exercised.
+const PROCESSORS = ["resize", "thumbnail", "ocr", "transcode", "embedder"];
+
+function emitBranchDemoLogs() {
+  const itemCount = Math.floor(Math.random() * 1000);
+  const userId = pick(USERS);
+  const proc = pick(PROCESSORS);
+  const url = `https://feed.svc/${reqId()}`;
+
+  // Concat-style: pieces = ["loaded", "items from cache"]
+  console.log("loaded", itemCount, "items from cache");
+
+  // Template literal: pieces = ["processed", "jobs in the worker pool"]
+  console.log(`processed ${itemCount} jobs in the worker pool`);
+
+  // Multi-arg with template embedded: exercise the indirect path
+  // when callers reach our processors via the runner module.
+  console.log("processor", proc, "finished pass for user", userId);
+
+  // Warn-shaped call: pieces caught by the same skeleton extractor.
+  if (Math.random() < 0.3) {
+    console.warn("connection refused for", url);
+  }
+}
+
 function emit() {
   const r = Math.random();
+  // ~12% of emits route through the demo branch — frequent enough to
+  // see the pill grow within a couple of seconds of starting the
+  // generator, sparse enough that the bulk traffic remains JSON.
+  if (r < 0.12) {
+    emitBranchDemoLogs();
+    return;
+  }
   let line;
-  if (INCLUDE_PLAIN && r < 0.05) line = makePlainLine();
-  else if (r < 0.55) line = makeHttpEvent();
-  else if (r < 0.8) line = makeJobEvent();
+  if (INCLUDE_PLAIN && r < 0.17) line = makePlainLine();
+  else if (r < 0.6) line = makeHttpEvent();
+  else if (r < 0.82) line = makeJobEvent();
   else line = makeDbEvent();
   process.stdout.write(line + "\n");
 }

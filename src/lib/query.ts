@@ -401,9 +401,9 @@ function wildcardToRegex(glob: string): RegExp {
 /// (e.g. `pinned` reads the user's pin set, not a field on the row).
 export interface EvalCtx {
   pinnedIds?: Set<number>;
-  /// Single OR-joined regex compiled from the relevance regex list.
-  /// `relevant:true` matches when this regex hits ev.msg or ev.raw.
-  relevanceRe?: RegExp | null;
+  /// Backend-computed set of event ids that hit branch-relevance
+  /// patterns. `relevant:true` is a set-membership check.
+  relevantIds?: Set<number>;
 }
 
 const STACK_KEYS = ["stack", "stacktrace", "stack_trace", "trace"];
@@ -431,9 +431,7 @@ function lookup(ev: LogEvent, key: string, ctx?: EvalCtx): unknown {
   if (key === "pinned") return ctx?.pinnedIds?.has(ev.id) ?? false;
   if (key === "hasStackTrace" || key === "stack") return hasStackTrace(ev);
   if (key === "relevant") {
-    const re = ctx?.relevanceRe;
-    if (!re) return false;
-    return re.test(ev.msg) || re.test(ev.raw);
+    return ctx?.relevantIds?.has(ev.id) ?? false;
   }
   let cur: unknown = ev.fields;
   for (const part of key.split(".")) {

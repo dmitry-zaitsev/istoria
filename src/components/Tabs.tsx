@@ -14,6 +14,7 @@ import {
 } from "../lib/views";
 import { toast } from "../lib/toast";
 import { ClaudeButton } from "./ClaudeButton";
+import { RelevancePill } from "./RelevancePill";
 
 export function Tabs() {
   const views = useStore((s) => s.views);
@@ -245,6 +246,7 @@ export function Tabs() {
           </div>
         )
       )}
+      <RelevancePill />
       <ClaudeButton />
     </div>
   );
