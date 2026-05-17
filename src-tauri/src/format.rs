@@ -35,10 +35,8 @@ impl Detector {
 
     pub fn parse(&mut self, id: u64, source: &str, branch: &str, raw: String) -> Event {
         let try_json = !matches!(self.locked, Some(LineFormat::Plain));
-        let parsed: Option<Value> = if try_json {
-            serde_json::from_str::<Value>(&raw)
-                .ok()
-                .filter(|v| v.is_object())
+        let parsed: Option<(Option<String>, Value)> = if try_json {
+            try_object_from_raw(&raw)
         } else {
             None
         };
@@ -58,7 +56,7 @@ impl Detector {
         }
 
         match parsed {
-            Some(v) => event_from_json(id, source, branch, raw, v),
+            Some((tag, v)) => event_from_json(id, source, branch, raw, v, tag.as_deref()),
             None => event_from_plain(id, source, branch, raw),
         }
     }
@@ -70,14 +68,28 @@ impl Default for Detector {
     }
 }
 
-fn event_from_json(id: u64, source: &str, branch: &str, raw: String, v: Value) -> Event {
+fn event_from_json(
+    id: u64,
+    source: &str,
+    branch: &str,
+    raw: String,
+    v: Value,
+    tag: Option<&str>,
+) -> Event {
     // Double-piped logs: when `msg` itself parses as a JSON object,
     // a wrapping tool stringified an inner structured log (pino,
     // bunyan, etc). Merge inner keys up so `pid`, `reqId`, `hostname`
     // are queryable instead of buried in a string. Inner wins on
     // conflicting keys — it's the canonical payload; outer is just
     // transport.
-    let v = unwrap_nested_msg_json(v);
+    let mut v = unwrap_nested_msg_json(v);
+    if let (Some(t), Some(obj)) = (tag, v.as_object_mut()) {
+        // Bracket prefix tag from `[be] {json}` style lines. Don't
+        // clobber if inner JSON already carries a `tag` — inner is
+        // canonical.
+        obj.entry("tag".to_string())
+            .or_insert(Value::String(t.to_string()));
+    }
     let obj = v.as_object().expect("filtered to objects above");
     // Try common string-level keys first, then fall back to numeric
     // (Bunyan/Pino encode level as 10/20/30/40/50/60).
@@ -119,6 +131,38 @@ fn event_from_json(id: u64, source: &str, branch: &str, raw: String, v: Value) -
         raw,
         fields: Some(v),
     }
+}
+
+/// Try to extract a JSON object from a raw line. Handles:
+///   - Pure JSON: `{"level":...}`
+///   - Bracket-tagged: `[be] {"level":...}` — common when one tool
+///     prefixes another's JSON output to distinguish streams (pm2-
+///     style multiplexers, ad-hoc `[be]`/`[fe]` wrappers). Without
+///     this, sniffing fails on the `[` and the whole stream locks to
+///     plain, burying every structured field inside `msg` as a string.
+/// The returned tag (when present) is added to fields downstream.
+fn try_object_from_raw(raw: &str) -> Option<(Option<String>, Value)> {
+    if let Ok(v) = serde_json::from_str::<Value>(raw) {
+        if v.is_object() {
+            return Some((None, v));
+        }
+    }
+    let s = raw.trim_start();
+    let rest = s.strip_prefix('[')?;
+    let end = rest.find(']')?;
+    let tag = rest[..end].trim();
+    if tag.is_empty() {
+        return None;
+    }
+    let after = rest[end + 1..].trim_start();
+    if !after.starts_with('{') {
+        return None;
+    }
+    let v = serde_json::from_str::<Value>(after).ok()?;
+    if !v.is_object() {
+        return None;
+    }
+    Some((Some(tag.to_string()), v))
 }
 
 /// If the outer object's `msg` (or `message`) is a string that itself
@@ -616,6 +660,60 @@ mod tests {
         let ev = d.parse(1, "src", "main", r#"{"level":"warn","msg":"slow query"}"#.to_string());
         assert_eq!(ev.msg, "slow query");
         assert_eq!(ev.level, Level::Warn);
+    }
+
+    #[test]
+    fn bracket_tagged_json_unwraps_and_carries_tag() {
+        // `[be] {json}` form — bracket prefix used by multiplexers
+        // (e.g. one tool piping backend+frontend into one stream).
+        // Without unwrapping, the sniffer locks plain and every
+        // structured key is buried inside msg.
+        let mut d = Detector::new();
+        let raw = r#"[be] {"level":30,"time":1779024878883,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-f","res":{"statusCode":200},"responseTime":0.37,"msg":"request completed"}"#;
+        let ev = d.parse(1, "src", "main", raw.to_string());
+        assert_eq!(ev.msg, "request completed");
+        assert_eq!(ev.level, Level::Info);
+        let fields = ev.fields.expect("fields set");
+        let obj = fields.as_object().expect("object");
+        assert_eq!(obj.get("tag").and_then(|v| v.as_str()), Some("be"));
+        assert_eq!(obj.get("pid").and_then(|v| v.as_i64()), Some(52415));
+        assert_eq!(obj.get("reqId").and_then(|v| v.as_str()), Some("req-f"));
+        assert_eq!(
+            obj.get("res")
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.get("statusCode"))
+                .and_then(|v| v.as_i64()),
+            Some(200),
+        );
+    }
+
+    #[test]
+    fn bracket_tagged_json_inner_tag_wins() {
+        // If inner JSON already carries a `tag`, don't clobber it
+        // with the bracket prefix.
+        let mut d = Detector::new();
+        let raw = r#"[be] {"tag":"inner","msg":"hi"}"#;
+        let ev = d.parse(1, "src", "main", raw.to_string());
+        let obj = ev.fields.unwrap();
+        let obj = obj.as_object().unwrap();
+        assert_eq!(obj.get("tag").and_then(|v| v.as_str()), Some("inner"));
+    }
+
+    #[test]
+    fn bracket_prefix_without_json_falls_to_plain() {
+        let mut d = Detector::new();
+        let ev = d.parse(1, "src", "main", "[be] hello world".to_string());
+        // No JSON body — should hit the plain path so the frontend
+        // bracket-tag transformer can split the tag from a text body.
+        assert!(ev.fields.is_none());
+        assert_eq!(ev.msg, "[be] hello world");
+    }
+
+    #[test]
+    fn bracket_tagged_garbage_after_falls_to_plain() {
+        let mut d = Detector::new();
+        let ev = d.parse(1, "src", "main", "[be] {not valid".to_string());
+        assert!(ev.fields.is_none());
     }
 
     #[test]

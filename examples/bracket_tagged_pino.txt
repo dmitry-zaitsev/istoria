@@ -1,0 +1,21 @@
+[be] {"level":30,"time":1779024878883,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-a","req":{"method":"GET","url":"/health"},"msg":"incoming request"}
+[be] {"level":30,"time":1779024878884,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-a","res":{"statusCode":200},"responseTime":0.37,"msg":"request completed"}
+[be] {"level":30,"time":1779024878901,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-b","req":{"method":"POST","url":"/sessions"},"msg":"incoming request"}
+[be] {"level":40,"time":1779024878944,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-b","query":"SELECT * FROM users WHERE id=$1","durMs":312,"msg":"slow query"}
+[be] {"level":30,"time":1779024878945,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-b","res":{"statusCode":201},"responseTime":44.1,"msg":"request completed"}
+[fe] {"level":30,"time":1779024878988,"pid":52480,"hostname":"macbookpro.lan","route":"/dashboard","msg":"navigated"}
+[fe] {"level":30,"time":1779024879010,"pid":52480,"hostname":"macbookpro.lan","route":"/dashboard","ttiMs":182,"msg":"interactive"}
+[be] {"level":30,"time":1779024879101,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-c","req":{"method":"GET","url":"/api/feed"},"msg":"incoming request"}
+[be] {"level":50,"time":1779024879188,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-c","err":{"type":"TypeError","message":"cannot read property id of undefined","stack":"at handler (src/api/feed.ts:42:18)\n  at processRequest (src/server.ts:188:7)"},"msg":"unhandled exception"}
+[be] {"level":50,"time":1779024879189,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-c","res":{"statusCode":500},"responseTime":88.0,"msg":"request errored"}
+[fe] {"level":40,"time":1779024879201,"pid":52480,"hostname":"macbookpro.lan","route":"/dashboard","msg":"fetch failed, retrying","attempt":1}
+[fe] {"level":40,"time":1779024879301,"pid":52480,"hostname":"macbookpro.lan","route":"/dashboard","msg":"fetch failed, retrying","attempt":2}
+[fe] {"level":50,"time":1779024879401,"pid":52480,"hostname":"macbookpro.lan","route":"/dashboard","msg":"fetch failed, giving up","attempt":3,"err":"NetworkError"}
+[be] {"level":20,"time":1779024879500,"pid":52415,"hostname":"macbookpro.lan","msg":"cache miss","key":"users:list:page=1"}
+[be] {"level":30,"time":1779024879588,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-d","req":{"method":"GET","url":"/api/users"},"msg":"incoming request"}
+[be] {"level":30,"time":1779024879591,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-d","res":{"statusCode":200},"responseTime":3.2,"msg":"request completed"}
+[fe] {"level":30,"time":1779024879700,"pid":52480,"hostname":"macbookpro.lan","route":"/users","ttiMs":98,"msg":"interactive"}
+[be] {"level":30,"time":1779024879788,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-e","req":{"method":"POST","url":"/payments"},"msg":"incoming request"}
+[be] {"level":50,"time":1779024879888,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-e","gateway":"stripe","msg":"gateway timeout","durMs":8003}
+[be] {"level":30,"time":1779024880001,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-f","req":{"method":"GET","url":"/health"},"msg":"incoming request"}
+[be] {"level":30,"time":1779024880002,"pid":52415,"hostname":"macbookpro.lan","reqId":"req-f","res":{"statusCode":200},"responseTime":0.41,"msg":"request completed"}
