@@ -62,24 +62,39 @@ fn find_binary(name: &str, well_known_relative: &[&str]) -> Option<PathBuf> {
 fn find_via_login_shell(name: &str) -> Option<PathBuf> {
     // Hardcoded names ("claude", "codex") — no shell injection surface.
     let cmd = format!("command -v {name}");
+    // Try login-non-interactive first (cheap, sources zprofile/profile),
+    // then interactive-login (sources zshrc/bashrc where most users add
+    // PATH entries like `~/.local/bin`). macOS Tauri apps launched from
+    // Finder inherit a minimal launchd PATH, so without this many `claude`
+    // installs go undetected even though `which claude` works in Terminal.
     for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
         if !std::path::Path::new(shell).exists() {
             continue;
         }
-        let out = std::process::Command::new(shell)
-            .args(["-lc", &cmd])
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            continue;
-        }
-        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if s.is_empty() {
-            continue;
-        }
-        let p = PathBuf::from(s);
-        if p.is_file() {
-            return Some(p);
+        for flags in ["-lc", "-ilc"] {
+            let out = std::process::Command::new(shell)
+                .args([flags, &cmd])
+                .output();
+            let Ok(out) = out else { continue };
+            if !out.status.success() {
+                continue;
+            }
+            // Interactive shells can emit rc-file noise; take the last
+            // non-empty line which is what `command -v` actually printed.
+            let s = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .rev()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("")
+                .to_string();
+            if s.is_empty() {
+                continue;
+            }
+            let p = PathBuf::from(s);
+            if p.is_file() {
+                return Some(p);
+            }
         }
     }
     None
@@ -89,6 +104,7 @@ pub fn detect() -> ClaudeStatus {
     let path = find_binary(
         "claude",
         &[
+            ".local/bin/claude",
             ".claude/local/claude",
             ".npm-global/bin/claude",
             ".bun/bin/claude",
@@ -105,6 +121,7 @@ pub fn detect_codex() -> ClaudeStatus {
     let path = find_binary(
         "codex",
         &[
+            ".local/bin/codex",
             ".codex/bin/codex",
             ".npm-global/bin/codex",
             ".bun/bin/codex",
