@@ -56,6 +56,17 @@
     }
   },
   {
+    "id": "rust-tracing-fmt",
+    "name": "Rust tracing-subscriber fmt",
+    "order": 10,
+    "pattern": "^(?<timestamp>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z)\\s+(?<lvl>TRACE|DEBUG|INFO|WARN|ERROR)\\s+(?<target>[\\w:]+):\\s+(?<body>.*)$",
+    "output": {
+      "level": "${lvl}",
+      "msg": "${body}",
+      "source": "${target}"
+    }
+  },
+  {
     "id": "rust-tracing",
     "name": "Rust env_logger/tracing",
     "order": 11,

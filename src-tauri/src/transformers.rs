@@ -71,8 +71,8 @@ mod tests {
 
     #[test]
     fn loads_all_rules() {
-        // No rule should silently fail to compile — we shipped 13.
-        assert_eq!(RULES.len(), 13);
+        // No rule should silently fail to compile — we shipped 14.
+        assert_eq!(RULES.len(), 14);
     }
 
     #[test]
@@ -118,6 +118,17 @@ mod tests {
         assert_eq!(
             extract_body("[2026-05-02T10:30:45Z INFO mod::path] body text"),
             "body text"
+        );
+    }
+
+    #[test]
+    fn rust_tracing_fmt_strips() {
+        // tracing-subscriber default fmt — unbracketed, target before `:`.
+        assert_eq!(
+            extract_body(
+                "2026-05-18T10:34:21.543675Z  INFO memphis_lib::agent: batch.start kind=\"file\" size=10"
+            ),
+            "batch.start kind=\"file\" size=10"
         );
     }
 

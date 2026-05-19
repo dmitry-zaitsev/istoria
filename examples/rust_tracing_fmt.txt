@@ -1,0 +1,10 @@
+2026-05-18T10:34:21.543675Z  INFO memphis_lib::agent: batch.start kind="file" size=10 paths=["src/assets/tauri.svg", "src/assets/typescript.svg", "src/assets/vite.svg", "src-tauri/src/agent.rs", "src-tauri/src/analysis.rs", "src-tauri/src/lib.rs", "src-tauri/src/main.rs", "src-tauri/src/skip.rs", "src-tauri/src/store.rs", "src-tauri/src/walker.rs"]
+2026-05-18T10:34:21.612043Z DEBUG memphis_lib::walker: walker.scan dir="src-tauri/src" entries=18
+2026-05-18T10:34:21.614219Z TRACE memphis_lib::skip: skip.match path=".git" reason="gitignore"
+2026-05-18T10:34:21.701888Z  INFO memphis_lib::store: store.flush rows=3421 dur_ms=42
+2026-05-18T10:34:21.733401Z  WARN memphis_lib::analysis: analysis.slow target="agent.rs" dur_ms=812 budget_ms=500
+2026-05-18T10:34:21.802551Z ERROR memphis_lib::agent: batch.failed error="permission denied" path="src-tauri/src/locked.rs"
+2026-05-18T10:34:21.845112Z  INFO memphis_lib::agent: batch.retry attempt=2 backoff_ms=200
+2026-05-18T10:34:21.901774Z DEBUG memphis_lib::store: store.compact freed_bytes=10485760
+2026-05-18T10:34:22.014331Z  INFO memphis_lib::agent: batch.done kind="file" ok=9 failed=1 dur_ms=470
+2026-05-18T10:34:22.115662Z  WARN memphis_lib::walker: walker.deprecated_flag flag="--legacy-mode" replacement="--mode=legacy"
