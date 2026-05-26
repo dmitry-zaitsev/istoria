@@ -386,6 +386,13 @@ function buildSuggestions(
   const tail = m?.[1] ?? "";
   const replaceFrom = input.length - tail.length;
 
+  // Pure-substring mode: trailing has no `:`, parens, or operators, so
+  // the whole input is one free-text search. Without this, picking an
+  // msg autocomplete via Enter leaves the un-replaced prefix words as
+  // bare implicit-AND pills next to the new `msg:"…"` pill.
+  const pureSubstring =
+    input.length > 0 && !/[:()]/.test(input) && !/\b(AND|OR|NOT)\b/.test(input);
+
   // Top-level operator suggestion when no partial token at end —
   // but only after the user has added a separator (whitespace), not
   // immediately after a `)` closing a fn call. Otherwise pressing
@@ -475,8 +482,10 @@ function buildSuggestions(
     })
   );
 
-  if (suggest && tail.length >= 2) {
-    const matches = suggest(tail);
+  const suggestQuery = pureSubstring ? input.trim() : tail;
+  const suggestReplaceFrom = pureSubstring ? 0 : replaceFrom;
+  if (suggest && suggestQuery.length >= 2) {
+    const matches = suggest(suggestQuery);
     if (matches.length > 0) {
       const items = matches.map<SuggestionItem>((m) => {
         if (m.kind === "key") {
@@ -501,7 +510,7 @@ function buildSuggestions(
           commit: true,
         };
       });
-      return { replaceFrom, items: [...items, ...opMatches] };
+      return { replaceFrom: suggestReplaceFrom, items: [...items, ...opMatches] };
     }
   }
 
