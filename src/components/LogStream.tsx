@@ -324,10 +324,9 @@ export function LogStream({
               }`}
               style={{
                 position: "absolute",
-                top: 0,
+                top: vi.start,
                 left: 0,
                 right: 0,
-                transform: `translateY(${vi.start}px)`,
                 height: vi.size,
               }}
               onMouseDown={(e) => onRowMouseDown(ev.id, e)}
