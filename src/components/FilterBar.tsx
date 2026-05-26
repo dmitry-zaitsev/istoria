@@ -390,8 +390,7 @@ function buildSuggestions(
   // the whole input is one free-text search. Without this, picking an
   // msg autocomplete via Enter leaves the un-replaced prefix words as
   // bare implicit-AND pills next to the new `msg:"…"` pill.
-  const pureSubstring =
-    input.length > 0 && !/[:()]/.test(input) && !/\b(AND|OR|NOT)\b/.test(input);
+  const pureSubstring = input.length > 0 && !/[:()]/.test(input) && !/\b(AND|OR|NOT)\b/.test(input);
 
   // Top-level operator suggestion when no partial token at end —
   // but only after the user has added a separator (whitespace), not
