@@ -97,6 +97,11 @@ function Group({
   const matched = effective
     ? group.values.filter((v) => v.value.toLowerCase().includes(effective.toLowerCase()))
     : group.values;
+  // Top-level search hit the group by key/label but no value text
+  // matched — fall back to top values so the user can actually see
+  // what's in the facet instead of staring at an empty header.
+  const nameOnlyHit = !!valueFilter && matched.length === 0 && group.values.length > 0;
+  const displayed = nameOnlyHit ? group.values : matched;
 
   // Keep the original count-desc order. Toggling a checkbox must NOT
   // reorder the list — pinned values stay where they are. To keep
@@ -105,15 +110,15 @@ function Group({
   // pinned regardless of position.
   const cappedSet = new Set<string>();
   let kept = 0;
-  for (const v of matched) {
+  for (const v of displayed) {
     const isPinned = pinnedSet.has(v.value);
     if (isPinned || showAll || effectiveSearch || kept < VISIBLE_CAP) {
       cappedSet.add(v.value);
       if (!isPinned) kept++;
     }
   }
-  const visible = matched.filter((v) => cappedSet.has(v.value));
-  const overflow = matched.length - visible.length;
+  const visible = displayed.filter((v) => cappedSet.has(v.value));
+  const overflow = displayed.length - visible.length;
 
   if (group.values.length === 0) return null;
 

@@ -12,13 +12,12 @@ interface RangeSliderProps {
 }
 
 const PERCENTILES = [50, 75, 90, 95, 99] as const;
-const DURATION_KEYWORDS = ["dur", "latency", "elapsed", "ms", "_us", "time_"];
-const MIN_VALUES_FOR_PERCENTILES = 30;
-const MIN_DISTINCT_FOR_PERCENTILES = 10;
+const MIN_VALUES_FOR_PERCENTILES = 16;
+const MIN_DISTINCT_FOR_PERCENTILES = 16;
 
-/// Auto-detect numeric facets that look like durations / continuous
-/// distributions. Status codes, ids, and tiny enums are excluded —
-/// percentile chips on those are nonsense.
+/// Auto-detect numeric facets with enough cardinality to warrant a
+/// percentile slider rather than checkboxes. Status codes, ids, ports
+/// stay categorical — percentile chips on those are nonsense.
 export function detectNumericFacets(events: LogEvent[]): string[] {
   const sample = events.slice(-200);
   if (sample.length < MIN_VALUES_FOR_PERCENTILES) return [];
@@ -47,25 +46,14 @@ export function detectNumericFacets(events: LogEvent[]): string[] {
     if (c.total < MIN_VALUES_FOR_PERCENTILES) continue;
     if (c.numeric / c.total < 0.8) continue;
     if (c.values.size < MIN_DISTINCT_FOR_PERCENTILES) continue;
-    if (looksLikeStatusOrId(k, c.values)) continue;
-    if (!isDurationLike(k, c.values)) continue;
+    if (looksLikeStatusOrId(k)) continue;
     out.push(k);
   }
   return out;
 }
 
-function looksLikeStatusOrId(key: string, values: Set<number>): boolean {
-  if (/(^|\.|_)(status|status_code|code|id|pid|port)$/i.test(key)) return true;
-  if (values.size <= 10) return true;
-  return false;
-}
-
-function isDurationLike(key: string, values: Set<number>): boolean {
-  if (DURATION_KEYWORDS.some((kw) => key.toLowerCase().includes(kw))) return true;
-  const arr = [...values];
-  const lo = Math.min(...arr);
-  const hi = Math.max(...arr);
-  return values.size >= 20 && lo > 0 && hi / lo >= 100;
+function looksLikeStatusOrId(key: string): boolean {
+  return /(^|\.|_)(status|status_code|code|id|pid|port)$/i.test(key);
 }
 
 function walk(
