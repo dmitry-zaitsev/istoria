@@ -178,6 +178,11 @@ struct FileEntry {
     lang: Lang,
     /// Module ids imported by this file (last segment of each import).
     imports: HashSet<String>,
+    /// Subset of `imports` re-exported by this file (`export ... from`
+    /// in TS/JS, `pub use` in Rust). Used for barrel transparency: if
+    /// a file re-exports a touched module, treat the file itself as a
+    /// stand-in target so its callers count as indirect referrers.
+    re_exports: HashSet<String>,
     log_calls: Vec<LogCall>,
 }
 
@@ -269,10 +274,11 @@ impl ProjectIndex {
             }
             let Ok(content) = read_file(&path) else { continue };
             let imports = extract_imports(&content, lang);
+            let re_exports = extract_re_exports(&content, lang);
             let log_calls = extract_log_calls(&content);
             self.replace_file(
                 path,
-                FileEntry { mtime, lang, imports, log_calls },
+                FileEntry { mtime, lang, imports, re_exports, log_calls },
             );
         }
     }
@@ -378,6 +384,56 @@ pub fn module_id_candidates(rel_path: &Path) -> Vec<String> {
     out
 }
 
+/// Fixed-point walk: any file whose `re_exports` overlap `id_origin`
+/// inherits its origins under the barrel's own module-id, so callers
+/// of the barrel become candidate referrers of the original touched
+/// file. Capped at 3 iterations to bound work on chained barrels;
+/// duplicates are filtered so a cycle in re-exports terminates.
+fn expand_through_barrels(
+    id_origin: &mut HashMap<String, Vec<String>>,
+    index: &ProjectIndex,
+    root: &Path,
+) {
+    for _ in 0..3 {
+        let mut additions: Vec<(String, String)> = Vec::new();
+        for (path, entry) in &index.files {
+            if entry.re_exports.is_empty() {
+                continue;
+            }
+            let mut inherited: Vec<String> = Vec::new();
+            for rex in &entry.re_exports {
+                if let Some(origins) = id_origin.get(rex) {
+                    for o in origins {
+                        if !inherited.contains(o) {
+                            inherited.push(o.clone());
+                        }
+                    }
+                }
+            }
+            if inherited.is_empty() {
+                continue;
+            }
+            let rel = path.strip_prefix(root).unwrap_or(path);
+            for mid in module_id_candidates(rel) {
+                for o in &inherited {
+                    additions.push((mid.clone(), o.clone()));
+                }
+            }
+        }
+        let mut grew = false;
+        for (id, origin) in additions {
+            let v = id_origin.entry(id).or_default();
+            if !v.contains(&origin) {
+                v.push(origin);
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+}
+
 // --------------------------------------------------------------------
 // Import line extraction (per-language)
 // --------------------------------------------------------------------
@@ -385,8 +441,13 @@ pub fn module_id_candidates(rel_path: &Path) -> Vec<String> {
 fn import_re_ts() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
+        // Alternatives:
+        //   1) `from "x"`             — named/default/namespace imports + re-exports
+        //   2) `require("x")`         — CommonJS
+        //   3) `import("x")`          — dynamic ESM
+        //   4) `^import "x"`          — side-effect imports (multiline anchor)
         Regex::new(
-            r#"(?:from\s+["']([^"']+)["']|require\(\s*["']([^"']+)["']|import\(\s*["']([^"']+)["'])"#,
+            r#"(?m)(?:from\s+["']([^"']+)["']|require\(\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']|^\s*import\s+["']([^"']+)["'])"#,
         )
         .unwrap()
     })
@@ -400,9 +461,41 @@ fn import_re_rust() -> &'static Regex {
     })
 }
 
+fn import_grouped_re_rust() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        // `use path::{a, b as c, d::e};` — also matches `pub use ...::{...}`.
+        Regex::new(r"\b(?:pub(?:\s*\([^)]+\))?\s+)?use\s+([\w:]+)::\{([^}]+)\}").unwrap()
+    })
+}
+
 fn import_re_java() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| Regex::new(r"import\s+(?:static\s+)?([\w.]+)\s*;").unwrap())
+}
+
+fn re_export_re_ts() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        // `export * from "x"`, `export * as ns from "x"`, `export { a, b } from "x"`,
+        // `export type { a } from "x"`, `export type * from "x"`.
+        Regex::new(
+            r#"(?m)^\s*export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+["']([^"']+)["']"#,
+        )
+        .unwrap()
+    })
+}
+
+fn re_export_re_rust() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r"\bpub(?:\s*\([^)]+\))?\s+use\s+([\w:]+)").unwrap())
+}
+
+fn re_export_grouped_re_rust() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r"\bpub(?:\s*\([^)]+\))?\s+use\s+([\w:]+)::\{([^}]+)\}").unwrap()
+    })
 }
 
 fn extract_imports(content: &str, lang: Lang) -> HashSet<String> {
@@ -410,7 +503,7 @@ fn extract_imports(content: &str, lang: Lang) -> HashSet<String> {
     match lang {
         Lang::TsJs => {
             for cap in import_re_ts().captures_iter(content) {
-                for i in 1..=3 {
+                for i in 1..=4 {
                     if let Some(m) = cap.get(i) {
                         if let Some(id) = ts_module_id_from_path(m.as_str()) {
                             out.insert(id);
@@ -430,6 +523,31 @@ fn extract_imports(content: &str, lang: Lang) -> HashSet<String> {
                     }
                 }
             }
+            for cap in import_grouped_re_rust().captures_iter(content) {
+                let (Some(path_m), Some(body_m)) = (cap.get(1), cap.get(2)) else { continue };
+                for item in body_m.as_str().split(',') {
+                    let item = item.trim();
+                    if item.is_empty() {
+                        continue;
+                    }
+                    let head = item.split_whitespace().next().unwrap_or("");
+                    if head == "self" {
+                        if let Some(last) = path_m.as_str().rsplit("::").next() {
+                            if !last.is_empty() && last != "crate" && last != "super" {
+                                out.insert(last.to_string());
+                            }
+                        }
+                        continue;
+                    }
+                    if let Some(last) = head.rsplit("::").next() {
+                        let id = last
+                            .trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                        if !id.is_empty() && id != "*" && id != "super" {
+                            out.insert(id.to_string());
+                        }
+                    }
+                }
+            }
         }
         Lang::Java => {
             for cap in import_re_java().captures_iter(content) {
@@ -443,6 +561,65 @@ fn extract_imports(content: &str, lang: Lang) -> HashSet<String> {
                 }
             }
         }
+    }
+    out
+}
+
+/// Module ids re-exported by this file. Empty for non-barrel files and
+/// for languages without re-export syntax (Java).
+fn extract_re_exports(content: &str, lang: Lang) -> HashSet<String> {
+    let mut out = HashSet::new();
+    match lang {
+        Lang::TsJs => {
+            for cap in re_export_re_ts().captures_iter(content) {
+                if let Some(m) = cap.get(1) {
+                    if let Some(id) = ts_module_id_from_path(m.as_str()) {
+                        out.insert(id);
+                    }
+                }
+            }
+        }
+        Lang::Rust => {
+            for cap in re_export_re_rust().captures_iter(content) {
+                if let Some(m) = cap.get(1) {
+                    if let Some(last) = m.as_str().rsplit("::").next() {
+                        if !last.is_empty()
+                            && last != "self"
+                            && last != "super"
+                            && last != "crate"
+                        {
+                            out.insert(last.to_string());
+                        }
+                    }
+                }
+            }
+            for cap in re_export_grouped_re_rust().captures_iter(content) {
+                let (Some(path_m), Some(body_m)) = (cap.get(1), cap.get(2)) else { continue };
+                for item in body_m.as_str().split(',') {
+                    let item = item.trim();
+                    if item.is_empty() {
+                        continue;
+                    }
+                    let head = item.split_whitespace().next().unwrap_or("");
+                    if head == "self" {
+                        if let Some(last) = path_m.as_str().rsplit("::").next() {
+                            if !last.is_empty() && last != "crate" && last != "super" {
+                                out.insert(last.to_string());
+                            }
+                        }
+                        continue;
+                    }
+                    if let Some(last) = head.rsplit("::").next() {
+                        let id = last
+                            .trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                        if !id.is_empty() && id != "*" && id != "super" {
+                            out.insert(id.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        Lang::Java => {}
     }
     out
 }
@@ -468,7 +645,7 @@ fn log_call_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         Regex::new(
-            r"\b(?:console\.\w+|log\.\w+|logger\.\w+|tracing::\w+!|println!|eprintln!|info!|warn!|error!|debug!|trace!|logging\.\w+|fmt\.Println|fmt\.Printf|slog\.\w+|printf|fprintf|System\.out\.print(?:ln|f)?)\s*\(",
+            r"(?i)\b(?:console\.\w+|log\.\w+|logger\.\w+|tracing::\w+!|println!|eprintln!|info!|warn!|error!|debug!|trace!|logging\.\w+|fmt\.Println|fmt\.Printf|slog\.\w+|printf|fprintf|System\.out\.print(?:ln|f)?)\s*\(",
         )
         .unwrap()
     })
@@ -979,20 +1156,34 @@ impl PatternCache {
 
         // Indirect (1-hop): for each touched file's module_ids, find
         // referrers; emit log calls in each referrer with via_files.
-        let mut via_map: HashMap<PathBuf, Vec<String>> = HashMap::new();
+        // Barrel transparency: a file with `export ... from "T"` (TS)
+        // or `pub use ...::T` (Rust) inherits T's origins, so its own
+        // module-id is folded into the lookup. via_files keeps pointing
+        // at the actually-touched file so the user sees the real cause,
+        // not the intermediate barrel.
+        let mut id_origin: HashMap<String, Vec<String>> = HashMap::new();
         for tf_rel in &touched {
             let tf_path = Path::new(tf_rel);
-            let ids = module_id_candidates(tf_path);
-            for id in ids {
-                if let Some(refs) = entry.index.referring_files(&id) {
-                    for r in refs {
-                        if touched_abs.contains(r) {
-                            continue;
-                        }
-                        via_map
-                            .entry(r.clone())
-                            .or_default()
-                            .push(tf_rel.clone());
+            for id in module_id_candidates(tf_path) {
+                let v = id_origin.entry(id).or_default();
+                if !v.contains(tf_rel) {
+                    v.push(tf_rel.clone());
+                }
+            }
+        }
+        expand_through_barrels(&mut id_origin, &entry.index, root);
+
+        let mut via_map: HashMap<PathBuf, Vec<String>> = HashMap::new();
+        for (id, origins) in &id_origin {
+            let Some(refs) = entry.index.referring_files(id) else { continue };
+            for r in refs {
+                if touched_abs.contains(r) {
+                    continue;
+                }
+                let v = via_map.entry(r.clone()).or_default();
+                for o in origins {
+                    if !v.contains(o) {
+                        v.push(o.clone());
                     }
                 }
             }
@@ -1407,6 +1598,22 @@ mod tests {
     }
 
     #[test]
+    fn capitalized_logger_matches() {
+        assert!(check_match(
+            r#"Logger.info("loaded", count, "items")"#,
+            "loaded 7 items"
+        ));
+    }
+
+    #[test]
+    fn capitalized_log_matches() {
+        assert!(check_match(
+            r#"Log.warn("disk", pct, "percent full")"#,
+            "disk 92 percent full"
+        ));
+    }
+
+    #[test]
     fn parse_unified_diff_single_file_addition() {
         let diff = "--- a/foo.ts\n+++ b/foo.ts\n@@ -10,0 +11,2 @@\n+console.log(\"x\");\n+console.log(\"y\");\n";
         let hits = parse_unified_diff(diff);
@@ -1477,6 +1684,24 @@ import("./Qux");
     }
 
     #[test]
+    fn extract_imports_ts_side_effect_import() {
+        let src = r#"
+import "@linear/models/MyModel";
+import './polyfills';
+"#;
+        let ids = extract_imports(src, Lang::TsJs);
+        assert!(ids.contains("MyModel"), "ids: {ids:?}");
+        assert!(ids.contains("polyfills"), "ids: {ids:?}");
+    }
+
+    #[test]
+    fn extract_imports_ts_scoped_path() {
+        let src = r#"import { thing } from "@linear/models/MyModel";"#;
+        let ids = extract_imports(src, Lang::TsJs);
+        assert!(ids.contains("MyModel"), "ids: {ids:?}");
+    }
+
+    #[test]
     fn extract_imports_rust_finds_last_segment() {
         let src = r#"
 use crate::processors::my_processor;
@@ -1490,6 +1715,67 @@ mod sub_mod;
     }
 
     #[test]
+    fn extract_imports_rust_grouped_use() {
+        let src = r#"
+use crate::foo::{Bar, Baz};
+use crate::services::{Alpha as A, Beta};
+"#;
+        let ids = extract_imports(src, Lang::Rust);
+        assert!(ids.contains("Bar"), "ids: {ids:?}");
+        assert!(ids.contains("Baz"), "ids: {ids:?}");
+        assert!(ids.contains("Alpha"), "ids: {ids:?}");
+        assert!(ids.contains("Beta"), "ids: {ids:?}");
+    }
+
+    #[test]
+    fn extract_imports_rust_grouped_self_resolves_parent() {
+        let src = r#"use crate::widgets::{self, Knob};"#;
+        let ids = extract_imports(src, Lang::Rust);
+        // `self` means the parent module: `widgets`.
+        assert!(ids.contains("widgets"), "ids: {ids:?}");
+        assert!(ids.contains("Knob"), "ids: {ids:?}");
+    }
+
+    #[test]
+    fn extract_re_exports_ts_named_and_star() {
+        let src = r#"
+export { MyModel } from "./MyModel";
+export * from "./helpers";
+export type { Settings } from "./Settings";
+export * as ns from "./Namespace";
+"#;
+        let ids = extract_re_exports(src, Lang::TsJs);
+        assert!(ids.contains("MyModel"), "ids: {ids:?}");
+        assert!(ids.contains("helpers"), "ids: {ids:?}");
+        assert!(ids.contains("Settings"), "ids: {ids:?}");
+        assert!(ids.contains("Namespace"), "ids: {ids:?}");
+    }
+
+    #[test]
+    fn extract_re_exports_ts_ignores_plain_imports() {
+        let src = r#"
+import { Foo } from "./Foo";
+const x = something.from("inline");
+"#;
+        let ids = extract_re_exports(src, Lang::TsJs);
+        assert!(ids.is_empty(), "ids: {ids:?}");
+    }
+
+    #[test]
+    fn extract_re_exports_rust_pub_use() {
+        let src = r#"
+pub use crate::widgets::Knob;
+pub(crate) use crate::services::{Alpha, Beta as B};
+use crate::internal::Plain;
+"#;
+        let ids = extract_re_exports(src, Lang::Rust);
+        assert!(ids.contains("Knob"), "ids: {ids:?}");
+        assert!(ids.contains("Alpha"), "ids: {ids:?}");
+        assert!(ids.contains("Beta"), "ids: {ids:?}");
+        assert!(!ids.contains("Plain"), "ids: {ids:?}");
+    }
+
+    #[test]
     fn extract_imports_java_finds_class() {
         let src = r#"
 package com.example;
@@ -1499,6 +1785,92 @@ import static java.util.Map.entry;
         let ids = extract_imports(src, Lang::Java);
         assert!(ids.contains("MyProcessor"));
         assert!(ids.contains("entry"));
+    }
+
+    fn mk_entry(
+        lang: Lang,
+        imports: &[&str],
+        re_exports: &[&str],
+    ) -> FileEntry {
+        FileEntry {
+            mtime: SystemTime::UNIX_EPOCH,
+            lang,
+            imports: imports.iter().map(|s| s.to_string()).collect(),
+            re_exports: re_exports.iter().map(|s| s.to_string()).collect(),
+            log_calls: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn barrel_expansion_adds_barrel_module_id_with_origin() {
+        let root = Path::new("/tmp/proj");
+        let mut index = ProjectIndex::default();
+        // Barrel `models/index.ts` re-exports MyModel.
+        index.files.insert(
+            root.join("models/index.ts"),
+            mk_entry(Lang::TsJs, &["MyModel"], &["MyModel"]),
+        );
+
+        let mut id_origin: HashMap<String, Vec<String>> = HashMap::new();
+        id_origin
+            .entry("MyModel".to_string())
+            .or_default()
+            .push("models/MyModel.ts".to_string());
+
+        expand_through_barrels(&mut id_origin, &index, root);
+
+        let models_origins = id_origin.get("models").expect("models id added");
+        assert_eq!(models_origins, &vec!["models/MyModel.ts".to_string()]);
+    }
+
+    #[test]
+    fn barrel_expansion_chains_through_nested_barrels() {
+        let root = Path::new("/tmp/proj");
+        let mut index = ProjectIndex::default();
+        // Inner barrel: models/index.ts re-exports MyModel.
+        index.files.insert(
+            root.join("models/index.ts"),
+            mk_entry(Lang::TsJs, &["MyModel"], &["MyModel"]),
+        );
+        // Outer barrel: packages/index.ts re-exports "models".
+        index.files.insert(
+            root.join("packages/index.ts"),
+            mk_entry(Lang::TsJs, &["models"], &["models"]),
+        );
+
+        let mut id_origin: HashMap<String, Vec<String>> = HashMap::new();
+        id_origin
+            .entry("MyModel".to_string())
+            .or_default()
+            .push("models/MyModel.ts".to_string());
+
+        expand_through_barrels(&mut id_origin, &index, root);
+
+        assert!(id_origin.contains_key("models"));
+        let pkg_origins = id_origin.get("packages").expect("packages id added");
+        assert_eq!(pkg_origins, &vec!["models/MyModel.ts".to_string()]);
+    }
+
+    #[test]
+    fn barrel_expansion_skips_files_without_re_exports() {
+        let root = Path::new("/tmp/proj");
+        let mut index = ProjectIndex::default();
+        // Regular caller that imports MyModel but does not re-export it.
+        index.files.insert(
+            root.join("services/MyService.ts"),
+            mk_entry(Lang::TsJs, &["MyModel"], &[]),
+        );
+
+        let mut id_origin: HashMap<String, Vec<String>> = HashMap::new();
+        id_origin
+            .entry("MyModel".to_string())
+            .or_default()
+            .push("models/MyModel.ts".to_string());
+
+        expand_through_barrels(&mut id_origin, &index, root);
+
+        // MyService is a caller, not a barrel, so no extra id was added.
+        assert!(!id_origin.contains_key("MyService"), "id_origin: {id_origin:?}");
     }
 
     #[test]
