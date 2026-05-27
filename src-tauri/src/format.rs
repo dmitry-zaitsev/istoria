@@ -168,23 +168,23 @@ fn try_object_from_raw(raw: &str) -> Option<(Option<String>, Value)> {
     Some((Some(tag.to_string()), v))
 }
 
-/// If the outer object's `msg` (or `message`) is a string that itself
-/// parses as a JSON object, return a new object with the inner keys
-/// merged in. Inner keys overwrite outer ones on conflict. Falls back
-/// to the input untouched when there's no nested JSON or it's not an
-/// object.
+/// If the outer object carries a string field that itself parses as a
+/// JSON object, return a new object with the inner keys merged in.
+/// Inner keys overwrite outer ones on conflict. Checks `msg`,
+/// `message`, then `body` — covers double-piped pino (msg/message) and
+/// sidecar-style wrappers that quote the canonical payload into `body`.
+/// Falls back to the input untouched when no nested JSON is found.
 fn unwrap_nested_msg_json(v: Value) -> Value {
     let Some(outer) = v.as_object() else { return v };
-    let inner_str = outer
-        .get("msg")
-        .or_else(|| outer.get("message"))
-        .and_then(|x| x.as_str());
-    let Some(s) = inner_str else { return v };
-    let Ok(inner) = serde_json::from_str::<Value>(s) else { return v };
-    let Some(inner_map) = inner.as_object() else { return v };
+    let inner_map = ["msg", "message", "body"].iter().find_map(|k| {
+        let s = outer.get(*k)?.as_str()?;
+        let inner = serde_json::from_str::<Value>(s).ok()?;
+        inner.as_object().cloned()
+    });
+    let Some(inner_map) = inner_map else { return v };
     let mut merged = outer.clone();
     for (k, val) in inner_map {
-        merged.insert(k.clone(), val.clone());
+        merged.insert(k, val);
     }
     Value::Object(merged)
 }
@@ -642,6 +642,49 @@ mod tests {
         );
         // Outer keys preserved when not overridden.
         assert_eq!(obj.get("source").and_then(|v| v.as_str()), Some("pipe-1"));
+    }
+
+    #[test]
+    fn json_nested_body_flattens_inner_keys() {
+        // Sidecar-style wrapper: outer carries a short tag in `msg`
+        // and the canonical structured payload stringified in `body`.
+        // Inner keys (id, seq, type, subtype, model, session_id, tools)
+        // should land at the top level so they're queryable as facets.
+        let mut d = Detector::new();
+        let raw = r#"{"ts":1779913937989,"level":"DEBUG","source":"pipe-1","msg":"sidecar.query_msg","body":"{\"ts\":\"2026-05-27T20:32:17.989Z\",\"src\":\"sidecar\",\"level\":\"debug\",\"event\":\"sidecar.query_msg\",\"id\":\"a9b66dab-2ad7-441e-baeb-9f8a7226cb2e\",\"seq\":5,\"type\":\"system\",\"subtype\":\"init\",\"model\":\"claude-haiku-4-5\",\"session_id\":\"1ad78c65-c266-45b4-83cb-c0dfbf6002d6\",\"tools\":44}","event":"sidecar.query_msg","message":"sidecar.query_msg","target":"sidecar","timestamp":"2026-05-27T20:32:17.989308Z"}"#;
+        let ev = d.parse(1, "src", "main", raw.to_string());
+        // Outer msg stays — it's a tag, not the inner payload.
+        assert_eq!(ev.msg, "sidecar.query_msg");
+        let fields = ev.fields.expect("fields set");
+        let obj = fields.as_object().expect("object");
+        assert_eq!(
+            obj.get("id").and_then(|v| v.as_str()),
+            Some("a9b66dab-2ad7-441e-baeb-9f8a7226cb2e"),
+        );
+        assert_eq!(obj.get("seq").and_then(|v| v.as_i64()), Some(5));
+        assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("system"));
+        assert_eq!(obj.get("subtype").and_then(|v| v.as_str()), Some("init"));
+        assert_eq!(
+            obj.get("model").and_then(|v| v.as_str()),
+            Some("claude-haiku-4-5"),
+        );
+        assert_eq!(
+            obj.get("session_id").and_then(|v| v.as_str()),
+            Some("1ad78c65-c266-45b4-83cb-c0dfbf6002d6"),
+        );
+        assert_eq!(obj.get("tools").and_then(|v| v.as_i64()), Some(44));
+    }
+
+    #[test]
+    fn json_nested_msg_wins_over_body() {
+        // When both msg and body contain stringified JSON, msg wins —
+        // it's the more common double-pipe shape. body is fallback only.
+        let mut d = Detector::new();
+        let raw = r#"{"msg":"{\"from\":\"msg\"}","body":"{\"from\":\"body\"}"}"#;
+        let ev = d.parse(1, "src", "main", raw.to_string());
+        let obj = ev.fields.unwrap();
+        let obj = obj.as_object().unwrap();
+        assert_eq!(obj.get("from").and_then(|v| v.as_str()), Some("msg"));
     }
 
     #[test]

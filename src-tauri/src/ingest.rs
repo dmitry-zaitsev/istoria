@@ -6,6 +6,7 @@ use tokio::time::timeout;
 use crate::coalesce::Coalescer;
 use crate::event::Event;
 use crate::format::Detector;
+use crate::json_lines::JsonLines;
 use crate::ring::Ring;
 
 /// Read stdin line-by-line, push each into the ring buffer.
@@ -25,12 +26,20 @@ pub async fn run_stdin_reader(
     let mut stdout = tokio::io::stdout();
     let mut detector = Detector::new();
     let mut coalescer = Coalescer::new();
+    let mut json_lines = JsonLines::new();
 
     loop {
-        let read = if coalescer.has_pending() {
+        let pending = coalescer.has_pending() || json_lines.has_pending();
+        let read = if pending {
             match timeout(coalescer.idle(), lines.next_line()).await {
                 Ok(r) => r,
                 Err(_) => {
+                    for raw in json_lines.flush() {
+                        let ev = detector.parse(0, &source, &branch, raw);
+                        if let Some(out) = coalescer.push(ev) {
+                            emit(&ring, out);
+                        }
+                    }
                     if let Some(ev) = coalescer.flush() {
                         emit(&ring, ev);
                     }
@@ -50,12 +59,20 @@ pub async fn run_stdin_reader(
                 if line.trim().is_empty() {
                     continue;
                 }
-                let ev = detector.parse(0, &source, &branch, line);
-                if let Some(out) = coalescer.push(ev) {
-                    emit(&ring, out);
+                for raw in json_lines.push(line) {
+                    let ev = detector.parse(0, &source, &branch, raw);
+                    if let Some(out) = coalescer.push(ev) {
+                        emit(&ring, out);
+                    }
                 }
             }
             Ok(None) => {
+                for raw in json_lines.flush() {
+                    let ev = detector.parse(0, &source, &branch, raw);
+                    if let Some(out) = coalescer.push(ev) {
+                        emit(&ring, out);
+                    }
+                }
                 if let Some(ev) = coalescer.flush() {
                     emit(&ring, ev);
                 }
