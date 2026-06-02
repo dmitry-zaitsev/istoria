@@ -23,14 +23,16 @@
     "lint:fix": "oxlint --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && npm run lint && tsc -b"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run format:check && npm run lint && tsc -b && npm run test"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.10.8",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
-    "@tauri-apps/plugin-updater": "^2",
     "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-updater": "^2",
     "cmdk": "^1.1.1",
     "highlight.js": "^11.11.1",
     "react": "^18.3.1",
@@ -45,6 +47,7 @@
     "oxlint": "^1.62.0",
     "prettier": "^3.8.3",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   }
 }

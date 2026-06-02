@@ -71,8 +71,8 @@ mod tests {
 
     #[test]
     fn loads_all_rules() {
-        // No rule should silently fail to compile — we shipped 14.
-        assert_eq!(RULES.len(), 14);
+        // No rule should silently fail to compile — we shipped 15.
+        assert_eq!(RULES.len(), 15);
     }
 
     #[test]
@@ -95,6 +95,30 @@ mod tests {
             extract_body("@linear/client:start-client:     at httpServerStart (file.js:1:1)"),
             "    at httpServerStart (file.js:1:1)"
         );
+    }
+
+    #[test]
+    fn workspace_path_strips_prefix() {
+        // pnpm/turbo-style `<dir>/<name> <script>:` prefix (space, not
+        // colon, between pkg and script — distinct from the Turbo rule).
+        assert_eq!(
+            extract_body("apps/game-tester dev: 1:34:43 AM [vite] (client) hmr update /src/App.tsx"),
+            "1:34:43 AM [vite] (client) hmr update /src/App.tsx"
+        );
+        // Scoped package name with a slash also qualifies.
+        assert_eq!(
+            extract_body("@acme/api build: compiled in 1.2s"),
+            "compiled in 1.2s"
+        );
+    }
+
+    #[test]
+    fn workspace_path_requires_slash_to_avoid_prose() {
+        // The slash requirement keeps ordinary `word word: rest` prose
+        // (no path separator in the first token) out of the rule, so it
+        // isn't mis-split into source/script.
+        assert_eq!(extract_body("Server started: listening"), "Server started: listening");
+        assert_eq!(extract_body("Build complete: 0 errors"), "Build complete: 0 errors");
     }
 
     #[test]

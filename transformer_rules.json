@@ -117,6 +117,17 @@
     "output": { "msg": "${body}", "fields": { "tag": "nodemon" } }
   },
   {
+    "id": "workspace-path",
+    "name": "Workspace path prefix",
+    "order": 16,
+    "pattern": "^(?<pkg>@?[\\w.-]+(?:/[\\w.-]+)+)\\s+(?<script>[\\w-]+):\\s?(?<body>.*)$",
+    "output": {
+      "source": "${pkg}",
+      "msg": "${body}",
+      "fields": { "script": "${script}" }
+    }
+  },
+  {
     "id": "level-prefix",
     "name": "Level prefix",
     "order": 20,
