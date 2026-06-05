@@ -1,4 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { highlight, type HighlightTerm } from "../lib/highlight";
@@ -100,6 +101,64 @@ export function LogStream({
     if (!stickToNewest.current || events.length === 0) return;
     scrollToNewest();
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
+
+  // WKWebView ghost text — orphaned compositor tile. A graphics-context
+  // rebuild (display sleep/wake, monitor connect/disconnect, GPU/power
+  // switch) can restore the tall row-scroller's tiled layer with stale
+  // glyphs frozen into its backing store. The ghost survives data-clear
+  // and scrolling because no live DOM node owns that tile — only a full
+  // layer teardown drops it. The app reacts to focus today but never
+  // repaints on these events, so the stale tile just persists.
+  //
+  // On every reconfig signal, force the scroller's layer to tear down +
+  // rebuild: display:none + a synchronous reflow frees the backing store,
+  // then we restore. No visible blink — the toggle and restore run in one
+  // synchronous task, so WebKit never paints the hidden state. scrollTop
+  // is preserved (a stuck-to-newest view stays stuck since its scrollTop
+  // already sits at the newest end). Rare path — not the ingest hot loop.
+  useEffect(() => {
+    const flush = () => {
+      const node = parentRef.current;
+      if (!node) return;
+      const top = node.scrollTop;
+      node.style.display = "none";
+      void node.offsetHeight; // sync reflow → WebKit drops the layer + any stale tile
+      node.style.display = "";
+      node.scrollTop = top;
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") flush();
+    };
+    let resizeTimer: number | undefined;
+    const onResize = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(flush, 150);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", flush);
+    window.addEventListener("resize", onResize);
+
+    // Monitor / DPI change (dragged to another display, scale switch).
+    // Guarded: getCurrentWindow throws outside Tauri (e.g. vite preview).
+    let unScale: (() => void) | undefined;
+    getCurrentWindow()
+      .onScaleChanged(() => flush())
+      .then((u) => {
+        unScale = u;
+      })
+      .catch(() => {
+        /* not running under Tauri */
+      });
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", flush);
+      window.removeEventListener("resize", onResize);
+      window.clearTimeout(resizeTimer);
+      unScale?.();
+    };
+  }, []);
 
   const applyRange = (anchorId: number, endId: number, base?: number[]) => {
     const a = idToIndex.get(anchorId) ?? -1;
