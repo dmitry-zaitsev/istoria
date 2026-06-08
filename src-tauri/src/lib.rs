@@ -11,6 +11,7 @@ pub mod ipc;
 pub mod json_lines;
 pub mod mcp;
 pub mod query;
+pub mod redraw;
 pub mod relevance;
 pub mod ring;
 pub mod socket;
@@ -172,6 +173,7 @@ pub fn run(cli: cli::Cli) {
             ipc::open_terminal,
             ipc::relevance_snapshot,
             ipc::focus_changed,
+            ipc::force_redraw,
             claude::claude_status,
             claude::codex_status,
             update::check_for_updates,
@@ -181,6 +183,43 @@ pub fn run(cli: cli::Cli) {
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
+
+            // macOS WKWebView ghost-text recovery: repaint on sleep/wake,
+            // display sleep/wake, and monitor/scale changes — graphics
+            // events the web layer can't observe. See src/redraw.rs.
+            redraw::install_graphics_recovery(&app_handle);
+
+            // Prod-reliable manual escape hatch: a menu item carrying a ⌘⇧R
+            // accelerator. AppKit handles the key equivalent natively, so it
+            // fires in production and regardless of webview / JS state — a
+            // webview keydown handler does not. Also clickable under "View".
+            // Built from the default menu so Edit/Copy/Paste survive.
+            #[cfg(desktop)]
+            {
+                use tauri::menu::{Menu, MenuItem, Submenu};
+                let built = Menu::default(&app_handle).and_then(|menu| {
+                    let item = MenuItem::with_id(
+                        &app_handle,
+                        "force_redraw",
+                        "Force Redraw",
+                        true,
+                        Some("CmdOrCtrl+Shift+R"),
+                    )?;
+                    let view =
+                        Submenu::with_id_and_items(&app_handle, "view_menu", "View", true, &[&item])?;
+                    menu.append(&view)?;
+                    Ok(menu)
+                });
+                if let Ok(menu) = built {
+                    let _ = app_handle.set_menu(menu);
+                }
+                app_handle.on_menu_event(move |app, event| {
+                    if event.id == "force_redraw" {
+                        redraw::force(app, true);
+                    }
+                });
+            }
+
             let ring = ring_for_emit;
             // ring → "event-new" + relevance consider
             let app_for_event = app_handle.clone();

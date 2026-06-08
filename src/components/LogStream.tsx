@@ -1,9 +1,16 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { highlight, type HighlightTerm } from "../lib/highlight";
-import { pinEvent, unpinEvent, type Level, type LogEvent } from "../lib/ipc";
+import {
+  forceRedraw,
+  pinEvent,
+  subscribeGfxRebuilt,
+  unpinEvent,
+  type Level,
+  type LogEvent,
+} from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { useStore, type ColKey, type FieldColumn } from "../store";
 
@@ -102,31 +109,39 @@ export function LogStream({
     scrollToNewest();
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
-  // WKWebView ghost text — orphaned compositor tile. A graphics-context
-  // rebuild (display sleep/wake, monitor connect/disconnect, GPU/power
-  // switch) can restore the tall row-scroller's tiled layer with stale
-  // glyphs frozen into its backing store. The ghost survives data-clear
-  // and scrolling because no live DOM node owns that tile — only a full
-  // layer teardown drops it. The app reacts to focus today but never
-  // repaints on these events, so the stale tile just persists.
+  // WKWebView ghost text — stale Core Animation tile. A graphics-context
+  // rebuild (system sleep/wake, *display* sleep/wake, monitor connect/
+  // disconnect, scale switch) can leave the row-scroller compositing the
+  // previous frame's glyphs frozen into its backing store.
   //
-  // On every reconfig signal, force the scroller's layer to tear down +
-  // rebuild: display:none + a synchronous reflow frees the backing store,
-  // then we restore. No visible blink — the toggle and restore run in one
-  // synchronous task, so WebKit never paints the hidden state. scrollTop
-  // is preserved (a stuck-to-newest view stays stuck since its scrollTop
-  // already sits at the newest end). Rare path — not the ingest hot loop.
-  useEffect(() => {
-    const flush = () => {
-      const node = parentRef.current;
-      if (!node) return;
-      const top = node.scrollTop;
-      node.style.display = "none";
-      void node.offsetHeight; // sync reflow → WebKit drops the layer + any stale tile
-      node.style.display = "";
-      node.scrollTop = top;
-    };
+  // Recovery is deliberately layered so at least one path catches each
+  // hardware's failure mode. The authoritative triggers are native
+  // (src-tauri/src/redraw.rs) — it observes the OS-level notifications JS
+  // can't see (on a plain display sleep→wake the page stays `visible`, the
+  // window keeps focus and size, and the scale factor is unchanged, so the
+  // JS events below never fire) and forces a full webview repaint. This is
+  // the web-layer half: `flush()` (subtree teardown + scroll-nudge) runs on
+  // the native `gfx-context-rebuilt` signal, on the JS reconfig events that
+  // *do* fire (visibility/focus/resize/scale), and on a wall-clock heartbeat
+  // that catches a sleep/freeze even if every notification missed. Rare
+  // path — not the ingest hot loop.
+  //
+  // (Ⓐ) tear down the scroller subtree so WebKit drops its layer + stale
+  // tile; (Ⓑ) nudge scrollTop to force the scroll container to re-raster
+  // tiles the toggle may leave cached. Both synchronous (no blink) and
+  // scrollTop is preserved (a stuck-to-newest view stays stuck).
+  const flush = useCallback(() => {
+    const node = parentRef.current;
+    if (!node) return;
+    const top = node.scrollTop;
+    node.style.display = "none";
+    void node.offsetHeight; // sync reflow → WebKit drops the layer + stale tile
+    node.style.display = "";
+    node.scrollTop = top + 1;
+    node.scrollTop = top;
+  }, []);
 
+  useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") flush();
     };
@@ -138,6 +153,17 @@ export function LogStream({
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", flush);
     window.addEventListener("resize", onResize);
+
+    // Native graphics-recovery signal (sleep/wake, display sleep/wake,
+    // monitor/scale change) — the events JS can't observe directly.
+    let unGfx: (() => void) | undefined;
+    subscribeGfxRebuilt(flush)
+      .then((u) => {
+        unGfx = u;
+      })
+      .catch(() => {
+        /* not running under Tauri */
+      });
 
     // Monitor / DPI change (dragged to another display, scale switch).
     // Guarded: getCurrentWindow throws outside Tauri (e.g. vite preview).
@@ -151,14 +177,32 @@ export function LogStream({
         /* not running under Tauri */
       });
 
+    // Wall-clock heartbeat: a gap well past the interval means the machine
+    // slept / froze / was throttled — exactly when the graphics context is
+    // rebuilt. Recover on the jump, independent of any native notification
+    // (covers edge cases they miss). forceRedraw no-ops outside Tauri.
+    const BEAT_MS = 4000;
+    let lastBeat = Date.now();
+    const beat = window.setInterval(() => {
+      const now = Date.now();
+      const gap = now - lastBeat;
+      lastBeat = now;
+      if (gap > BEAT_MS * 2) {
+        flush();
+        forceRedraw(false).catch(() => {});
+      }
+    }, BEAT_MS);
+
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", flush);
       window.removeEventListener("resize", onResize);
       window.clearTimeout(resizeTimer);
+      window.clearInterval(beat);
+      unGfx?.();
       unScale?.();
     };
-  }, []);
+  }, [flush]);
 
   const applyRange = (anchorId: number, endId: number, base?: number[]) => {
     const a = idToIndex.get(anchorId) ?? -1;

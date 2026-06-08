@@ -188,6 +188,14 @@ pub async fn focus_changed(
     Ok(())
 }
 
+/// Force a WKWebView repaint on demand — the JS wall-clock heartbeat calls
+/// this after a detected sleep/freeze, and the manual ⌘⇧R escape hatch
+/// passes `hard = true` to add a hide/show cycle. macOS-only effect.
+#[tauri::command]
+pub fn force_redraw(app: tauri::AppHandle, hard: bool) {
+    crate::redraw::force(&app, hard);
+}
+
 #[tauri::command]
 pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.ring.clear();

@@ -188,3 +188,17 @@ export async function focusChanged(focused: boolean): Promise<void> {
 export async function subscribeRelevance(cb: () => void): Promise<UnlistenFn> {
   return listen("relevance-updated", () => cb());
 }
+
+// Emitted by the native macOS graphics-recovery observers (src/redraw.rs)
+// after a context rebuild (sleep/wake, display sleep/wake, monitor or
+// backing-scale change) so the web layer can flush its own stale tiles.
+export async function subscribeGfxRebuilt(cb: () => void): Promise<UnlistenFn> {
+  return listen("gfx-context-rebuilt", () => cb());
+}
+
+// Force a native WKWebView repaint (macOS). The wall-clock heartbeat uses
+// the soft path; the manual ⌘⇧R escape hatch passes hard=true to add a
+// hide/show cycle that clears a stuck ghost.
+export async function forceRedraw(hard = false): Promise<void> {
+  return invoke("force_redraw", { hard });
+}

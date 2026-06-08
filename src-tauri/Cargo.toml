@@ -42,5 +42,13 @@ axum = "0.7"
 tower-http = { version = "0.6", features = ["cors"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
+# macOS-only: native NSNotification observers that recover the WKWebView
+# from stale Core Animation tiles after a graphics-context rebuild
+# (sleep/wake, monitor or backing-scale change). See src/redraw.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString"] }
+block2 = "0.6"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]
