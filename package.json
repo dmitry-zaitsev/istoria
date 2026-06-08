@@ -1,7 +1,7 @@
 {
   "name": "istoria",
   "private": true,
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Local log viewer — pipe stdout into a native window.",
   "license": "MIT",
   "author": "Dmitry Zaytsev <dmitry.zaicew@gmail.com>",
