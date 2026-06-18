@@ -1375,6 +1375,9 @@ kbd {
   line-height: 1.5;
   align-items: baseline;
   cursor: default;
+  /* Keep opaque: WKWebView ghosts stale glyphs into transparent rows as they reposition while streaming. */
+  background-color: var(--surface);
+  contain: paint;
 }
 
 .col-header {
@@ -1627,7 +1630,8 @@ body[data-density="comfy"] .logrow {
   min-width: 0;
 }
 .logrow.lvl-err {
-  background: linear-gradient(90deg, var(--err-bg) 0%, transparent 80%);
+  /* Tint over --surface so the row stays opaque (see .logrow). */
+  background: linear-gradient(90deg, var(--err-bg) 0%, transparent 80%), var(--surface);
 }
 .logrow.lvl-err .msg {
   color: var(--err-fg);
