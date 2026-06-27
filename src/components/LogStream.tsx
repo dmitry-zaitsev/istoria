@@ -68,6 +68,10 @@ export function LogStream({
   const togglePinLocal = useStore((s) => s.togglePinLocal);
   const scrollTargetId = useStore((s) => s.scrollTargetId);
   const setScrollTarget = useStore((s) => s.setScrollTarget);
+  // Full filtered count from the store; `events` here is the newest-N window
+  // (capped in App.tsx). `capped` drives the "showing newest N of M" hint.
+  const fullCount = useStore((s) => s.events.length);
+  const capped = fullCount > events.length;
   const liveTail = true;
   const newestAtTop = sort === "newest-top";
 
@@ -330,6 +334,10 @@ export function LogStream({
     if (scrollTargetId == null) return;
     const idx = idToIndex.get(scrollTargetId) ?? -1;
     if (idx < 0) {
+      // Target is older than the live window. The event still opens (the
+      // inspector reads from the full unfiltered set) — only scroll-into-view
+      // can't land it. Tell the user how to bring it in.
+      toast("Event is outside the live view — filter or search to bring it in");
       setScrollTarget(null);
       return;
     }
@@ -488,6 +496,19 @@ export function LogStream({
         <div className="stream-foot">
           ▼ tailing — newest at {newestAtTop ? "top" : "bottom"} · scroll{" "}
           {newestAtTop ? "down" : "up"} to pause
+          {capped && (
+            <>
+              {" "}
+              · showing newest {events.length.toLocaleString()} of {fullCount.toLocaleString()} —
+              search for older
+            </>
+          )}
+        </div>
+      )}
+      {paused && capped && (
+        <div className="stream-foot">
+          showing newest {events.length.toLocaleString()} of {fullCount.toLocaleString()} — search
+          for older
         </div>
       )}
     </div>

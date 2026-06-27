@@ -49,6 +49,13 @@ import { useStore, type ColKey, type SortKey } from "./store";
 
 const QUERY_LIMIT = 100_000;
 
+// Cap the live DOM the virtualizer paints. Total scroll height = count*26px;
+// long sessions hit millions of px and triggered the WKWebView ghost (stale
+// Core Animation tiles). Only the newest CAP rows stay live; older rows remain
+// reachable via search (full set stays in memory) and via the FULL store
+// `events` used by export/copy/histogram/counts.
+const STREAM_RENDER_CAP = 500;
+
 export default function App() {
   const events = useStore((s) => s.events);
   const filter = useStore((s) => s.filter);
@@ -639,6 +646,20 @@ export default function App() {
     setEvents(renderedEvents);
   }, [renderedEvents, setEvents]);
 
+  // Newest-N window actually painted by LogStream. The store `events` above
+  // stays FULL (histogram, counts, export, copy read it); only the live DOM
+  // is bounded so the virtualizer's scroll layer can't grow into the
+  // millions-of-px range that froze WKWebView tiles into "ghost" glyphs.
+  // renderedEvents is already sort-oriented (newest-bottom: newest last;
+  // newest-top: newest first), so slice the matching end. The <= short-circuit
+  // keeps the same reference under the cap, preserving virtualizer identity.
+  const streamEvents = useMemo(() => {
+    if (renderedEvents.length <= STREAM_RENDER_CAP) return renderedEvents;
+    return sort === "newest-bottom"
+      ? renderedEvents.slice(-STREAM_RENDER_CAP) // newest at end → keep tail
+      : renderedEvents.slice(0, STREAM_RENDER_CAP); // newest at start → keep head
+  }, [renderedEvents, sort]);
+
   // Filter-aware new-events counter for the pause pill. Counts events
   // that landed *after* pausedAtId and would actually appear if the
   // user resumed. Cheap when paused (only walks events past the
@@ -715,7 +736,7 @@ export default function App() {
             availableFieldKeys={availableFieldKeys}
           />
           <LogStream
-            events={events}
+            events={streamEvents}
             selectedId={selectedId}
             selectedIds={selectedIds}
             onSelect={setSelected}
