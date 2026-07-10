@@ -131,7 +131,6 @@ async fn ingest(
         return Err(StatusCode::BAD_REQUEST);
     }
     for ev in body.events {
-        let id = ctx.ring.next_id();
         let level = ev.level.as_deref().map(parse_level).unwrap_or(Level::Info);
         let raw = serde_json::to_string(&serde_json::json!({
             "ts": ev.ts,
@@ -141,7 +140,9 @@ async fn ingest(
         }))
         .unwrap_or_else(|_| ev.text.clone());
         let event = Event {
-            id,
+            // Placeholder — `append` stamps the real id under the deque lock so
+            // concurrent extension POSTs can't reorder the ring (see Ring::append).
+            id: 0,
             ts: ev.ts.unwrap_or_else(now_unix_ms),
             source: body.source.clone(),
             branch: body.branch.clone(),
@@ -150,7 +151,7 @@ async fn ingest(
             raw,
             fields: ev.meta,
         };
-        ctx.ring.push(event);
+        ctx.ring.append(event);
     }
     Ok(StatusCode::ACCEPTED)
 }

@@ -93,10 +93,11 @@ pub async fn run_stdin_reader(
     );
 }
 
-fn emit(ring: &Arc<Ring>, mut ev: Event) {
+fn emit(ring: &Arc<Ring>, ev: Event) {
     if ev.msg.trim().is_empty() && ev.fields.is_none() && ev.raw.trim().is_empty() {
         return;
     }
-    ev.id = ring.next_id();
-    ring.push(ev);
+    // `append` stamps the id under the deque lock so concurrent sources can't
+    // reorder the ring (see Ring::append).
+    ring.append(ev);
 }

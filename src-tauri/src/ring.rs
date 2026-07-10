@@ -42,10 +42,33 @@ impl Ring {
         self.capacity
     }
 
-    pub fn next_id(&self) -> u64 {
-        self.next_id.fetch_add(1, Ordering::Relaxed)
+    /// Assign the next id and insert atomically. Holding the deque write lock
+    /// across id-assignment guarantees insertion order == id order even under
+    /// concurrent multi-source ingest — the monotonic-id invariant that
+    /// `snapshot_since` (binary search) and `min_id` (front == lowest) rely on.
+    /// Returns the id stamped onto the event. This is the ONLY production id
+    /// stamper; splitting id-assignment and insert (the old `next_id()` +
+    /// `push()` pair) let two sources interleave and reorder the deque, which
+    /// surfaced as duplicated/"ghost" rows in the delta stream.
+    pub fn append(&self, mut ev: Event) -> u64 {
+        let id = {
+            let mut q = self.inner.write();
+            let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+            ev.id = id;
+            if q.len() == self.capacity {
+                q.pop_front();
+                self.dropped.fetch_add(1, Ordering::Relaxed);
+            }
+            q.push_back(ev);
+            id
+        };
+        self.notify.notify_waiters();
+        id
     }
 
+    /// Insert a pre-numbered event. Test-only: production code must go through
+    /// `append`, which stamps the id under the same lock to keep the deque
+    /// ordered. Callers here own id monotonicity themselves.
     pub fn push(&self, ev: Event) {
         {
             let mut q = self.inner.write();
@@ -219,5 +242,68 @@ mod tests {
         ring.push(ev(2, "b"));
         ring.push(ev(3, "c")); // evicts id=1
         assert_eq!(ring.min_id(), Some(2));
+    }
+
+    // Regression for the multi-process "ghost rows" bug: concurrent sources
+    // emitting through `append` must never reorder the deque. The old path
+    // (`next_id()` then a separate `push()`) let two threads interleave
+    // id-assignment and insert, leaving the deque out of id order — which broke
+    // `snapshot_since`'s binary search and re-delivered/dropped rows. This test
+    // fails on that path and passes once id-assignment happens under the lock.
+    #[test]
+    fn append_is_ordered_under_concurrency() {
+        use std::sync::Arc;
+        use std::thread;
+
+        const THREADS: usize = 8;
+        const PER_THREAD: usize = 5_000;
+        let total = THREADS * PER_THREAD;
+
+        // Capacity above `total` so nothing evicts — isolates ordering.
+        let ring = Arc::new(Ring::new(total + 16));
+        let handles: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let ring = Arc::clone(&ring);
+                thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        ring.append(ev(0, &format!("t{t}-{i}")));
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let expected: Vec<u64> = (1..=total as u64).collect();
+        let snap = ring.snapshot(total, None); // newest-first
+
+        // 1. Every id was assigned exactly once — the contiguous set 1..=total.
+        let mut ids: Vec<u64> = snap.iter().map(|e| e.id).collect();
+        assert_eq!(ids.len(), total);
+        ids.sort_unstable();
+        assert_eq!(ids, expected, "ids must be the contiguous set 1..=total");
+
+        // 2. Physical deque order is strictly increasing by id (append stamps
+        //    the id under the write lock, so insertion order == id order).
+        let ascending: Vec<u64> = snap.iter().rev().map(|e| e.id).collect();
+        assert!(
+            ascending.windows(2).all(|w| w[0] < w[1]),
+            "deque must be strictly id-ordered; a reorder breaks snapshot_since"
+        );
+
+        // 3. Paging snapshot_since from 0 is lossless and duplicate-free —
+        //    the delta-stream invariant the ghost-rows bug violated.
+        let mut cursor = 0u64;
+        let mut seen: Vec<u64> = Vec::with_capacity(total);
+        loop {
+            let page = ring.snapshot_since(cursor, 128);
+            if page.is_empty() {
+                break;
+            }
+            seen.extend(page.iter().map(|e| e.id));
+            cursor = page.last().unwrap().id;
+        }
+        assert_eq!(seen, expected, "snapshot_since paging must be lossless & dup-free");
     }
 }

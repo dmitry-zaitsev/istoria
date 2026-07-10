@@ -329,7 +329,17 @@ export default function App() {
         setUnfilteredEvents((prev) => prev.concat(transformed));
       }
       if (transformed.length > 0) {
-        lastSeenIdRef.current = transformed[transformed.length - 1]!.id;
+        // Advance the delta cursor to the batch's MAX id, never backwards.
+        // With the backend's atomic append the batch is already id-ascending
+        // (so this equals the last element), but taking the max keeps the
+        // client robust to any ordering slip — a lower last-element id would
+        // otherwise make querySince re-fetch a suffix and duplicate rows.
+        // A loop (not spread) avoids a huge argument list on bootstrap batches.
+        let maxId = lastSeenIdRef.current;
+        for (const ev of transformed) {
+          if (ev.id > maxId) maxId = ev.id;
+        }
+        lastSeenIdRef.current = maxId;
       }
       setFacetVersion((v) => v + 1);
       setPendingDelta(transformed);
