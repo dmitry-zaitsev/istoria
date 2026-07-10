@@ -76,7 +76,18 @@ function consumeQuoted(c: Cursor): string {
   c.pos++; // opening "
   let s = "";
   while (c.pos < c.src.length && c.src[c.pos] !== '"') {
-    s += c.src[c.pos];
+    const ch = c.src[c.pos]!;
+    // Un-escape `\"` → `"` and `\\` → `\`, symmetric to escapeQuoted.
+    // Any other `\x` is preserved verbatim.
+    if (ch === "\\" && c.pos + 1 < c.src.length) {
+      const next = c.src[c.pos + 1]!;
+      if (next === '"' || next === "\\") {
+        s += next;
+        c.pos += 2;
+        continue;
+      }
+    }
+    s += ch;
     c.pos++;
   }
   if (c.src[c.pos] === '"') c.pos++;
@@ -665,14 +676,20 @@ function cmpStr(op: CmpOp): string {
   return op === "lt" ? "<" : op === "lte" ? "<=" : op === "gt" ? ">" : ">=";
 }
 
+/// Escape a string for embedding inside a `"…"` quoted token. Backslash
+/// and double-quote are escaped; consumeQuoted reverses this exactly.
+function escapeQuoted(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /// Render a value so it round-trips through the parser. Quoted form
 /// is used for anything containing whitespace, parens, quotes, or a
 /// leading char the parser would otherwise consume as an operator
 /// (\`>\`, \`<\`, \`~\`). Exported for callers that build clauses by hand.
 export function renderValue(v: string): string {
   if (v === "") return '""';
-  if (/[\s()"]/.test(v)) return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  if (/^[<>~]/.test(v)) return `"${v.replace(/"/g, '\\"')}"`;
+  if (/[\s()"]/.test(v)) return `"${escapeQuoted(v)}"`;
+  if (/^[<>~]/.test(v)) return `"${escapeQuoted(v)}"`;
   return v;
 }
 
@@ -692,7 +709,7 @@ function render(ast: Ast): string {
     case "key_regex":
       return `${ast.key}~/${ast.pattern}/`;
     case "free":
-      return /\s/.test(ast.term) ? `"${ast.term.replace(/"/g, '\\"')}"` : ast.term;
+      return /\s/.test(ast.term) ? `"${escapeQuoted(ast.term)}"` : ast.term;
     case "and":
       return `(${render(ast.left)} AND ${render(ast.right)})`;
     case "or":
