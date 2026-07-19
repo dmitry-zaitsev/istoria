@@ -26,7 +26,10 @@ fn current_binary() -> Option<PathBuf> {
 }
 
 fn is_app_bundle_binary(p: &PathBuf) -> bool {
-    p.to_string_lossy().contains(".app/Contents/MacOS/")
+    let s = p.to_string_lossy();
+    // The Electron core ships in Contents/Resources; the legacy Tauri binary
+    // lived in Contents/MacOS. Accept either.
+    s.contains(".app/Contents/MacOS/") || s.contains(".app/Contents/Resources/")
 }
 
 fn is_brew_binary(p: &PathBuf) -> bool {

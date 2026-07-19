@@ -1,16 +1,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { highlight, type HighlightTerm } from "../lib/highlight";
-import {
-  forceRedraw,
-  pinEvent,
-  subscribeGfxRebuilt,
-  unpinEvent,
-  type Level,
-  type LogEvent,
-} from "../lib/ipc";
+import { pinEvent, unpinEvent, type Level, type LogEvent } from "../lib/ipc";
 import { toast } from "../lib/toast";
 import { useStore, type ColKey, type FieldColumn } from "../store";
 
@@ -113,100 +105,10 @@ export function LogStream({
     scrollToNewest();
   }, [events.length, virtualizer, paused, liveTail, newestAtTop]);
 
-  // WKWebView ghost text — stale Core Animation tile. A graphics-context
-  // rebuild (system sleep/wake, *display* sleep/wake, monitor connect/
-  // disconnect, scale switch) can leave the row-scroller compositing the
-  // previous frame's glyphs frozen into its backing store.
-  //
-  // Recovery is deliberately layered so at least one path catches each
-  // hardware's failure mode. The authoritative triggers are native
-  // (src-tauri/src/redraw.rs) — it observes the OS-level notifications JS
-  // can't see (on a plain display sleep→wake the page stays `visible`, the
-  // window keeps focus and size, and the scale factor is unchanged, so the
-  // JS events below never fire) and forces a full webview repaint. This is
-  // the web-layer half: `flush()` (subtree teardown + scroll-nudge) runs on
-  // the native `gfx-context-rebuilt` signal, on the JS reconfig events that
-  // *do* fire (visibility/focus/resize/scale), and on a wall-clock heartbeat
-  // that catches a sleep/freeze even if every notification missed. Rare
-  // path — not the ingest hot loop.
-  //
-  // (Ⓐ) tear down the scroller subtree so WebKit drops its layer + stale
-  // tile; (Ⓑ) nudge scrollTop to force the scroll container to re-raster
-  // tiles the toggle may leave cached. Both synchronous (no blink) and
-  // scrollTop is preserved (a stuck-to-newest view stays stuck).
-  const flush = useCallback(() => {
-    const node = parentRef.current;
-    if (!node) return;
-    const top = node.scrollTop;
-    node.style.display = "none";
-    void node.offsetHeight; // sync reflow → WebKit drops the layer + stale tile
-    node.style.display = "";
-    node.scrollTop = top + 1;
-    node.scrollTop = top;
-  }, []);
-
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") flush();
-    };
-    let resizeTimer: number | undefined;
-    const onResize = () => {
-      window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(flush, 150);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", flush);
-    window.addEventListener("resize", onResize);
-
-    // Native graphics-recovery signal (sleep/wake, display sleep/wake,
-    // monitor/scale change) — the events JS can't observe directly.
-    let unGfx: (() => void) | undefined;
-    subscribeGfxRebuilt(flush)
-      .then((u) => {
-        unGfx = u;
-      })
-      .catch(() => {
-        /* not running under Tauri */
-      });
-
-    // Monitor / DPI change (dragged to another display, scale switch).
-    // Guarded: getCurrentWindow throws outside Tauri (e.g. vite preview).
-    let unScale: (() => void) | undefined;
-    getCurrentWindow()
-      .onScaleChanged(() => flush())
-      .then((u) => {
-        unScale = u;
-      })
-      .catch(() => {
-        /* not running under Tauri */
-      });
-
-    // Wall-clock heartbeat: a gap well past the interval means the machine
-    // slept / froze / was throttled — exactly when the graphics context is
-    // rebuilt. Recover on the jump, independent of any native notification
-    // (covers edge cases they miss). forceRedraw no-ops outside Tauri.
-    const BEAT_MS = 4000;
-    let lastBeat = Date.now();
-    const beat = window.setInterval(() => {
-      const now = Date.now();
-      const gap = now - lastBeat;
-      lastBeat = now;
-      if (gap > BEAT_MS * 2) {
-        flush();
-        forceRedraw(false).catch(() => {});
-      }
-    }, BEAT_MS);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", flush);
-      window.removeEventListener("resize", onResize);
-      window.clearTimeout(resizeTimer);
-      window.clearInterval(beat);
-      unGfx?.();
-      unScale?.();
-    };
-  }, [flush]);
+  // (The WKWebView ghost-text recovery stack — subtree teardown, scale/gfx
+  // listeners, wall-clock heartbeat, native redraw — lived here. Electron
+  // renders via Chromium, which has no WKWebView Core Animation tile bug, so
+  // it's gone.)
 
   const applyRange = (anchorId: number, endId: number, base?: number[]) => {
     const a = idToIndex.get(anchorId) ?? -1;

@@ -1,5 +1,4 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { useStore } from "../store";
 import { isFacetActive, toggleFacetOr } from "../lib/facets";
@@ -186,21 +185,10 @@ export function Tabs() {
       <button type="button" className="tab-add" title="New view" onClick={onCreate}>
         +
       </button>
-      {/* Leaf drag-region: explicit startDragging() on mousedown is
-          the reliable path — the data-tauri-drag-region attribute
-          alone has been hit-or-miss on this build. Keep the attribute
-          too as a fallback. The handler runs only on the empty fill
-          area so buttons/tabs above stay interactive. */}
-      <div
-        className="tabs-drag-fill"
-        data-tauri-drag-region
-        onMouseDown={(e) => {
-          if (e.button !== 0) return;
-          getCurrentWindow()
-            .startDragging()
-            .catch(() => {});
-        }}
-      />
+      {/* Leaf drag-region: Electron moves the window via the CSS
+          `-webkit-app-region: drag` marker (not a JS call). Only the empty
+          fill area is draggable; buttons/tabs above stay interactive. */}
+      <div className="tabs-drag-fill" style={{ WebkitAppRegion: "drag" } as CSSProperties} />
       {branches.length > 0 ? (
         <div className="tabs-branches">
           {branches.map((b) => {

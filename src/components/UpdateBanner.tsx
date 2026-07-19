@@ -1,15 +1,15 @@
-import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { useEffect, useState } from "react";
 
-import { checkForUpdates, detectInstallMethod, openTerminal } from "../lib/ipc";
+import { checkForUpdates, openTerminal } from "../lib/ipc";
 import { log } from "../lib/logger";
 
 const DISMISS_KEY = "update.dismissed.v1";
 
 type BannerState =
   | { kind: "brew"; latest: string; brewFormula: string }
-  | { kind: "plugin"; latest: string; update: Update };
+  // Direct-download install → electron-updater in-app update; `releaseUrl` is
+  // the fallback if the updater errors (dev/unsigned/offline).
+  | { kind: "app"; latest: string; releaseUrl: string };
 
 function loadDismissed(): string | null {
   try {
@@ -30,25 +30,22 @@ function saveDismissed(version: string) {
 export function UpdateBanner() {
   const [info, setInfo] = useState<BannerState | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [installing, setInstalling] = useState(false);
+  // null = idle; number = download %; "ready" = downloaded, awaiting restart.
+  const [progress, setProgress] = useState<number | "ready" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const method = await detectInstallMethod();
-      if (method === "homebrew") {
-        const u = await checkForUpdates();
-        if (cancelled || !u.hasUpdate) return;
-        if (loadDismissed() === u.latest) return;
+      const u = await checkForUpdates();
+      if (cancelled || !u.hasUpdate) return;
+      if (loadDismissed() === u.latest) return;
+      if (u.installMethod === "homebrew") {
         setInfo({ kind: "brew", latest: u.latest, brewFormula: u.brewFormula });
       } else {
-        const upd = await check();
-        if (cancelled || !upd) return;
-        if (loadDismissed() === upd.version) return;
-        setInfo({ kind: "plugin", latest: upd.version, update: upd });
+        setInfo({ kind: "app", latest: u.latest, releaseUrl: u.releaseUrl });
       }
     })().catch((e) => {
-      // Offline, GitHub rate-limit, signature endpoint down — silent.
+      // Offline, GitHub rate-limit, endpoint down — silent.
       // The banner is a courtesy; never escalate to the user.
       log.warn("update check failed", e);
     });
@@ -57,6 +54,21 @@ export function UpdateBanner() {
     };
   }, []);
 
+  // Listen to electron-updater events (download progress / ready / error).
+  useEffect(() => {
+    const un = window.istoria?.update.onEvent((e) => {
+      if (e.type === "progress") setProgress(Math.round(e.payload.percent));
+      else if (e.type === "downloaded") setProgress("ready");
+      else if (e.type === "error") {
+        // Updater failed (dev/unsigned/offline) — fall back to the release page.
+        log.warn("in-app update failed", e.payload.message);
+        setProgress(null);
+        if (info?.kind === "app") window.open(info.releaseUrl, "_blank");
+      }
+    });
+    return un;
+  }, [info]);
+
   if (!info || dismissed) return null;
 
   const dismiss = () => {
@@ -64,22 +76,39 @@ export function UpdateBanner() {
     setDismissed(true);
   };
 
-  const update = async () => {
+  const update = () => {
     if (info.kind === "brew") {
       void openTerminal(`brew upgrade ${info.brewFormula}`);
       return;
     }
-    try {
-      setInstalling(true);
-      await info.update.downloadAndInstall();
-      await relaunch();
-    } catch (e) {
-      log.warn("update install failed", e);
-      setInstalling(false);
+    if (progress === "ready") {
+      void window.istoria?.update.install();
+      return;
     }
+    if (progress !== null) return; // download in flight
+    // Direct-download install → electron-updater downloads in the background;
+    // events drive the progress UI. Fallback to the release page on failure.
+    setProgress(0);
+    const bridge = window.istoria?.update;
+    if (!bridge) {
+      window.open(info.releaseUrl, "_blank");
+      return;
+    }
+    bridge.start().catch((e) => {
+      log.warn("update start failed", e);
+      setProgress(null);
+      window.open(info.releaseUrl, "_blank");
+    });
   };
 
-  const cta = info.kind === "brew" ? "Update" : installing ? "Installing…" : "Install update";
+  const cta =
+    info.kind === "brew"
+      ? "Update"
+      : progress === "ready"
+        ? "Restart to update"
+        : progress !== null
+          ? `Downloading ${progress}%`
+          : "Install update";
 
   return (
     <div className="update-toast" role="status">
@@ -99,7 +128,12 @@ export function UpdateBanner() {
         <div className="update-toast-title">Update available</div>
         <div className="update-toast-version">v{info.latest}</div>
       </div>
-      <button type="button" className="update-toast-cta" onClick={update} disabled={installing}>
+      <button
+        type="button"
+        className="update-toast-cta"
+        onClick={update}
+        disabled={typeof progress === "number"}
+      >
         {cta}
       </button>
       <button
@@ -107,7 +141,6 @@ export function UpdateBanner() {
         className="update-toast-dismiss"
         aria-label="Dismiss update notice"
         onClick={dismiss}
-        disabled={installing}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path

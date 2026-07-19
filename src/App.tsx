@@ -1,9 +1,4 @@
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification,
-} from "@tauri-apps/plugin-notification";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isPermissionGranted, requestPermission, sendNotification } from "./lib/notify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { log } from "./lib/logger";
@@ -428,23 +423,16 @@ export default function App() {
         // not running under Tauri (e.g. vite preview) — skip
       });
 
-    let unlistenFocus: (() => void) | undefined;
-    getCurrentWindow()
-      .onFocusChanged(({ payload: focused }) => {
-        focusChanged(focused).catch(() => {});
-      })
-      .then((u) => {
-        if (cancelled) u();
-        else unlistenFocus = u;
-      })
-      .catch(() => {
-        // not under Tauri
-      });
+    const onWinFocus = () => focusChanged(true).catch(() => {});
+    const onWinBlur = () => focusChanged(false).catch(() => {});
+    window.addEventListener("focus", onWinFocus);
+    window.addEventListener("blur", onWinBlur);
 
     return () => {
       cancelled = true;
       unlistenRelevance?.();
-      unlistenFocus?.();
+      window.removeEventListener("focus", onWinFocus);
+      window.removeEventListener("blur", onWinBlur);
     };
   }, [setRelevantIds, setRelevanceSites]);
 
@@ -501,12 +489,7 @@ export default function App() {
     if (notifying.length === 0) return;
     const now = Date.now();
     void (async () => {
-      let focused = false;
-      try {
-        focused = await getCurrentWindow().isFocused();
-      } catch {
-        // running outside Tauri (e.g. vite preview) — assume not focused
-      }
+      const focused = document.hasFocus();
       for (const ev of pendingDelta) {
         const ids = alertMatchesRef.current.get(ev.id);
         if (!ids) continue;

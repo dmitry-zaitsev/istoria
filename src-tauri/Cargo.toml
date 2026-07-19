@@ -16,6 +16,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "istoria"
 path = "src/main.rs"
 
+# Headless core for the Electron shell: same modules as the Tauri app
+# (ring, ingest, socket, HTTP, MCP, relevance) but no window/WKWebView —
+# serves the frontend over HTTP + SSE. Electron spawns this as a sidecar.
+[[bin]]
+name = "istoria-core"
+path = "src/bin/istoria-core.rs"
+
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 
@@ -40,6 +47,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 axum = "0.7"
 tower-http = { version = "0.6", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 # macOS-only: native NSNotification observers that recover the WKWebView

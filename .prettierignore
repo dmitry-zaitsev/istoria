@@ -6,3 +6,5 @@ extension/dist
 package-lock.json
 *.lock
 CHANGELOG.md
+release
+.context

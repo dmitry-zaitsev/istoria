@@ -15,28 +15,31 @@ bootstrap:
     command -v sccache >/dev/null || brew install sccache
     [ -x /opt/homebrew/opt/lld/bin/ld64.lld ] || brew install lld
 
-# Run the app in dev mode.
-# - tty stdin: normal `tauri dev` with hot-reload of both rust + vite.
-# - piped stdin (e.g. `cat log | just dev`): run vite + `cargo run`
-#   directly so stdin reaches the binary instead of being captured
-#   by the tauri-cli dev console.
+# Run the Electron app in dev mode (Chromium renderer — no WKWebView ghost).
+# Starts Vite, builds the headless Rust core, and launches Electron, which
+# spawns the core as its sidecar. Works for both:
+# - tty stdin: plain `just dev` — interactive, no piped logs.
+# - piped stdin (`just fakeLogs | just dev`): Electron inherits the pipe and
+#   passes it to the core, which ingests it straight into the window.
+# Vite's stdin is detached (</dev/null) so it can't swallow the piped logs.
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ -t 0 ]; then
-        exec npm run tauri dev
-    fi
-    echo "[just dev] piped stdin → vite + cargo run" >&2
-    npm run dev >/tmp/istoria-vite.log 2>&1 &
+    echo "[just dev] building istoria-core…" >&2
+    cargo build --manifest-path src-tauri/Cargo.toml --bin istoria-core
+    npm run dev >/tmp/istoria-vite.log 2>&1 </dev/null &
     VITE_PID=$!
     trap 'kill $VITE_PID 2>/dev/null || true' EXIT
-    for _ in $(seq 1 100); do
+    for _ in $(seq 1 200); do
         if curl -sf http://localhost:1420/ >/dev/null 2>&1; then
             break
         fi
         sleep 0.1
     done
-    cargo run --manifest-path src-tauri/Cargo.toml --bin istoria
+    echo "[just dev] launching electron…" >&2
+    # No `exec`: keep the bash parent alive so the EXIT trap tears down Vite
+    # when Electron quits. Electron still inherits our (piped) stdin.
+    ISTORIA_DEV_URL=http://localhost:1420 ./node_modules/.bin/electron electron/main.cjs
 
 # Stream randomized fake logs to stdout. Pipe into `just dev` to
 # exercise the UI: `just fakeLogs | just dev`.
@@ -83,22 +86,18 @@ dmg-bg:
         -o src-tauri/icons/dmg-background.png
     echo "✓ src-tauri/icons/dmg-background.png"
 
-# Build a signed + notarized macOS .app for the host arch and pack
-# it as dist/istoria-<version>-<target>.app.tar.gz with a sha256.
-# Also emits a .dmg, an updater signature, and latest.json — the full
-# set of artifacts CI publishes. Mirrors the CI release job for local
-# smoke tests before tagging.
+# Build a signed + notarized macOS app (arm64) via electron-builder and pack
+# the full set of artifacts CI publishes: a signed/notarized/stapled .dmg, the
+# electron-updater .zip + latest-mac.yml (+ .blockmaps), the Homebrew
+# .app.tar.gz, and SHA256SUMS. Mirrors the CI release job for local smoke tests.
 #
 # Required env (load from a gitignored .envrc / direnv or export inline):
-#   APPLE_SIGNING_IDENTITY               "Developer ID Application: Name (TEAMID)"
-#   APPLE_ID                             Apple ID email
-#   APPLE_PASSWORD                       app-specific password
-#   APPLE_TEAM_ID                        Apple Developer team ID
-#   TAURI_SIGNING_PRIVATE_KEY            updater private key (file contents)
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   password for that key
+#   APPLE_SIGNING_IDENTITY   "Developer ID Application: Name (TEAMID)"
+#   APPLE_ID                 Apple ID email
+#   APPLE_PASSWORD           app-specific password (→ APPLE_APP_SPECIFIC_PASSWORD)
+#   APPLE_TEAM_ID            Apple Developer team ID
 #
-# Signing cert must already be in your login keychain. No .p12 import
-# is done locally — that path is only for CI.
+# Signing cert must already be in your login keychain.
 release-mac:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -106,104 +105,69 @@ release-mac:
     : "${APPLE_ID:?missing — see recipe comment}"
     : "${APPLE_PASSWORD:?missing — see recipe comment}"
     : "${APPLE_TEAM_ID:?missing — see recipe comment}"
-    : "${TAURI_SIGNING_PRIVATE_KEY:?missing — see recipe comment}"
-    : "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:?missing — see recipe comment}"
     if [[ "$(uname -s)" != "Darwin" ]]; then
         echo "release-mac only runs on macOS" >&2
         exit 1
     fi
-    command -v create-dmg >/dev/null || { echo "install: brew install create-dmg" >&2; exit 1; }
-    case "$(uname -m)" in
-        arm64)  TARGET="aarch64-apple-darwin" ;;
-        x86_64) TARGET="x86_64-apple-darwin"  ;;
-        *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
-    esac
+    if [[ "$(uname -m)" != "arm64" ]]; then
+        echo "release-mac builds arm64 only" >&2
+        exit 1
+    fi
     VERSION="$(node -p "require('./package.json').version")"
-    rustup target add "$TARGET" >/dev/null
-    # `--bundles app` only — DMG built below via create-dmg (tauri's
-    # DMG bundler uses AppleScript and silently drops .DS_Store when
-    # run headless; create-dmg writes it directly).
-    npm run tauri -- build --target "$TARGET" --bundles app
-    BUNDLE_DIR="target/${TARGET}/release/bundle/macos"
-    APP="${BUNDLE_DIR}/istoria.app"
-    echo "[verify] codesign (.app)…"
-    codesign --verify --deep --strict --verbose=2 "$APP"
-    echo "[verify] gatekeeper (.app)…"
-    spctl --assess --type execute --verbose=2 "$APP" || \
-        echo "::warning:: spctl assess failed — notarization may not have stapled"
-    mkdir -p dist
+    TARGET="aarch64-apple-darwin"
+    APP="release/mac-arm64/istoria.app"
+    DMG="release/istoria-${VERSION}-arm64.dmg"
+    ZIP="release/istoria-${VERSION}-arm64-mac.zip"
     BREW_ARTIFACT="istoria-${VERSION}-${TARGET}.app.tar.gz"
-    UPDATER_ARTIFACT="istoria-${VERSION}-${TARGET}.updater.tar.gz"
-    DMG_OUT="istoria-${VERSION}-${TARGET}.dmg"
-    # Brew tarball: wrapped so brew strips the wrapper, not the .app.
+    # Clean stale artifacts so exact names + SHA256SUMS can't pick up an old
+    # version (electron-builder recreates release/).
+    rm -rf release
+    # electron-builder signs (Developer ID from the login keychain), notarizes +
+    # staples the .app, and emits the dmg + zip + latest-mac.yml (+ .blockmaps)
+    # into release/. Build-only — we upload via gh.
+    #
+    # codesign matches the identity by its common NAME, so the login keychain
+    # must contain exactly ONE "Developer ID Application: …" cert for this team.
+    # If it holds two, signing fails with "…: ambiguous"; remove the extra one
+    # (Keychain Access → delete, or `security delete-identity -Z <sha1>`).
+    npm run build:electron
+    npm run core:build:release
+    CSC_NAME="$APPLE_SIGNING_IDENTITY" \
+    APPLE_APP_SPECIFIC_PASSWORD="$APPLE_PASSWORD" \
+        npx electron-builder --publish never
+    # electron-builder notarizes + staples the .app but leaves the .dmg CONTAINER
+    # un-notarized — a downloaded .dmg would then trip Gatekeeper ("Apple cannot
+    # check it…"). Sign + notarize + staple the dmg too (matches the Tauri flow).
+    echo "[dmg] sign + notarize + staple…"
+    codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG"
+    xcrun notarytool submit "$DMG" \
+        --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+        --team-id "$APPLE_TEAM_ID" --wait
+    xcrun stapler staple "$DMG"
+    echo "[verify] codesign + gatekeeper (.app)…"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    codesign --verify --verbose=2 "$APP/Contents/Resources/istoria-core"
+    spctl --assess --type execute --verbose=2 "$APP"
+    xcrun stapler validate "$APP"
+    echo "[verify] gatekeeper + staple (.dmg)…"
+    xcrun stapler validate "$DMG"
+    spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG" || \
+        echo "::warning:: dmg spctl assess reported an issue (stapler validate is authoritative)"
+    # Homebrew tarball: istoria.app wrapped in istoria-<version>/ so brew's
+    # extract-and-chdir strips the wrapper, not the .app itself.
     STAGE="$(mktemp -d)"
     mkdir "$STAGE/istoria-${VERSION}"
     cp -R "$APP" "$STAGE/istoria-${VERSION}/"
-    tar -czf "dist/${BREW_ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
-    # Updater tarball: unwrapped — istoria.app at root.
-    UPSTAGE="$(mktemp -d)"
-    cp -R "$APP" "$UPSTAGE/"
-    tar -czf "dist/${UPDATER_ARTIFACT}" -C "$UPSTAGE" "istoria.app"
-    npm run tauri -- signer sign "dist/${UPDATER_ARTIFACT}"
-    SIG_CONTENT="$(cat "dist/${UPDATER_ARTIFACT}.sig")"
-    # DMG: build, sign, notarize, staple.
-    DMG_STAGE="$(mktemp -d)/src"
-    mkdir -p "$DMG_STAGE"
-    cp -R "$APP" "$DMG_STAGE/"
-    # Pre-warm Finder so create-dmg's AppleScript step can drive it
-    # (it sets window bg + icon positions via osascript, which silently
-    # no-ops if Finder isn't running).
-    osascript -e 'tell application "Finder" to activate' >/dev/null 2>&1 || true
-    create-dmg \
-        --volname istoria \
-        --background src-tauri/icons/dmg-background.png \
-        --window-pos 200 120 \
-        --window-size 660 400 \
-        --icon-size 110 \
-        --icon istoria.app 180 200 \
-        --app-drop-link 480 200 \
-        --no-internet-enable \
-        "dist/${DMG_OUT}" "$DMG_STAGE/"
-    # Verify .DS_Store landed — without it the DMG has no bg or icon
-    # positions (the v1.3.1 regression).
-    MOUNT=$(hdiutil attach -nobrowse -readonly "dist/${DMG_OUT}" | tail -1 | awk '{print $NF}')
-    test -f "$MOUNT/.DS_Store" || { echo "DMG missing .DS_Store — Finder layout not applied" >&2; hdiutil detach "$MOUNT"; exit 1; }
-    hdiutil detach "$MOUNT"
-    codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "dist/${DMG_OUT}"
-    xcrun notarytool submit "dist/${DMG_OUT}" \
-        --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
-        --team-id "$APPLE_TEAM_ID" --wait
-    xcrun stapler staple "dist/${DMG_OUT}"
-    echo "[verify] gatekeeper + staple (.dmg)…"
-    spctl --assess --type open --context context:primary-signature --verbose=2 "dist/${DMG_OUT}" || \
-        echo "::warning:: dmg spctl assess failed — notarization may not have stapled"
-    stapler validate "dist/${DMG_OUT}"
-    cp "dist/${DMG_OUT}" "dist/istoria.dmg"
-    PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    cat > dist/latest.json <<EOF
-    {
-      "version": "v${VERSION}",
-      "notes": "Release v${VERSION}",
-      "pub_date": "${PUB_DATE}",
-      "platforms": {
-        "darwin-aarch64": {
-          "signature": "${SIG_CONTENT}",
-          "url": "https://github.com/dmitry-zaitsev/istoria-releases/releases/download/v${VERSION}/${UPDATER_ARTIFACT}"
-        }
-      }
-    }
-    EOF
-    (cd dist && shasum -a 256 \
-        "$BREW_ARTIFACT" \
-        "$UPDATER_ARTIFACT" "${UPDATER_ARTIFACT}.sig" \
-        "$DMG_OUT" istoria.dmg \
-        latest.json | tee "istoria-${VERSION}-${TARGET}.sha256")
-    echo "✓ dist/${BREW_ARTIFACT}"
-    echo "✓ dist/${UPDATER_ARTIFACT}"
-    echo "✓ dist/${UPDATER_ARTIFACT}.sig"
-    echo "✓ dist/${DMG_OUT}"
-    echo "✓ dist/istoria.dmg"
-    echo "✓ dist/latest.json"
+    tar -czf "release/${BREW_ARTIFACT}" -C "$STAGE" "istoria-${VERSION}"
+    (cd release && shasum -a 256 \
+        "istoria-${VERSION}-arm64.dmg" "istoria-${VERSION}-arm64-mac.zip" \
+        "${BREW_ARTIFACT}" latest-mac.yml \
+        | tee "istoria-${VERSION}-${TARGET}.sha256" > SHA256SUMS)
+    echo "✓ $DMG (signed + notarized + stapled)"
+    echo "✓ $ZIP"
+    echo "✓ release/${BREW_ARTIFACT}"
+    echo "✓ release/latest-mac.yml"
+    echo "✓ release/SHA256SUMS"
 
 # Same as `release-mac` but pulls Apple secrets from 1Password
 # (vault Private, item "istoria release") so you don't have to
@@ -217,6 +181,4 @@ release-mac-op:
     export APPLE_ID="$(op read "${ITEM}/APPLE_ID")"
     export APPLE_PASSWORD="$(op read "${ITEM}/APPLE_PASSWORD")"
     export APPLE_TEAM_ID="$(op read "${ITEM}/APPLE_TEAM_ID")"
-    export TAURI_SIGNING_PRIVATE_KEY="$(op read "${ITEM}/TAURI_SIGNING_PRIVATE_KEY")"
-    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(op read "${ITEM}/TAURI_SIGNING_PRIVATE_KEY_PASSWORD")"
     exec just release-mac

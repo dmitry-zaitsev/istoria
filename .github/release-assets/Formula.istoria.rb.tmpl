@@ -12,7 +12,10 @@ class Istoria < Formula
 
   def install
     prefix.install "istoria.app"
-    bin.write_exec_script prefix/"istoria.app/Contents/MacOS/istoria"
+    # The CLI is the headless core (forwards `cmd | istoria` to the app and
+    # launches it when closed). Contents/MacOS/istoria is the Electron GUI
+    # launcher and must NOT be the CLI.
+    bin.write_exec_script prefix/"istoria.app/Contents/Resources/istoria-core"
   end
 
   test do

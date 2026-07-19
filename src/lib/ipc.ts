@@ -1,7 +1,34 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+// Backend bridge. Talks to the headless Rust core (`istoria-core`) over HTTP +
+// SSE on loopback. The port and per-launch bearer token are injected by the
+// Electron preload (`window.istoria`). Types and function signatures are
+// unchanged from the old Tauri-`invoke` version, so the rest of the app is
+// untouched by the transport swap.
 
 export type Level = "error" | "warn" | "info" | "debug" | "trace";
+
+export type UnlistenFn = () => void;
+
+export type UpdateEvent =
+  | { type: "available"; payload: { version: string } }
+  | { type: "not-available"; payload: Record<string, never> }
+  | { type: "progress"; payload: { percent: number } }
+  | { type: "downloaded"; payload: { version: string } }
+  | { type: "error"; payload: { message: string } };
+
+declare global {
+  interface Window {
+    istoria?: {
+      httpPort: number;
+      token: string;
+      relaunch: () => Promise<void>;
+      update: {
+        start: () => Promise<void>;
+        install: () => Promise<void>;
+        onEvent: (cb: (e: UpdateEvent) => void) => () => void;
+      };
+    };
+  }
+}
 
 export interface LogEvent {
   id: number;
@@ -19,17 +46,62 @@ export interface EventNewPayload {
   dropped: number;
 }
 
+function base(): string {
+  const port = window.istoria?.httpPort ?? 9787;
+  return `http://127.0.0.1:${port}`;
+}
+
+function token(): string {
+  return window.istoria?.token ?? "";
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(base() + path, {
+    headers: { authorization: `Bearer ${token()}` },
+  });
+  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
+  return (await res.json()) as T;
+}
+
+async function send<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const hasBody = body !== undefined;
+  const res = await fetch(base() + path, {
+    method,
+    headers: {
+      authorization: `Bearer ${token()}`,
+      ...(hasBody ? { "content-type": "application/json" } : {}),
+    },
+    body: hasBody ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+// ---- SSE (shared connection for event-new + relevance-updated) -------------
+
+let eventSource: EventSource | null = null;
+
+function stream(): EventSource {
+  if (eventSource && eventSource.readyState !== EventSource.CLOSED) return eventSource;
+  const port = window.istoria?.httpPort ?? 9787;
+  // EventSource can't set headers → token rides in the query string.
+  eventSource = new EventSource(
+    `http://127.0.0.1:${port}/stream?token=${encodeURIComponent(token())}`
+  );
+  return eventSource;
+}
+
+// ---- queries ---------------------------------------------------------------
+
 export async function queryRecent(limit: number, filter?: string): Promise<LogEvent[]> {
-  return invoke<LogEvent[]>("query_recent", { limit, filter: filter ?? null });
+  const q = filter ? `&filter=${encodeURIComponent(filter)}` : "";
+  return getJson<LogEvent[]>(`/query/recent?limit=${limit}${q}`);
 }
 
 export interface QuerySincePayload {
   events: LogEvent[];
-  /// Lowest id still in the ring, or null when empty. If
-  /// `minId > lastId + 1` the caller's cursor fell off the back of the
-  /// ring and the caller must fall back to `queryRecent` + reset.
   minId: number | null;
-  /// Total events currently in the ring.
   len: number;
 }
 
@@ -40,28 +112,37 @@ interface RawQuerySincePayload {
 }
 
 export async function querySince(lastId: number, limit: number): Promise<QuerySincePayload> {
-  const raw = await invoke<RawQuerySincePayload>("query_since", { lastId, limit });
+  const raw = await getJson<RawQuerySincePayload>(`/query/since?last_id=${lastId}&limit=${limit}`);
   return { events: raw.events, minId: raw.min_id, len: raw.len };
 }
 
 export async function subscribeEvents(cb: (payload: EventNewPayload) => void): Promise<UnlistenFn> {
-  return listen<EventNewPayload>("event-new", (e) => cb(e.payload));
+  const s = stream();
+  const handler = (e: MessageEvent) => {
+    try {
+      cb(JSON.parse(e.data) as EventNewPayload);
+    } catch {
+      /* malformed frame — ignore */
+    }
+  };
+  s.addEventListener("event-new", handler as EventListener);
+  return () => s.removeEventListener("event-new", handler as EventListener);
 }
 
 export async function clearSession(): Promise<void> {
-  return invoke("clear_session");
+  await send("POST", "/session/clear");
 }
 
 export async function pinEvent(eventId: number): Promise<void> {
-  return invoke("pin_event", { eventId });
+  await send("POST", "/pins", { event_id: eventId });
 }
 
 export async function unpinEvent(eventId: number): Promise<void> {
-  return invoke("unpin_event", { eventId });
+  await send("DELETE", `/pins/${eventId}`);
 }
 
 export async function listPins(): Promise<number[]> {
-  return invoke<number[]>("list_pins");
+  return getJson<number[]>("/pins");
 }
 
 export interface CodeLine {
@@ -82,15 +163,17 @@ export async function getCodePreview(
   line: number,
   context: number
 ): Promise<CodeLine[]> {
-  return invoke<CodeLine[]>("get_code_preview", { path, line, context });
+  return getJson<CodeLine[]>(
+    `/code/preview?path=${encodeURIComponent(path)}&line=${line}&context=${context}`
+  );
 }
 
 export async function getEmissionSite(msg: string): Promise<EmissionSite | null> {
-  return invoke<EmissionSite | null>("get_emission_site", { msg });
+  return getJson<EmissionSite | null>(`/code/emission-site?msg=${encodeURIComponent(msg)}`);
 }
 
 export async function openUrl(url: string): Promise<void> {
-  return invoke("open_url", { url });
+  await send("POST", "/open-url", { url });
 }
 
 export interface EditorEntry {
@@ -100,7 +183,7 @@ export interface EditorEntry {
 }
 
 export async function listEditors(): Promise<EditorEntry[]> {
-  return invoke<EditorEntry[]>("list_editors");
+  return getJson<EditorEntry[]>("/editors");
 }
 
 export interface ClaudeStatus {
@@ -110,19 +193,19 @@ export interface ClaudeStatus {
 }
 
 export async function claudeStatus(): Promise<ClaudeStatus> {
-  return invoke<ClaudeStatus>("claude_status");
+  return getJson<ClaudeStatus>("/claude/status");
 }
 
 export async function codexStatus(): Promise<ClaudeStatus> {
-  return invoke<ClaudeStatus>("codex_status");
+  return getJson<ClaudeStatus>("/codex/status");
 }
 
 export async function mcpPort(): Promise<number> {
-  return invoke<number>("mcp_port");
+  return getJson<number>("/mcp/port");
 }
 
 export async function openTerminal(command: string): Promise<void> {
-  return invoke("open_terminal", { command });
+  await send("POST", "/open-terminal", { command });
 }
 
 export type InstallMethod = "homebrew" | "other";
@@ -137,11 +220,11 @@ export interface UpdateInfo {
 }
 
 export async function checkForUpdates(): Promise<UpdateInfo> {
-  return invoke<UpdateInfo>("check_for_updates");
+  return getJson<UpdateInfo>("/update/check");
 }
 
 export async function detectInstallMethod(): Promise<InstallMethod> {
-  return invoke<InstallMethod>("detect_install_method");
+  return getJson<InstallMethod>("/install-method");
 }
 
 export interface CliLinkStatus {
@@ -152,11 +235,11 @@ export interface CliLinkStatus {
 }
 
 export async function cliLinkStatus(): Promise<CliLinkStatus> {
-  return invoke<CliLinkStatus>("cli_link_status");
+  return getJson<CliLinkStatus>("/cli-link");
 }
 
 export async function installCliLink(): Promise<void> {
-  return invoke<void>("install_cli_link");
+  await send("POST", "/cli-link/install");
 }
 
 export type PatternKind = { kind: "direct" } | { kind: "indirect"; via_files: string[] };
@@ -178,27 +261,16 @@ export interface RelevanceSnapshot {
 }
 
 export async function relevanceSnapshot(): Promise<RelevanceSnapshot> {
-  return invoke<RelevanceSnapshot>("relevance_snapshot");
+  return getJson<RelevanceSnapshot>("/relevance/snapshot");
 }
 
 export async function focusChanged(focused: boolean): Promise<void> {
-  return invoke("focus_changed", { focused });
+  await send("POST", "/focus", { focused });
 }
 
 export async function subscribeRelevance(cb: () => void): Promise<UnlistenFn> {
-  return listen("relevance-updated", () => cb());
-}
-
-// Emitted by the native macOS graphics-recovery observers (src/redraw.rs)
-// after a context rebuild (sleep/wake, display sleep/wake, monitor or
-// backing-scale change) so the web layer can flush its own stale tiles.
-export async function subscribeGfxRebuilt(cb: () => void): Promise<UnlistenFn> {
-  return listen("gfx-context-rebuilt", () => cb());
-}
-
-// Force a native WKWebView repaint (macOS). The wall-clock heartbeat uses
-// the soft path; the manual ⌘⇧R escape hatch passes hard=true to add a
-// hide/show cycle that clears a stuck ghost.
-export async function forceRedraw(hard = false): Promise<void> {
-  return invoke("force_redraw", { hard });
+  const s = stream();
+  const handler = () => cb();
+  s.addEventListener("relevance-updated", handler);
+  return () => s.removeEventListener("relevance-updated", handler);
 }

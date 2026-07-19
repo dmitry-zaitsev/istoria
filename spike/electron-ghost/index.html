@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>istoria — Electron ghost spike</title>
+    <script>
+      // Ghost-spike shim. Lets the REAL, unmodified LogStream mount outside
+      // Tauri: getCurrentWindow() reads __TAURI_INTERNALS__.metadata (so it
+      // won't throw synchronously in the effect), and invoke() is only ever
+      // hit on the user-pin and gfx-recovery paths — all of which already
+      // .catch(). We reject so those paths no-op cleanly. This is the whole
+      // trick that avoids reverse-engineering Tauri's IPC for the spike.
+      window.__TAURI_INTERNALS__ = {
+        metadata: {
+          currentWindow: { label: "spike" },
+          currentWebview: { label: "spike", windowLabel: "spike" },
+        },
+        transformCallback: function (cb) {
+          return cb;
+        },
+        invoke: function () {
+          return Promise.reject(new Error("spike: no backend"));
+        },
+      };
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./renderer.tsx"></script>
+  </body>
+</html>

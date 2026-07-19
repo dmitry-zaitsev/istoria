@@ -14,6 +14,7 @@
     "url": "https://github.com/dmitry-zaitsev/istoria/issues"
   },
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -25,29 +26,40 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run format:check && npm run lint && tsc -b && npm run test"
+    "check": "npm run format:check && npm run lint && tsc -b && npm run test",
+    "spike:build": "vite build --config spike/electron-ghost/vite.config.ts",
+    "spike": "npm run spike:build && electron spike/electron-ghost/main.cjs",
+    "core:build": "cargo build --bin istoria-core --manifest-path src-tauri/Cargo.toml",
+    "core:build:release": "cargo build --release --bin istoria-core --manifest-path src-tauri/Cargo.toml",
+    "build:electron": "tsc -b && vite build --base ./",
+    "electron:dev": "node electron/dev.mjs",
+    "electron": "npm run build:electron && npm run core:build && electron electron/main.cjs",
+    "dist": "npm run build:electron && npm run core:build:release && electron-builder"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
     "@tanstack/react-virtual": "^3.10.8",
     "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/cli": "^2.1.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-process": "^2",
     "@tauri-apps/plugin-updater": "^2",
-    "cmdk": "^1.1.1",
-    "highlight.js": "^11.11.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zustand": "^5.0.2"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.1.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "cmdk": "^1.1.1",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "highlight.js": "^11.11.1",
     "oxlint": "^1.62.0",
     "prettier": "^3.8.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "zustand": "^5.0.2"
   }
 }

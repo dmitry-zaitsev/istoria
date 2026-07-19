@@ -1,0 +1,66 @@
+/* Spike-only layout scaffold. The real global.css styles the rows/glyphs
+   (what actually ghosts); these rules just give the scroller a bounded,
+   full-height container without pulling in the whole App shell. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.spike-win {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.spike-banner {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  font-family: var(--ui, system-ui);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line, rgba(128, 128, 128, 0.3));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.spike-banner button {
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line, rgba(128, 128, 128, 0.4));
+  background: transparent;
+  color: inherit;
+}
+
+.spike-banner .spike-hint {
+  opacity: 0.6;
+  margin-left: auto;
+}
+
+/* Ensure the flex chain resolves to a bounded, scrollable .stream even without
+   the full App ancestry. These mirror the real global.css intent. */
+.spike-win .main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.spike-win .stream-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.spike-win .stream {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
