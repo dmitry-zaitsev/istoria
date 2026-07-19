@@ -1,0 +1,66 @@
+appId: com.wallspaghetti.istoria
+productName: istoria
+copyright: © Dmitry Zaytsev
+
+directories:
+  output: release
+  buildResources: build
+
+# The app bundle: the built renderer + the Electron main/preload + manifest.
+# React/deps are bundled into dist/ by Vite (devDependencies); electron-builder
+# additionally packs production dependencies from node_modules — which is only
+# `electron-updater` (required at runtime by main.cjs).
+files:
+  - dist/**
+  - electron/**
+  - package.json
+
+# The headless Rust core rides along as a resource; main.cjs resolves it at
+# process.resourcesPath/istoria-core in the packaged app.
+extraResources:
+  - from: target/release/istoria-core
+    to: istoria-core
+
+# Where updates + downloads live. Embeds app-update.yml into the app (so
+# electron-updater checks this repo) and makes latest-mac.yml URLs correct.
+# CI/just build with `--publish never` and upload via `gh`, mirroring Tauri.
+publish:
+  provider: github
+  owner: dmitry-zaitsev
+  repo: istoria-releases
+
+mac:
+  category: public.app-category.developer-tools
+  icon: src-tauri/icons/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarize via notarytool. Reads APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD +
+  # APPLE_TEAM_ID from the environment. Skipped automatically for unsigned
+  # local builds (CSC_IDENTITY_AUTO_DISCOVERY=false).
+  notarize: true
+  target:
+    - target: dmg # download + Homebrew
+      arch: [arm64]
+    - target: zip # electron-updater payload
+      arch: [arm64]
+
+# DMG window/layout mirrors the Tauri create-dmg setup (660x400, background,
+# app at 180,200, /Applications drop-link at 480,200, 110px icons).
+dmg:
+  title: istoria
+  icon: src-tauri/icons/icon.icns
+  background: src-tauri/icons/dmg-background.png
+  iconSize: 110
+  window:
+    width: 660
+    height: 400
+  contents:
+    - x: 180
+      y: 200
+      type: file
+    - x: 480
+      y: 200
+      type: link
+      path: /Applications
