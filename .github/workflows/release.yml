@@ -139,6 +139,14 @@ jobs:
             --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" --wait
           xcrun stapler staple "$DMG"
+          # Stable, version-less copy so the landing page + README can link to
+          # a URL that never changes: releases/latest/download/istoria.dmg.
+          # (The Tauri flow shipped this too; the electron-builder default name
+          # is versioned — istoria-X.Y.Z-arm64.dmg — so we mirror a copy here.)
+          # Identical bytes: already signed + notarized + stapled. Downstream
+          # *.dmg globs (SHA256SUMS, upload-artifact, gh release create) pick
+          # it up automatically.
+          cp "$DMG" release/istoria.dmg
 
       - name: Verify signature + notarization
         run: |
