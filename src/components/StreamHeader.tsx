@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { clearSession, type LogEvent } from "../lib/ipc";
-import { fireSessionCleared } from "../lib/sessionBus";
+import { type LogEvent } from "../lib/ipc";
+import { clearCurrentSession } from "../lib/sessionBus";
 import { toast } from "../lib/toast";
 import { useStore, type SortKey } from "../store";
 import { AlertsPanel } from "./AlertsPanel";
@@ -104,10 +104,7 @@ export function StreamHeader({
           type="button"
           className="sort-btn"
           onClick={() => {
-            // Wipe local state immediately so the UI doesn't lag the
-            // backend roundtrip / pause snapshot.
-            fireSessionCleared();
-            void clearSession()
+            void clearCurrentSession()
               .then(() => toast("Session cleared"))
               .catch(() => toast("Clear failed"));
           }}

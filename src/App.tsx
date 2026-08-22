@@ -36,7 +36,7 @@ import {
 } from "./lib/ipc";
 import { evalAst, isError, parse, resolveAst, type Ast } from "./lib/query";
 import { termsFromAst } from "./lib/highlight";
-import { onSessionCleared } from "./lib/sessionBus";
+import { onSessionClear, SessionClearBarrier } from "./lib/sessionBus";
 import { toast } from "./lib/toast";
 import { applyAllCached, COMPILED_BUILTINS } from "./lib/transformers";
 import { loadActiveViewId, loadViews } from "./lib/views";
@@ -99,15 +99,29 @@ export default function App() {
   // Cursor into the ring. Bumped to the last ingested event id; the
   // next refresh passes it to query_since.
   const lastSeenIdRef = useRef<number>(0);
+  // Invalidates async reads across a clear. The cycle state restarts
+  // the ingest effect after either terminal outcome so success reloads
+  // post-clear events and failure restores the untouched backend data.
+  const clearBarrierRef = useRef(new SessionClearBarrier());
+  const [ingestCycle, setIngestCycle] = useState(0);
   // Last delta batch. Drives the notification + delta-alert effects so
   // they don't have to scan the full array for "what's new".
   const [pendingDelta, setPendingDelta] = useState<LogEvent[]>([]);
 
-  // Wipe local state the moment the user clears the session, even if
-  // we're paused or mid-throttle. Backend wipe runs in parallel.
+  // Clear optimistically on `started`, then open a fresh ingest generation
+  // after either terminal outcome. A failed backend clear therefore reloads
+  // the original data instead of leaving the UI misleadingly empty.
   useEffect(
     () =>
-      onSessionCleared(() => {
+      onSessionClear((phase) => {
+        if (phase !== "started") {
+          clearBarrierRef.current.finishClear();
+          lastSeenIdRef.current = 0;
+          setIngestCycle((cycle) => cycle + 1);
+          return;
+        }
+
+        clearBarrierRef.current.beginClear();
         setUnfilteredEvents([]);
         setUnfilteredCount(0);
         facetIndexRef.current.clear();
@@ -342,8 +356,9 @@ export default function App() {
 
     const bootstrap = async () => {
       try {
+        const generation = clearBarrierRef.current.capture();
         const all = await queryRecent(QUERY_LIMIT);
-        if (cancelled) return;
+        if (cancelled || !clearBarrierRef.current.accepts(generation)) return;
         const ordered = all.toReversed() as LogEvent[];
         ingestBatch(ordered, true);
         setUnfilteredCount(ordered.length);
@@ -354,15 +369,16 @@ export default function App() {
 
     const refresh = async () => {
       try {
+        const generation = clearBarrierRef.current.capture();
         const since = lastSeenIdRef.current;
         const payload = await querySince(since, QUERY_LIMIT);
-        if (cancelled) return;
+        if (cancelled || !clearBarrierRef.current.accepts(generation)) return;
         // Ring evicted past our cursor → fall back to a fresh snapshot.
         // `since === 0` is the bootstrap path; minId > 1 there is
         // expected (ring already had content before we started).
         if (since > 0 && payload.minId != null && payload.minId > since + 1) {
           const all = await queryRecent(QUERY_LIMIT);
-          if (cancelled) return;
+          if (cancelled || !clearBarrierRef.current.accepts(generation)) return;
           ingestBatch(all.toReversed() as LogEvent[], true);
           setUnfilteredCount(payload.len);
           return;
@@ -394,7 +410,7 @@ export default function App() {
       if (pending) clearTimeout(pending);
       unlisten?.();
     };
-  }, []);
+  }, [ingestCycle]);
 
   // Branch relevance: pull a fresh snapshot on mount and whenever the
   // backend emits relevance-updated. Window focus pokes the backend so
