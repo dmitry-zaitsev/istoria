@@ -145,7 +145,9 @@ pub fn run_headless(cli: Cli) {
             let mut last_id_consumed: u64 = 0;
             tokio::spawn(async move {
                 loop {
-                    ring2.notified().await;
+                    if ring2.snapshot_since(last_id_consumed, 1).is_empty() {
+                        ring2.notified().await;
+                    }
                     tokio::time::sleep(Duration::from_millis(16)).await;
                     let _ = tx_a.send(StreamMsg::EventNew {
                         len: ring2.len(),
@@ -161,7 +163,9 @@ pub fn run_headless(cli: Cli) {
                             for ev in new_events {
                                 rel.consider(&ev);
                             }
-                        });
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -186,17 +190,7 @@ pub fn run_headless(cli: Cli) {
             });
         }
 
-        // 15s pattern recompute poll.
-        {
-            let rel3 = Arc::clone(&relevance_engine);
-            tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(relevance::recompute_interval()).await;
-                    let rel = Arc::clone(&rel3);
-                    tokio::task::spawn_blocking(move || rel.force_recompute_all());
-                }
-            });
-        }
+        tokio::spawn(Arc::clone(&relevance_engine).run_refresh_worker());
 
         let state = ApiState {
             ring: Arc::clone(&ring),
