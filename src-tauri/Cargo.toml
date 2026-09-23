@@ -60,3 +60,6 @@ block2 = "0.6"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }

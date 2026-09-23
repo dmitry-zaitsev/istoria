@@ -84,30 +84,11 @@ pub async fn get_emission_site(
     state: tauri::State<'_, AppState>,
     msg: String,
 ) -> Result<Option<EmissionSite>, String> {
-    let root = project_root_or_err(&state)?;
+    let root = project_root_or_err(&state)?.to_path_buf();
     let cache = std::sync::Arc::clone(&state.code_cache);
-    let Some((path, line)) = code::find_emission_site(root, &cache, &msg)? else {
-        return Ok(None);
-    };
-    let preview = code::read_slice(
-        root,
-        path.to_str().unwrap_or_default(),
-        line,
-        2,
-    )
-    .unwrap_or_default();
-    let is_local = code::is_local_change(root, &cache, &path, line);
-    let rel_path = path
-        .strip_prefix(root)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
-    Ok(Some(EmissionSite {
-        path: path.to_string_lossy().into_owned(),
-        rel_path,
-        line,
-        preview,
-        is_local,
-    }))
+    tauri::async_runtime::spawn_blocking(move || code::emission_site(&root, &cache, &msg))
+        .await
+        .map_err(|e| format!("preview task panicked: {e}"))?
 }
 
 #[tauri::command]
@@ -180,11 +161,7 @@ pub async fn focus_changed(
     if !focused {
         return Ok(());
     }
-    let engine = std::sync::Arc::clone(&state.relevance);
-    // Fire-and-forget: don't make the focus handler wait on git +
-    // file walks. The next `relevance-updated` emit picks up the
-    // new state.
-    tauri::async_runtime::spawn_blocking(move || engine.force_recompute_all());
+    state.relevance.request_refresh();
     Ok(())
 }
 
@@ -199,6 +176,7 @@ pub fn force_redraw(app: tauri::AppHandle, hard: bool) {
 #[tauri::command]
 pub async fn clear_session(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.ring.clear();
+    state.relevance.clear_all();
     state.source_registry.reset();
     Ok(())
 }

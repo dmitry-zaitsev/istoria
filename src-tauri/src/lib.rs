@@ -5,6 +5,7 @@ pub mod coalesce;
 pub mod code;
 pub mod event;
 pub mod format;
+pub mod git;
 pub mod headless;
 pub mod http;
 pub mod http_api;
@@ -230,7 +231,9 @@ pub fn run(cli: cli::Cli) {
             let mut last_id_consumed: u64 = 0;
             tauri::async_runtime::spawn(async move {
                 loop {
-                    ring.notified().await;
+                    if ring.snapshot_since(last_id_consumed, 1).is_empty() {
+                        ring.notified().await;
+                    }
                     tokio::time::sleep(Duration::from_millis(16)).await;
                     let payload = EventNewPayload {
                         len: ring.len(),
@@ -253,7 +256,9 @@ pub fn run(cli: cli::Cli) {
                             for ev in new_events {
                                 rel.consider(&ev);
                             }
-                        });
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -282,16 +287,7 @@ pub fn run(cli: cli::Cli) {
                 }
             });
 
-            // 15s polling task: recompute patterns per registered root.
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    tokio::time::sleep(relevance::recompute_interval()).await;
-                    let rel = Arc::clone(&relevance_for_poll);
-                    tauri::async_runtime::spawn_blocking(move || {
-                        rel.force_recompute_all();
-                    });
-                }
-            });
+            tauri::async_runtime::spawn(relevance_for_poll.run_refresh_worker());
             Ok(())
         })
         .run(tauri::generate_context!())

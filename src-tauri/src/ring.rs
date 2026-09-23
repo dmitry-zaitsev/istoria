@@ -62,7 +62,7 @@ impl Ring {
             q.push_back(ev);
             id
         };
-        self.notify.notify_waiters();
+        self.notify.notify_one();
         id
     }
 
@@ -78,9 +78,11 @@ impl Ring {
             }
             q.push_back(ev);
         }
-        self.notify.notify_waiters();
+        self.notify.notify_one();
     }
 
+    /// One shell drains the ring. Retain a permit when it is processing a
+    /// previous batch, so the final event or clear notification is not lost.
     pub async fn notified(&self) {
         self.notify.notified().await;
     }
@@ -99,7 +101,7 @@ impl Ring {
         self.inner.write().clear();
         self.pins.write().clear();
         self.dropped.store(0, Ordering::Relaxed);
-        self.notify.notify_waiters();
+        self.notify.notify_one();
     }
 
     pub fn pin(&self, id: i64) {
@@ -150,6 +152,11 @@ impl Ring {
     pub fn min_id(&self) -> Option<u64> {
         self.inner.read().front().map(|e| e.id)
     }
+
+    /// Find active producers without cloning every retained event payload.
+    pub fn retained_sources(&self) -> HashSet<String> {
+        self.inner.read().iter().map(|e| e.source.clone()).collect()
+    }
 }
 
 #[cfg(test)]
@@ -159,6 +166,23 @@ mod tests {
 
     fn ev(id: u64, msg: &str) -> Event {
         Event::from_plain_line(id, "test", msg.to_string())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn notifications_survive_while_the_consumer_is_processing() {
+        let ring = Ring::new(10);
+        ring.append(ev(0, "first"));
+        tokio::time::timeout(std::time::Duration::from_millis(1), ring.notified())
+            .await
+            .unwrap();
+        ring.append(ev(0, "last"));
+        tokio::time::timeout(std::time::Duration::from_millis(1), ring.notified())
+            .await
+            .unwrap();
+        ring.clear();
+        tokio::time::timeout(std::time::Duration::from_millis(1), ring.notified())
+            .await
+            .unwrap();
     }
 
     #[test]
@@ -242,6 +266,15 @@ mod tests {
         ring.push(ev(2, "b"));
         ring.push(ev(3, "c")); // evicts id=1
         assert_eq!(ring.min_id(), Some(2));
+    }
+
+    #[test]
+    fn retained_sources_excludes_evicted_producers() {
+        let ring = Ring::new(2);
+        ring.append(Event::from_plain_line(0, "old", "a".into()));
+        ring.append(Event::from_plain_line(0, "live", "b".into()));
+        ring.append(Event::from_plain_line(0, "live", "c".into()));
+        assert_eq!(ring.retained_sources(), HashSet::from(["live".to_string()]));
     }
 
     // Regression for the multi-process "ghost rows" bug: concurrent sources

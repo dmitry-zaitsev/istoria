@@ -294,27 +294,13 @@ async fn get_emission_site(
     State(st): State<ApiState>,
     Query(p): Query<EmissionParams>,
 ) -> Result<Json<Option<EmissionSite>>, (StatusCode, String)> {
-    let root = project_root_or_err(&st)?;
+    let root = project_root_or_err(&st)?.to_path_buf();
     let cache = Arc::clone(&st.code_cache);
-    let Some((path, line)) = code::find_emission_site(root, &cache, &p.msg)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))?
-    else {
-        return Ok(Json(None));
-    };
-    let preview =
-        code::read_slice(root, path.to_str().unwrap_or_default(), line, 2).unwrap_or_default();
-    let is_local = code::is_local_change(root, &cache, &path, line);
-    let rel_path = path
-        .strip_prefix(root)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
-    Ok(Json(Some(EmissionSite {
-        path: path.to_string_lossy().into_owned(),
-        rel_path,
-        line,
-        preview,
-        is_local,
-    })))
+    tokio::task::spawn_blocking(move || code::emission_site(&root, &cache, &p.msg))
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("preview task panicked: {e}")))?
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 
 // ---- relevance / session ---------------------------------------------------
@@ -329,6 +315,7 @@ async fn relevance_snapshot(State(st): State<ApiState>) -> Json<RelevanceSnapsho
 
 async fn clear_session(State(st): State<ApiState>) -> StatusCode {
     st.ring.clear();
+    st.relevance.clear_all();
     st.source_registry.reset();
     StatusCode::NO_CONTENT
 }
@@ -340,8 +327,7 @@ struct FocusBody {
 
 async fn focus_changed(State(st): State<ApiState>, Json(body): Json<FocusBody>) -> StatusCode {
     if body.focused {
-        let engine = Arc::clone(&st.relevance);
-        tokio::task::spawn_blocking(move || engine.force_recompute_all());
+        st.relevance.request_refresh();
     }
     StatusCode::NO_CONTENT
 }

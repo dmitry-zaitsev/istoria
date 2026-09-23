@@ -21,17 +21,21 @@
 //! `"loaded 7 items"`. Extracting the skeleton from the *call site*
 //! handles concat / format / template literals uniformly.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::future::Future;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::{Arc, OnceLock};
-use std::time::{Instant, SystemTime};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, OnceLock,
+};
+use std::time::{Duration, Instant, SystemTime};
 
 use parking_lot::Mutex;
 use regex::Regex;
 use serde::Serialize;
+use tokio::sync::watch;
 
 use crate::event::Event;
 use crate::ring::Ring;
@@ -40,6 +44,29 @@ const SCAN_FILE_MAX_BYTES: u64 = 1_000_000;
 const SCAN_DIR_BUDGET: usize = 20_000;
 const RECOMPUTE_INTERVAL_SECS: u64 = 15;
 const EMIT_DEBOUNCE_MS: u64 = 100;
+
+async fn refresh_loop<F, Work>(
+    mut requests: watch::Receiver<()>,
+    debounce: Duration,
+    poll: Duration,
+    mut refresh: F,
+) where
+    F: FnMut() -> Work,
+    Work: Future<Output = ()>,
+{
+    requests.mark_changed();
+    loop {
+        tokio::select! {
+            result = requests.changed() => { if result.is_err() { return; } },
+            _ = tokio::time::sleep(poll) => {},
+        }
+        // A fixed window avoids starving analysis under a continuous stream
+        // of requests. Everything arriving in the window shares one refresh.
+        tokio::time::sleep(debounce).await;
+        requests.borrow_and_update();
+        refresh().await;
+    }
+}
 
 const SKIP_DIRS: &[&str] = &[
     ".git",
@@ -136,9 +163,15 @@ pub struct RelevanceSnapshot {
 // SourceRoots: source_name → its cwd
 // --------------------------------------------------------------------
 
-#[derive(Default)]
 pub struct SourceRoots {
     inner: Mutex<HashMap<String, PathBuf>>,
+    refresh: watch::Sender<()>,
+}
+
+impl Default for SourceRoots {
+    fn default() -> Self {
+        Self { inner: Mutex::new(HashMap::new()), refresh: watch::channel(()).0 }
+    }
 }
 
 impl SourceRoots {
@@ -147,7 +180,13 @@ impl SourceRoots {
     }
 
     pub fn register(&self, source: &str, cwd: PathBuf) {
-        self.inner.lock().insert(source.to_string(), cwd);
+        let cwd = cwd.canonicalize().unwrap_or(cwd);
+        // Git reports paths relative to the worktree. Normalize subdirectory
+        // producers to that root too, without spawning a discovery command.
+        let root = cwd.ancestors().find(|p| p.join(".git").exists())
+            .unwrap_or(&cwd).to_path_buf();
+        self.inner.lock().insert(source.to_string(), root);
+        self.refresh.send_replace(());
     }
 
     pub fn get(&self, source: &str) -> Option<PathBuf> {
@@ -1004,10 +1043,7 @@ pub fn touched_files(diff: &str) -> HashSet<String> {
 // --------------------------------------------------------------------
 
 fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .output()
+    let out = crate::git::run(root, args)
         .map_err(|e| format!("git failed: {e}"))?;
     if !out.status.success() {
         return Err(format!(
@@ -1020,10 +1056,7 @@ fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 fn default_branch(root: &Path) -> String {
-    match Command::new("git")
-        .args(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-        .current_dir(root)
-        .output()
+    match crate::git::run(root, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
     {
         Ok(o) if o.status.success() => {
             let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -1041,10 +1074,10 @@ fn collect_diff(root: &Path) -> String {
     let def = default_branch(root);
     let upstream = format!("origin/{def}...HEAD");
     let local = format!("{def}...HEAD");
-    let committed = run_git(root, &["diff", "--unified=0", &upstream])
-        .or_else(|_| run_git(root, &["diff", "--unified=0", &local]))
+    let committed = run_git(root, &["diff", "--no-ext-diff", "--no-textconv", "--unified=0", &upstream])
+        .or_else(|_| run_git(root, &["diff", "--no-ext-diff", "--no-textconv", "--unified=0", &local]))
         .unwrap_or_default();
-    let uncommitted = run_git(root, &["diff", "--unified=0", "HEAD"]).unwrap_or_default();
+    let uncommitted = run_git(root, &["diff", "--no-ext-diff", "--no-textconv", "--unified=0", "HEAD"]).unwrap_or_default();
     if committed.trim().is_empty() {
         uncommitted
     } else if uncommitted.trim().is_empty() {
@@ -1087,12 +1120,11 @@ impl Default for RootState {
     }
 }
 
-/// Per-(root, source_name) pattern cache. We key by root *and* source
-/// so two forwarders sharing the same cwd don't stomp on each other's
-/// source-tagged patterns.
+/// Analysis is shared per worktree. Source attribution is applied when matching
+/// an event, so multiple forwarders never duplicate Git or filesystem work.
 #[derive(Default)]
 pub struct PatternCache {
-    inner: Mutex<HashMap<(PathBuf, String), RootState>>,
+    inner: Mutex<HashMap<PathBuf, RootState>>,
 }
 
 impl PatternCache {
@@ -1100,24 +1132,26 @@ impl PatternCache {
         Self::default()
     }
 
-    /// Recompute patterns for one (root, source) pair. Returns `true`
+    /// Recompute patterns for one worktree. Only the refresh worker calls this.
+    /// Returns `true`
     /// if the pattern set actually changed (so callers can rescan the
     /// ring) and `false` if nothing moved.
-    pub fn recompute(
+    fn recompute(
         &self,
         root: &Path,
-        source_name: &str,
     ) -> Result<bool, String> {
         let head = head_sha(root)?;
         let diff = collect_diff(root);
         let dh = quick_hash(&diff);
 
-        let mut guard = self.inner.lock();
-        let entry = guard
-            .entry((root.to_path_buf(), source_name.to_string()))
-            .or_insert_with(RootState::default);
+        self.update(root, head, &diff, dh)
+    }
 
-        if entry.head_sha == head && entry.diff_hash == dh && entry.compiled.is_some() {
+    fn update(&self, root: &Path, head: String, diff: &str, dh: u64) -> Result<bool, String> {
+        let mut guard = self.inner.lock();
+        let entry = guard.entry(root.to_path_buf()).or_insert_with(RootState::default);
+
+        if entry.head_sha == head && entry.diff_hash == dh {
             return Ok(false);
         }
 
@@ -1145,7 +1179,7 @@ impl PatternCache {
                 }
                 patterns.push(LogPattern {
                     regex,
-                    source: source_name.to_string(),
+                    source: String::new(),
                     rel_path: tf_rel.clone(),
                     line: call.line,
                     raw_call: call.raw_call,
@@ -1202,7 +1236,7 @@ impl PatternCache {
                 }
                 patterns.push(LogPattern {
                     regex,
-                    source: source_name.to_string(),
+                    source: String::new(),
                     rel_path: rel_path.clone(),
                     line: call.line,
                     raw_call: call.raw_call,
@@ -1226,29 +1260,19 @@ impl PatternCache {
         msg: &str,
     ) -> Option<MatchedPattern> {
         let guard = self.inner.lock();
-        let entry = guard.get(&(root.to_path_buf(), source.to_string()))?;
+        let entry = guard.get(root)?;
         let re = entry.compiled.as_ref()?;
         let caps = re.captures(msg)?;
         for i in 1..caps.len() {
             if caps.get(i).is_some() {
-                let p = entry.patterns.get(i - 1)?.clone();
+                let mut p = entry.patterns.get(i - 1)?.clone();
+                p.source = source.to_string();
                 return Some(MatchedPattern { pattern: p });
             }
         }
         None
     }
 
-    pub fn patterns_for(&self, root: &Path, source: &str) -> Vec<LogPattern> {
-        let guard = self.inner.lock();
-        guard
-            .get(&(root.to_path_buf(), source.to_string()))
-            .map(|e| e.patterns.clone())
-            .unwrap_or_default()
-    }
-
-    pub fn clear_source(&self, root: &Path, source: &str) {
-        self.inner.lock().remove(&(root.to_path_buf(), source.to_string()));
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1284,13 +1308,74 @@ fn quick_hash(s: &str) -> u64 {
 
 #[derive(Default)]
 struct EngineState {
-    ids: HashSet<u64>,
+    // Ordered by event ID so eviction visits only expired matches, rather
+    // than scanning the entire cache on every new log line. Site keys are
+    // shared: each retained event stores an Arc, not another pair of strings.
+    ids: BTreeMap<u64, Arc<(String, String, u32)>>,
     /// Keyed by (source, rel_path, line) so per-site emitted_count is
     /// accurate even when the same path appears from multiple sources.
-    sites: HashMap<(String, String, u32), SiteAccum>,
+    sites: HashMap<Arc<(String, String, u32)>, SiteAccum>,
     /// Set true when state changed since last emit; the debounce task
     /// reads and clears this.
     dirty: bool,
+}
+
+impl EngineState {
+    fn record(&mut self, id: u64, pattern: LogPattern) -> bool {
+        if self.ids.contains_key(&id) {
+            return false;
+        }
+        let key = (
+            pattern.source.clone(),
+            pattern.rel_path.clone(),
+            pattern.line,
+        );
+        let key = self
+            .sites
+            .get_key_value(&key)
+            .map(|(key, _)| Arc::clone(key))
+            .unwrap_or_else(|| Arc::new(key));
+        let acc = self
+            .sites
+            .entry(Arc::clone(&key))
+            .or_insert_with(|| SiteAccum {
+                source: pattern.source,
+                rel_path: pattern.rel_path,
+                line: pattern.line,
+                raw_call: pattern.raw_call,
+                emitted_count: 0,
+                kind: pattern.kind,
+            });
+        acc.emitted_count += 1;
+        self.ids.insert(id, key);
+        self.dirty = true;
+        true
+    }
+
+    /// Keep exactly the matches that can still belong to the ring. No live
+    /// minimum means the ring was cleared, so all matches must be discarded.
+    fn prune(&mut self, min_id: Option<u64>) -> bool {
+        let mut changed = false;
+        while self
+            .ids
+            .first_key_value()
+            .is_some_and(|(&id, _)| min_id.map_or(true, |min| id < min))
+        {
+            let (_, key) = self.ids.pop_first().expect("first entry exists");
+            let remove_site = if let Some(site) = self.sites.get_mut(&key) {
+                site.emitted_count -= 1;
+                site.emitted_count == 0
+            } else {
+                false
+            };
+            if remove_site {
+                self.sites.remove(&key);
+            }
+            changed = true;
+        }
+        self.dirty |= changed;
+        changed
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1309,6 +1394,9 @@ pub struct RelevanceEngine {
     ring: Arc<Ring>,
     state: Mutex<EngineState>,
     emit: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    worker_started: AtomicBool,
+    // A rescan and an incoming-event update must not overwrite one another.
+    scan: Mutex<()>,
 }
 
 impl RelevanceEngine {
@@ -1323,6 +1411,8 @@ impl RelevanceEngine {
             ring,
             state: Mutex::new(EngineState::default()),
             emit: Mutex::new(None),
+            worker_started: AtomicBool::new(false),
+            scan: Mutex::new(()),
         }
     }
 
@@ -1339,67 +1429,74 @@ impl RelevanceEngine {
 
     /// Walk a single event and update state if its msg matches.
     pub fn consider(&self, ev: &Event) {
-        let Some(root) = self.source_roots.get(&ev.source) else { return };
-        // Lazily recompute on first event if we have no compiled regex.
-        // The 15s tick takes the steady-state path.
-        if self.patterns.patterns_for(&root, &ev.source).is_empty() {
-            let _ = self.patterns.recompute(&root, &ev.source);
-        }
-        let Some(matched) = self
-            .patterns
-            .match_event(&root, &ev.source, &ev.msg)
-            .or_else(|| self.patterns.match_event(&root, &ev.source, &ev.raw))
-        else {
-            return;
-        };
-        let key = (ev.source.clone(), matched.pattern.rel_path.clone(), matched.pattern.line);
+        let _scan = self.scan.lock();
         let mut state = self.state.lock();
-        let fresh_id = state.ids.insert(ev.id);
-        let acc = state.sites.entry(key).or_insert_with(|| SiteAccum {
-            source: matched.pattern.source.clone(),
-            rel_path: matched.pattern.rel_path.clone(),
-            line: matched.pattern.line,
-            raw_call: matched.pattern.raw_call.clone(),
-            emitted_count: 0,
-            kind: matched.pattern.kind.clone(),
-        });
-        acc.emitted_count += 1;
-        if fresh_id {
-            state.dirty = true;
-            drop(state);
-            if let Some(f) = self.emit.lock().as_ref() {
-                f();
+        let min_id = self.ring.min_id();
+        // Unmatched logs and unregistered sources evict old matches too.
+        let mut changed = state.prune(min_id);
+        // A queued batch may have been evicted or cleared while waiting for
+        // the worker. It must never restore IDs that have left the ring.
+        if min_id.is_some_and(|min| ev.id >= min) {
+            if let Some(root) = self.source_roots.get(&ev.source) {
+                // Matching is strictly in-memory. Git belongs to the worker.
+                if let Some(matched) = self
+                    .patterns
+                    .match_event(&root, &ev.source, &ev.msg)
+                    .or_else(|| self.patterns.match_event(&root, &ev.source, &ev.raw))
+                {
+                    changed |= state.record(ev.id, matched.pattern);
+                }
             }
         }
-    }
-
-    /// Drop everything tagged with `source` and re-queue all events
-    /// from that source for re-consideration. Called after a pattern
-    /// recompute changes the active pattern set.
-    pub fn clear_source_and_requeue(&self, source: &str) {
-        {
-            let mut s = self.state.lock();
-            s.ids.retain(|id| {
-                // ids are not source-tagged; clear all and let consider
-                // re-add. (Slightly more aggressive than strictly needed
-                // but keeps state coherent across sources.)
-                let _ = id;
-                false
-            });
-            s.sites.retain(|(src, _, _), _| src != source);
-            s.dirty = true;
+        drop(state);
+        if changed {
+            self.mark_dirty();
         }
-        self.mark_dirty();
     }
 
-    /// Force a recompute now (e.g. on window focus, or the 15s tick).
-    /// Only rescans the ring when at least one source's patterns
-    /// actually changed.
-    pub fn force_recompute_all(&self) {
+    /// Coalesce refresh requests without spawning or queueing individual jobs.
+    pub fn request_refresh(&self) {
+        self.source_roots.refresh.send_replace(());
+    }
+
+    /// One worker for both shells. Debounce bursts for five seconds and await
+    /// each analysis before accepting more work. Requests during an analysis
+    /// occupy one watch-channel slot, regardless of how many callers send them.
+    pub async fn run_refresh_worker(self: Arc<Self>) {
+        if self.worker_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        refresh_loop(
+            self.source_roots.refresh.subscribe(),
+            crate::git::DEBOUNCE,
+            recompute_interval(),
+            || {
+                let engine = Arc::clone(&self);
+                async move {
+                    let _ = tokio::task::spawn_blocking(move || engine.recompute_all()).await;
+                }
+            },
+        )
+        .await;
+    }
+
+    fn recompute_all(&self) {
         let sources = self.source_roots.snapshot();
+        // Historical registrations with no retained logs need no analysis.
+        // This also makes clearing a session stop obsolete background work.
+        let retained = self.ring.retained_sources();
+        let roots: HashSet<_> = sources
+            .into_iter()
+            .filter(|(source, _)| retained.contains(source))
+            .map(|(_, root)| root)
+            .collect();
+        self.patterns
+            .inner
+            .lock()
+            .retain(|root, _| roots.contains(root));
         let mut any_changed = false;
-        for (name, root) in sources {
-            match self.patterns.recompute(&root, &name) {
+        for root in roots {
+            match self.patterns.recompute(&root) {
                 Ok(true) => any_changed = true,
                 Ok(false) => {}
                 Err(_) => {}
@@ -1412,47 +1509,45 @@ impl RelevanceEngine {
     }
 
     pub fn rescan_ring(&self) {
+        let _scan = self.scan.lock();
         // Replace state with a fresh scan over the entire ring under
         // the current patterns. Cheap: combined regex test per event.
         let events = self.ring.snapshot_since(0, usize::MAX);
         let mut new_state = EngineState::default();
         let cache = self.patterns.clone();
         for ev in &events {
-            let Some(root) = self.source_roots.get(&ev.source) else { continue };
+            let Some(root) = self.source_roots.get(&ev.source) else {
+                continue;
+            };
             let Some(matched) = cache
                 .match_event(&root, &ev.source, &ev.msg)
                 .or_else(|| cache.match_event(&root, &ev.source, &ev.raw))
             else {
                 continue;
             };
-            new_state.ids.insert(ev.id);
-            let key = (
-                ev.source.clone(),
-                matched.pattern.rel_path.clone(),
-                matched.pattern.line,
-            );
-            let acc = new_state.sites.entry(key).or_insert_with(|| SiteAccum {
-                source: matched.pattern.source.clone(),
-                rel_path: matched.pattern.rel_path.clone(),
-                line: matched.pattern.line,
-                raw_call: matched.pattern.raw_call.clone(),
-                emitted_count: 0,
-                kind: matched.pattern.kind.clone(),
-            });
-            acc.emitted_count += 1;
+            new_state.record(ev.id, matched.pattern);
         }
+        // Ingestion continues during the scan; don't publish matches from
+        // the cloned snapshot that have since left the ring.
+        new_state.prune(self.ring.min_id());
         new_state.dirty = true;
         *self.state.lock() = new_state;
     }
 
     /// IPC: take the current state as a wire snapshot.
     pub fn snapshot(&self) -> RelevanceSnapshot {
-        let state = self.state.lock();
-        let mut ids: Vec<u64> = state.ids.iter().copied().collect();
-        ids.sort_unstable();
-        let mut sites: Vec<RelevanceSite> = state
-            .sites
-            .values()
+        let (ids, sites, pruned) = {
+            let mut state = self.state.lock();
+            let pruned = state.prune(self.ring.min_id());
+            let ids = state.ids.keys().copied().collect();
+            let sites: Vec<_> = state.sites.values().cloned().collect();
+            (ids, sites, pruned)
+        };
+        if pruned {
+            self.mark_dirty();
+        }
+        let mut sites: Vec<RelevanceSite> = sites
+            .iter()
             .map(|s| {
                 let snippet = read_snippet(&self.source_roots, &s.source, &s.rel_path, s.line);
                 let abs_path = self
@@ -1482,6 +1577,7 @@ impl RelevanceEngine {
     }
 
     pub fn clear_all(&self) {
+        let _scan = self.scan.lock();
         *self.state.lock() = EngineState::default();
         self.mark_dirty();
     }
@@ -1527,6 +1623,235 @@ pub fn emit_debounce() -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn bursts_coalesce_and_slow_refreshes_never_overlap() {
+        use std::sync::atomic::AtomicUsize;
+        let (tx, rx) = watch::channel(());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let active = Arc::new(AtomicUsize::new(0));
+        let calls2 = calls.clone();
+        let active2 = active.clone();
+        let worker = tokio::spawn(refresh_loop(
+            rx,
+            Duration::from_secs(5),
+            Duration::from_secs(15),
+            move || {
+                let calls = calls2.clone();
+                let active = active2.clone();
+                async move {
+                    assert_eq!(active.fetch_add(1, Ordering::SeqCst), 0);
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    active.fetch_sub(1, Ordering::SeqCst);
+                }
+            },
+        ));
+        tokio::task::yield_now().await;
+        for _ in 0..1000 {
+            tx.send_replace(());
+        }
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        for _ in 0..1000 {
+            tx.send_replace(());
+        }
+        tokio::time::advance(Duration::from_secs(9)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        worker.abort();
+    }
+
+    #[test]
+    fn empty_analysis_is_cached_and_event_ingestion_never_initializes_it() {
+        let root = std::env::temp_dir().join("istoria-nonexistent-relevance-root");
+        let roots = Arc::new(SourceRoots::new());
+        roots.register("source", root.clone());
+        let cache = Arc::new(PatternCache::new());
+        let engine = RelevanceEngine::new(roots, cache.clone(), Arc::new(Ring::new(100)));
+        for id in 1..=1000 {
+            engine.consider(&Event::from_plain_line(id, "source", "anything".into()));
+        }
+        assert!(cache.inner.lock().is_empty());
+        assert!(cache
+            .update(&root, "head".into(), "", quick_hash(""))
+            .unwrap());
+        assert!(!cache
+            .update(&root, "head".into(), "", quick_hash(""))
+            .unwrap());
+        assert!(cache.inner.lock()[&root].patterns.is_empty());
+    }
+
+    #[test]
+    fn shared_patterns_keep_source_attribution_and_rescans_do_not_double_count() {
+        let root = std::env::temp_dir().canonicalize().unwrap();
+        let roots = Arc::new(SourceRoots::new());
+        roots.register("api", root.clone());
+        roots.register("worker", root.clone());
+        let cache = Arc::new(PatternCache::new());
+        let pattern = LogPattern {
+            regex: "request complete".into(),
+            source: String::new(),
+            rel_path: "app.ts".into(),
+            line: 1,
+            raw_call: String::new(),
+            kind: PatternKind::Direct,
+        };
+        cache.inner.lock().insert(
+            root,
+            RootState {
+                compiled: compile_combined(std::slice::from_ref(&pattern)),
+                patterns: vec![pattern],
+                ..RootState::default()
+            },
+        );
+        let ring = Arc::new(Ring::new(100));
+        for source in ["api", "worker"] {
+            ring.append(Event::from_plain_line(0, source, "request complete".into()));
+        }
+        let engine = RelevanceEngine::new(roots, cache.clone(), ring.clone());
+        engine.rescan_ring();
+        for event in ring.snapshot_since(0, 100) {
+            engine.consider(&event);
+        }
+        let snapshot = engine.snapshot();
+        assert_eq!(snapshot.ids, vec![1, 2]);
+        assert_eq!(snapshot.sites.len(), 2);
+        assert_eq!(snapshot.sites[0].source, "api");
+        assert_eq!(snapshot.sites[1].source, "worker");
+        assert!(snapshot.sites.iter().all(|site| site.emitted_count == 1));
+        assert_eq!(cache.inner.lock().len(), 1);
+        ring.clear();
+        engine.clear_all();
+        engine.recompute_all(); // No retained events => no Git and no cache.
+        assert!(engine.snapshot().ids.is_empty());
+        assert!(cache.inner.lock().is_empty());
+    }
+
+    fn retention_engine(capacity: usize) -> (Arc<Ring>, RelevanceEngine) {
+        let root = std::env::temp_dir().canonicalize().unwrap();
+        let roots = Arc::new(SourceRoots::new());
+        for source in ["api", "worker"] {
+            roots.register(source, root.clone());
+        }
+        let pattern = LogPattern {
+            regex: "request complete".into(),
+            source: String::new(),
+            rel_path: "app.rs".into(),
+            line: 1,
+            raw_call: String::new(),
+            kind: PatternKind::Direct,
+        };
+        let cache = Arc::new(PatternCache::new());
+        cache.inner.lock().insert(
+            root,
+            RootState {
+                compiled: compile_combined(std::slice::from_ref(&pattern)),
+                patterns: vec![pattern],
+                ..RootState::default()
+            },
+        );
+        let ring = Arc::new(Ring::new(capacity));
+        let engine = RelevanceEngine::new(roots, cache, ring.clone());
+        (ring, engine)
+    }
+
+    fn append_and_consider(ring: &Ring, engine: &RelevanceEngine, source: &str, msg: &str) {
+        ring.append(Event::from_plain_line(0, source, msg.into()));
+        engine.consider(&ring.snapshot(1, None)[0]);
+    }
+
+    #[test]
+    fn eviction_decrements_site_counts_even_for_unmatched_and_unknown_sources() {
+        let (ring, engine) = retention_engine(3);
+        let emitted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let emitted2 = emitted.clone();
+        engine.set_emit(move || {
+            emitted2.fetch_add(1, Ordering::SeqCst);
+        });
+        for source in ["api", "worker", "api"] {
+            append_and_consider(&ring, &engine, source, "request complete");
+        }
+        append_and_consider(&ring, &engine, "api", "unrelated");
+        let snap = engine.snapshot();
+        assert_eq!(snap.ids, vec![2, 3]);
+        assert_eq!(snap.sites.len(), 2);
+        assert!(snap.sites.iter().all(|site| site.emitted_count == 1));
+        append_and_consider(&ring, &engine, "browser", "unrelated");
+        let snap = engine.snapshot();
+        assert_eq!(snap.ids, vec![3]);
+        assert_eq!(snap.sites.len(), 1);
+        assert_eq!(snap.sites[0].source, "api");
+        append_and_consider(&ring, &engine, "browser", "unrelated");
+        let snap = engine.snapshot();
+        assert!(snap.ids.is_empty());
+        assert!(snap.sites.is_empty());
+        assert_eq!(emitted.load(Ordering::SeqCst), 6);
+    }
+
+    #[test]
+    fn snapshot_prunes_evictions_and_delayed_events_cannot_restore_them() {
+        let (ring, engine) = retention_engine(2);
+        append_and_consider(&ring, &engine, "api", "request complete");
+        let delayed = ring.snapshot(1, None)[0].clone();
+        // Simulate ingestion outpacing the relevance worker.
+        for _ in 0..2 {
+            ring.append(Event::from_plain_line(0, "browser", "unrelated".into()));
+        }
+        let snap = engine.snapshot();
+        assert!(snap.ids.is_empty());
+        assert!(snap.sites.is_empty());
+        engine.consider(&delayed);
+        assert!(engine.state.lock().ids.is_empty());
+        assert!(engine.state.lock().sites.is_empty());
+    }
+
+    #[test]
+    fn relevance_storage_stays_bounded_without_snapshot_requests_or_git_refreshes() {
+        let (ring, engine) = retention_engine(128);
+        for id in 0..10_000 {
+            let source = if id % 2 == 0 { "api" } else { "worker" };
+            append_and_consider(&ring, &engine, source, "request complete");
+            assert!(engine.state.lock().ids.len() <= ring.capacity());
+        }
+        let snap = engine.snapshot();
+        assert_eq!(snap.ids.len(), 128);
+        assert_eq!(snap.ids[0], 9873);
+        assert_eq!(snap.ids[127], 10000);
+        assert_eq!(snap.sites.len(), 2);
+        assert!(snap.sites.iter().all(|site| site.emitted_count == 64));
+    }
+
+    #[test]
+    fn delayed_events_cannot_restore_a_cleared_session() {
+        let (ring, engine) = retention_engine(2);
+        append_and_consider(&ring, &engine, "api", "request complete");
+        let delayed = ring.snapshot(1, None)[0].clone();
+        ring.clear();
+        engine.clear_all();
+        engine.consider(&delayed);
+        assert!(engine.snapshot().ids.is_empty());
+        append_and_consider(&ring, &engine, "worker", "request complete");
+        engine.consider(&delayed);
+        engine.rescan_ring();
+        let snap = engine.snapshot();
+        assert_eq!(snap.ids, vec![2]);
+        assert_eq!(snap.sites.len(), 1);
+        assert_eq!(snap.sites[0].source, "worker");
+        assert_eq!(snap.sites[0].emitted_count, 1);
+    }
 
     fn build_call_regex(src: &str) -> String {
         let calls = extract_log_calls(src);

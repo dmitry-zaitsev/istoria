@@ -1,8 +1,8 @@
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -46,6 +46,30 @@ pub struct EmissionSite {
     pub line: u32,
     pub preview: Vec<CodeLine>,
     pub is_local: bool,
+}
+
+/// Resolve a preview on a blocking worker: Git may wait for the shared budget.
+pub fn emission_site(
+    root: &Path,
+    cache: &CodeCache,
+    msg: &str,
+) -> Result<Option<EmissionSite>, String> {
+    let Some((path, line)) = find_emission_site(root, cache, msg)? else {
+        return Ok(None);
+    };
+    let preview = read_slice(root, path.to_str().unwrap_or_default(), line, 2).unwrap_or_default();
+    let is_local = is_local_change(root, cache, &path, line);
+    let rel_path = path
+        .strip_prefix(root)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string_lossy().into_owned());
+    Ok(Some(EmissionSite {
+        path: path.to_string_lossy().into_owned(),
+        rel_path,
+        line,
+        preview,
+        is_local,
+    }))
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -475,12 +499,7 @@ pub fn default_branch(project_root: &Path, cache: &CodeCache) -> String {
             return b.clone();
         }
     }
-    let out = Command::new("git")
-        .arg("symbolic-ref")
-        .arg("--short")
-        .arg("refs/remotes/origin/HEAD")
-        .current_dir(project_root)
-        .output();
+    let out = crate::git::run(project_root, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
     let branch = match out {
         Ok(o) if o.status.success() => {
             let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -520,13 +539,11 @@ fn compute_is_local(
     file: &Path,
     line: u32,
 ) -> Option<bool> {
-    let blame = Command::new("git")
-        .arg("blame")
-        .arg(format!("-L{line},{line}"))
-        .arg("--porcelain")
-        .arg(file)
-        .current_dir(project_root)
-        .output()
+    let range = format!("-L{line},{line}");
+    let blame = crate::git::run(project_root, [
+        OsStr::new("blame"), OsStr::new(&range), OsStr::new("--porcelain"),
+        OsStr::new("--"), file.as_os_str(),
+    ])
         .ok()?;
     if !blame.status.success() {
         return Some(false);
@@ -540,13 +557,7 @@ fn compute_is_local(
     }
     let branch = default_branch(project_root, cache);
     let target = format!("origin/{branch}");
-    let ancestor = Command::new("git")
-        .arg("merge-base")
-        .arg("--is-ancestor")
-        .arg(hash)
-        .arg(&target)
-        .current_dir(project_root)
-        .output()
+    let ancestor = crate::git::run(project_root, ["merge-base", "--is-ancestor", hash, &target])
         .ok()?;
     // Exit 0 → ancestor (commit is on default branch) → NOT local.
     // Exit 1 → not ancestor → local. Other → uncertain → false.
