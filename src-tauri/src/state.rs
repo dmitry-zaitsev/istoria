@@ -7,6 +7,7 @@ use crate::ring::Ring;
 use crate::source;
 
 pub struct AppState {
+    pub settings: Arc<crate::settings::Settings>,
     pub ring: Arc<Ring>,
     /// Canonical absolute path to the user's project root, captured
     /// once from the working directory at istoria startup. None if the

@@ -59,6 +59,7 @@ pub enum StreamMsg {
 
 #[derive(Clone)]
 pub struct ApiState {
+    pub settings: Arc<crate::settings::Settings>,
     pub ring: Arc<Ring>,
     pub code_cache: Arc<code::CodeCache>,
     pub relevance: Arc<RelevanceEngine>,
@@ -82,6 +83,7 @@ pub async fn serve(state: ApiState) {
 
     let app = Router::new()
         .route("/ingest", post(ingest))
+        .route("/settings", get(get_settings).post(update_settings))
         .route("/query/recent", get(query_recent))
         .route("/query/since", get(query_since))
         .route("/query/parse", post(query_parse))
@@ -545,4 +547,21 @@ fn write_port_file(port: u16) {
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::write(dir.join(PORT_FILE), port.to_string());
     }
+}
+
+// ---- settings --------------------------------------------------------------
+
+async fn get_settings(State(st): State<ApiState>) -> Json<crate::settings::SettingsSnapshot> {
+    Json(st.settings.snapshot().await)
+}
+
+async fn update_settings(
+    State(st): State<ApiState>,
+    Json(preferences): Json<crate::settings::Preferences>,
+) -> Result<Json<crate::settings::SettingsSnapshot>, (StatusCode, String)> {
+    st.settings
+        .update(preferences)
+        .await
+        .map(Json)
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))
 }

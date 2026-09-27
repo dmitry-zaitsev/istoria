@@ -232,3 +232,18 @@ pub async fn open_terminal(command: String) -> Result<(), String> {
     #[allow(unreachable_code)]
     Err("unsupported platform".into())
 }
+
+#[tauri::command]
+pub async fn get_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::settings::SettingsSnapshot, String> {
+    Ok(state.settings.snapshot().await)
+}
+
+#[tauri::command]
+pub async fn update_settings(
+    state: tauri::State<'_, AppState>,
+    preferences: crate::settings::Preferences,
+) -> Result<crate::settings::SettingsSnapshot, String> {
+    state.settings.update(preferences).await
+}

@@ -17,9 +17,12 @@ pub mod query;
 pub mod redraw;
 pub mod relevance;
 pub mod ring;
+pub mod settings;
 pub mod socket;
 pub mod source;
 pub mod state;
+#[cfg(target_os = "macos")]
+pub mod system_logs;
 pub mod transformers;
 pub mod update;
 
@@ -84,6 +87,10 @@ pub fn run(cli: cli::Cli) {
         Arc::clone(&ring),
     ));
     let source_name = registry.allocate(cli.name.as_deref());
+
+    let settings = Arc::new(tauri::async_runtime::block_on(async {
+        settings::Settings::new(Arc::clone(&ring))
+    }));
 
     if stdin_piped {
         let ring_for_ingest = Arc::clone(&ring);
@@ -152,6 +159,7 @@ pub fn run(cli: cli::Cli) {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .manage(AppState {
+            settings: Arc::clone(&settings),
             ring,
             project_root,
             code_cache,
@@ -161,6 +169,8 @@ pub fn run(cli: cli::Cli) {
             relevance: Arc::clone(&relevance_engine),
         })
         .invoke_handler(tauri::generate_handler![
+            ipc::get_settings,
+            ipc::update_settings,
             ipc::query_recent,
             ipc::query_since,
             ipc::query_parse,
@@ -290,8 +300,13 @@ pub fn run(cli: cli::Cli) {
             tauri::async_runtime::spawn(relevance_for_poll.run_refresh_worker());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running istoria");
+        .build(tauri::generate_context!())
+        .expect("error while building istoria")
+        .run(move |_app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                tauri::async_runtime::block_on(settings.shutdown());
+            }
+        });
 }
 
 fn init_tracing() {
