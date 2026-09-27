@@ -78,6 +78,7 @@ pub fn run_headless(cli: Cli) {
 
     rt.block_on(async move {
         let ring = Arc::new(Ring::from_env());
+        let settings = Arc::new(crate::settings::Settings::new(Arc::clone(&ring)));
         let registry = Arc::new(source::Registry::new());
         let source_roots = Arc::new(relevance::SourceRoots::new());
         let pattern_cache = Arc::new(relevance::PatternCache::new());
@@ -193,6 +194,7 @@ pub fn run_headless(cli: Cli) {
         tokio::spawn(Arc::clone(&relevance_engine).run_refresh_worker());
 
         let state = ApiState {
+            settings: Arc::clone(&settings),
             ring: Arc::clone(&ring),
             code_cache,
             relevance: Arc::clone(&relevance_engine),
@@ -202,9 +204,32 @@ pub fn run_headless(cli: Cli) {
             tx,
         };
 
-        // Blocks forever serving the API + SSE.
-        http_api::serve(state).await;
+        // Electron sends SIGTERM on quit. Let the collector kill and reap its
+        // child before exiting instead of leaving `log stream` running.
+        tokio::select! {
+            _ = http_api::serve(state) => {},
+            _ = shutdown_signal() => {},
+        }
+        settings.shutdown().await;
     });
+    // Tokio's stdin reader can remain blocked while a producer keeps its pipe
+    // open. Collector cleanup is complete; don't wait forever for that read
+    // (or other blocking work) when the owning process is quitting.
+    rt.shutdown_timeout(Duration::from_secs(1));
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = terminate.recv() => {},
+            _ = tokio::signal::ctrl_c() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 /// Launch the Electron app bundle this core lives inside (…/istoria.app) via

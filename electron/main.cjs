@@ -5,7 +5,7 @@
 // hands both to the renderer via preload. The renderer (the real React app)
 // then talks to the core over HTTP + SSE — no WKWebView, so no ghost.
 
-const { app, BrowserWindow, Menu, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, MenuItem, shell, ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
@@ -147,7 +147,15 @@ function buildMenu() {
     },
     { role: "windowMenu" },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const menu = Menu.buildFromTemplate(template);
+  const settingsItem = new MenuItem({
+    label: "Settings…",
+    accelerator: "CmdOrCtrl+,",
+    click: () => mainWindow?.webContents.send("istoria:open-settings"),
+  });
+  if (isMac) menu.items[0].submenu.insert(2, settingsItem);
+  else menu.items.find((item) => item.role === "filemenu")?.submenu.append(settingsItem);
+  Menu.setApplicationMenu(menu);
 }
 
 // Renderer-invokable relaunch (replaces Tauri plugin-process `relaunch()`).

@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld("istoria", {
   httpPort,
   token,
   relaunch: () => ipcRenderer.invoke("istoria:relaunch"),
+  onOpenSettings: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on("istoria:open-settings", handler);
+    return () => ipcRenderer.removeListener("istoria:open-settings", handler);
+  },
   // In-app auto-update (electron-updater) for non-brew installs.
   update: {
     start: () => ipcRenderer.invoke("istoria:update-start"),
