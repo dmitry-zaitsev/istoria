@@ -13,6 +13,7 @@ import {
 } from "../lib/views";
 import { toast } from "../lib/toast";
 import { ClaudeButton } from "./ClaudeButton";
+import { Settings } from "./Settings";
 import { RelevancePill } from "./RelevancePill";
 
 export function Tabs() {
@@ -236,6 +237,7 @@ export function Tabs() {
       )}
       <RelevancePill />
       <ClaudeButton />
+      <Settings />
     </div>
   );
 }

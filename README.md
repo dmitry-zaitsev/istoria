@@ -17,6 +17,8 @@ the same timeline as your backend logs.
   Multi-pipe forwarders so several producers feed one window.
 - **Browser logs extension** — opt-in per-tab capture of `console.*`, uncaught
   exceptions, and network metadata. Forwards over loopback only.
+- **macOS system logs (experimental)** — opt-in live unified logs (the same
+  logging system used by Console) under the `macos` source.
 - **Query language** — filter by source, level, regex, or structured fields
   parsed from JSON log lines.
 - **Facets** — group + count by any field on the fly.
@@ -64,6 +66,57 @@ cat examples/sample_log.txt | istoria
 JSON log lines have their fields lifted into structured columns
 automatically. Plain text lines still work — they just get fewer
 auto-extracted facets.
+
+## Settings
+
+Open **Settings** with the gear button at the top right, **⌘,** (Ctrl+, on other
+platforms), or the macOS app menu. Preferences are saved automatically on this
+Mac and take effect immediately, without restarting the app. Choose a group in
+the left sidebar, then adjust its controls on the right. **General** includes
+log order; **Experimental** contains opt-in features. Hover over or focus a
+setting’s info icon for details.
+
+### Experimental: macOS system logs
+
+System log capture is **off by default**. Enable **Settings → Experimental →
+macOS system logs** to start `/usr/bin/log stream`. New system log messages
+appear under `source:macos`, alongside piped and browser logs. No separate
+terminal command or open Console window is needed.
+
+The preference persists across launches and applies to both app shells. Turning
+it off stops the collector immediately and keeps already captured logs. Quitting
+the app also stops the collector; attaching another pipe does not start another
+collector. Experimental features remain off if saved settings cannot be read.
+
+Original timestamps, severity, and metadata are preserved. Filter with
+`source:macos`, `source:macos level:error`, `source:macos process:Finder`, or
+`source:macos subsystem:com.example.app`. Process IDs, categories, and image
+paths are also available as structured fields. Apple `Fault` and `Error` map
+to Istoria's error level; `Default` and `Info` map to info.
+
+Capture starts when enabled, without replaying historical logs. The default level
+includes default, error, and fault messages. System logs share the bounded
+in-memory buffer with other sources, so a busy system can evict older entries
+sooner. Use `NOT source:macos` to hide them. Advanced capture options can be set
+with environment variables **before launching the app** (they do not enable
+capture; the Settings opt-in is still required):
+
+| Variable                       | Default   | Purpose                                                  |
+| ------------------------------ | --------- | -------------------------------------------------------- |
+| `ISTORIA_SYSTEM_LOG_LEVEL`     | `default` | Set to `info` or `debug` to include more verbose events. |
+| `ISTORIA_SYSTEM_LOG_PREDICATE` | none      | Native macOS log predicate, e.g. `process == "Finder"`.  |
+
+For example, during development (then enable capture in Settings):
+
+```sh
+ISTORIA_SYSTEM_LOG_PREDICATE='process == "Finder"' npm run electron
+```
+
+The collector runs with your existing permissions and preserves macOS privacy
+redaction (`<private>`); it does not request elevated access. Capture errors appear
+as warning events in the `macos` source, with retries backing off to once per
+minute. These logs are available through the same local query and MCP interfaces
+as other captured logs. Other operating systems do not start this collector.
 
 ## Browser extension
 

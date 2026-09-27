@@ -21,6 +21,7 @@ declare global {
       httpPort: number;
       token: string;
       relaunch: () => Promise<void>;
+      onOpenSettings?: (callback: () => void) => () => void;
       update: {
         start: () => Promise<void>;
         install: () => Promise<void>;
@@ -273,4 +274,29 @@ export async function subscribeRelevance(cb: () => void): Promise<UnlistenFn> {
   const handler = () => cb();
   s.addEventListener("relevance-updated", handler);
   return () => s.removeEventListener("relevance-updated", handler);
+}
+
+// ---- app settings ----------------------------------------------------------
+
+export interface AppSettings {
+  macosSystemLogs: boolean;
+  macosSystemLogsSupported: boolean;
+  loadWarning: string | null;
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  if ("__TAURI_INTERNALS__" in window && !window.istoria) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<AppSettings>("get_settings");
+  }
+  return getJson<AppSettings>("/settings");
+}
+
+export async function updateSettings(macosSystemLogs: boolean): Promise<AppSettings> {
+  const preferences = { macosSystemLogs };
+  if ("__TAURI_INTERNALS__" in window && !window.istoria) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<AppSettings>("update_settings", { preferences });
+  }
+  return send<AppSettings>("POST", "/settings", preferences);
 }
