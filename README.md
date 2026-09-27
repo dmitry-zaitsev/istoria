@@ -129,14 +129,14 @@ Privacy policy: [`extension/PRIVACY.md`](extension/PRIVACY.md).
 
 ```sh
 just bootstrap         # installs JS deps + sccache + lld
-just dev               # tauri dev with hot reload
+just dev               # Electron + Rust core with hot reload
 ```
 
 Or directly:
 
 ```sh
 npm install
-npm run tauri dev
+npm run electron:dev
 ```
 
 For the extension:
